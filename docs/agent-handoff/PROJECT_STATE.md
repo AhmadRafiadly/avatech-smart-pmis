@@ -41,3 +41,13 @@ Important:
 - Some actions are still client-side/localStorage/demo.
 - Backend real persistence should be added carefully, one module at a time.
 - AI integration is postponed.
+
+## Latest checkpoint
+- f0225e9 Polish CEO PM non-AI interactions
+
+## Latest completed CEO/PM fixes
+- Executive Project Health filter is real.
+- Executive Team Load Rebalance/Abaikan now have UI state.
+- Project Detail Kanban Filter Anggota is real.
+- Team Management modal actions polished.
+- Client decorative card chevron cleaned.

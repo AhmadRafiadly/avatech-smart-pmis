@@ -33,3 +33,14 @@
 ## Do not redesign
 The current violet SaaS visual direction is approved.
 Only polish/fix targeted issues unless explicitly requested.
+
+## Latest interaction polish checkpoint
+Commit:
+- f0225e9 Polish CEO PM non-AI interactions
+
+Completed:
+- Executive Project Health filter dropdown works.
+- Executive Team Load Rebalance/Abaikan buttons update state.
+- Project Detail Kanban Filter Anggota works with operational members.
+- Team Management modal actions are polished.
+- Client decorative chevron is no longer a dead button.
