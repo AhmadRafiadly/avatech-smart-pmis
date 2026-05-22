@@ -419,12 +419,20 @@
             <div class="inline-flex items-center gap-3">
                 <span class="text-[10.5px] font-bold tracking-wider uppercase text-slate-400">Filter Anggota</span>
                 <div class="relative">
-                    <select data-toast="Filter Kanban per anggota segera tersedia." class="appearance-none h-9 pl-3 pr-9 rounded-lg border border-violet-100 bg-white text-[13px] text-slate-600 cursor-pointer">
-                        <option>Semua</option>
-                        <option>Adly</option>
-                        <option>Yuda Prayoga</option>
-                        <option>Irwan Kurniawan</option>
-                        <option>Ferry Achmad</option>
+                    <select data-kanban-filter class="appearance-none h-9 pl-3 pr-9 rounded-lg border border-violet-100 bg-white text-[13px] text-slate-600 cursor-pointer">
+                        <option value="">Semua</option>
+                        @php
+                            $kanbanAssignees = ['Adly', 'Yuda Prayoga', 'Irwan Kurniawan', 'Ferry Achmad', 'Genta'];
+                            $seededAssignees = collect($kanban)->pluck('tasks')->flatten(1)->pluck('assignee')->filter()->unique()->values()->all();
+                            $extraAssignees  = array_values(array_diff($seededAssignees, $kanbanAssignees, ['Belum Ditugaskan']));
+                            $kanbanFilterOptions = array_merge($kanbanAssignees, $extraAssignees);
+                            if (in_array('Belum Ditugaskan', $seededAssignees, true)) {
+                                $kanbanFilterOptions[] = 'Belum Ditugaskan';
+                            }
+                        @endphp
+                        @foreach ($kanbanFilterOptions as $name)
+                            <option value="{{ $name }}">{{ $name }}</option>
+                        @endforeach
                     </select>
                     <x-heroicon-o-chevron-down class="w-4 h-4 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
@@ -437,17 +445,17 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             @foreach ($kanban as $col)
-                <div class="bg-white rounded-2xl border border-violet-100 p-4 pd-kbn-col-{{ $col['id'] }}">
+                <div data-kanban-column class="bg-white rounded-2xl border border-violet-100 p-4 pd-kbn-col-{{ $col['id'] }}">
                     <div class="flex items-center justify-between mb-4">
                         <h4 class="text-[13.5px] font-bold" style="color: {{ $col['color'] }};">{{ $col['label'] }}</h4>
-                        <span class="text-[11px] font-bold rounded-full px-2 py-0.5" style="background: {{ $col['bg'] }}; color: {{ $col['color'] }};">
+                        <span data-col-count class="text-[11px] font-bold rounded-full px-2 py-0.5" style="background: {{ $col['bg'] }}; color: {{ $col['color'] }};">
                             {{ count($col['tasks']) }}
                         </span>
                     </div>
                     <div class="space-y-3 min-h-[100px]">
                         @forelse ($col['tasks'] as $task)
                             @php $accent = $task['priority'] === 'High' ? '#EF4444' : '#F59E0B'; @endphp
-                            <div class="bg-white rounded-lg border border-violet-50 shadow-sm hover:shadow-[0_2px_8px_rgba(124,58,237,0.08)] transition p-3" style="border-left: 4px solid {{ $accent }};">
+                            <div data-kanban-task data-assignee="{{ $task['assignee'] }}" class="bg-white rounded-lg border border-violet-50 shadow-sm hover:shadow-[0_2px_8px_rgba(124,58,237,0.08)] transition p-3" style="border-left: 4px solid {{ $accent }};">
                                 <div class="flex items-start justify-between gap-2 mb-2">
                                     <span class="text-[9.5px] font-bold tracking-wider uppercase text-slate-400 truncate">{{ $task['module'] }}</span>
                                     <span @class([
@@ -460,8 +468,9 @@
                                 <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-slate-100 text-slate-500">{{ $task['assignee'] }}</span>
                             </div>
                         @empty
-                            <div class="text-[12.5px] text-slate-400 text-center py-8">Tidak ada task</div>
+                            <div data-col-empty class="text-[12.5px] text-slate-400 text-center py-8">Tidak ada task</div>
                         @endforelse
+                        <div data-col-filtered-empty class="hidden text-[12.5px] text-slate-400 text-center py-8 italic">Tidak ada task untuk anggota ini</div>
                     </div>
                 </div>
             @endforeach
@@ -808,6 +817,35 @@
                     const labels = { lulus: 'Test case ditandai Lulus.', gagal: 'Test case ditandai Gagal.', pending: 'Retest dijadwalkan — status kembali Pending.' };
                     window.toast && window.toast(labels[next] || 'Status QC diperbarui.');
                 });
+
+                /* === Kanban Filter Anggota === */
+                const kbnSelect = document.querySelector('[data-kanban-filter]');
+                if (kbnSelect) {
+                    const applyKbn = (assignee) => {
+                        document.querySelectorAll('[data-kanban-column]').forEach(col => {
+                            let visible = 0;
+                            let total = 0;
+                            col.querySelectorAll('[data-kanban-task]').forEach(t => {
+                                total++;
+                                const match = ! assignee || t.dataset.assignee === assignee;
+                                t.classList.toggle('hidden', ! match);
+                                if (match) visible++;
+                            });
+                            const countEl = col.querySelector('[data-col-count]');
+                            if (countEl) countEl.textContent = visible;
+                            const initialEmpty = col.querySelector('[data-col-empty]');
+                            const filteredEmpty = col.querySelector('[data-col-filtered-empty]');
+                            if (filteredEmpty) {
+                                const showFilteredEmpty = !! assignee && total > 0 && visible === 0;
+                                filteredEmpty.classList.toggle('hidden', ! showFilteredEmpty);
+                            }
+                            if (initialEmpty) {
+                                initialEmpty.classList.toggle('hidden', !! assignee && total > 0);
+                            }
+                        });
+                    };
+                    kbnSelect.addEventListener('change', () => applyKbn(kbnSelect.value));
+                }
 
                 /* === Simpan MoM with localStorage === */
                 const momKey = 'avt-mom:' + pid;

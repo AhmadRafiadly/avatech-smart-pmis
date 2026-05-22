@@ -568,7 +568,7 @@
                                             @if (! empty($m['email']))
                                                 <a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ urlencode($m['email']) }}" target="_blank" rel="noopener" class="text-[13.5px] text-[#1E1B4B] truncate hover:text-violet-700 transition">{{ $m['email'] }}</a>
                                             @else
-                                                <button type="button" data-toast="Email anggota tidak tersedia." class="text-[13.5px] text-slate-400 cursor-pointer">—</button>
+                                                <span class="text-[13.5px] text-slate-400 italic" title="Email anggota tidak tersedia">Email belum tersedia</span>
                                             @endif
                                         </div>
                                         <div class="flex items-center gap-3">
@@ -576,7 +576,7 @@
                                             @if (! empty($m['phone']))
                                                 <a href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $m['phone']) }}" target="_blank" rel="noopener" class="text-[13.5px] text-[#1E1B4B] hover:text-emerald-600 transition">{{ $m['phone'] }}</a>
                                             @else
-                                                <button type="button" data-toast="Nomor WhatsApp anggota tidak tersedia." class="text-[13.5px] text-slate-400 cursor-pointer">—</button>
+                                                <span class="text-[13.5px] text-slate-400 italic" title="Nomor WhatsApp anggota tidak tersedia">Nomor belum tersedia</span>
                                             @endif
                                         </div>
                                         <div class="flex items-center gap-3">
@@ -720,18 +720,18 @@
                             Aktivitas terakhir: <span class="font-semibold text-[#1E1B4B]">{{ $m['last_active'] }}</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            @if (! empty($m['email']))
-                                <a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ urlencode($m['email']) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">
+                            @if (! empty($m['phone']))
+                                <a href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $m['phone']) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 transition cursor-pointer">
                                     <x-heroicon-o-chat-bubble-left-right class="w-4 h-4" />
                                     Kirim Pesan
                                 </a>
                             @else
-                                <button type="button" data-toast="Email anggota tidak tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">
+                                <button type="button" disabled aria-disabled="true" title="Nomor WhatsApp anggota tidak tersedia" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-100 bg-slate-50 text-[13px] font-semibold text-slate-400 cursor-not-allowed">
                                     <x-heroicon-o-chat-bubble-left-right class="w-4 h-4" />
                                     Kirim Pesan
                                 </button>
                             @endif
-                            <button type="button" data-toast="Pengaturan penugasan segera tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                            <button type="button" data-assign-trigger data-assign-id="{{ $m['id'] }}" data-assign-name="{{ $m['name'] }}" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                                 <x-heroicon-o-user class="w-4 h-4" />
                                 Atur Penugasan
                             </button>
@@ -928,9 +928,11 @@
                     openMemberModal(trigger.dataset.memberId);
                 });
 
-                /* Delegated tab + close — catches dynamically-injected tabs/buttons too */
-                if (modal) {
-                    modal.addEventListener('click', (e) => {
+                /* Delegated tab + close — attached to panel (not modal) because the panel
+                   stops click propagation below to prevent overlay-close, which also
+                   blocks any modal-level delegation. */
+                if (panel) {
+                    panel.addEventListener('click', (e) => {
                         const closeBtn = e.target.closest('[data-modal-close]');
                         if (closeBtn) { closeMemberModal(); return; }
                         const tab = e.target.closest('[data-tm-tab]');
@@ -956,6 +958,218 @@
                 /* close buttons handled by delegated modal click handler above */
                 document.addEventListener('keydown', (e) => {
                     if (e.key === 'Escape' && modal && ! modal.classList.contains('hidden')) closeMemberModal();
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', wire);
+            } else {
+                wire();
+            }
+        })();
+    </script>
+
+    {{-- ===== Atur Penugasan Modal (shared across seeded + dynamic members) ===== --}}
+    @php
+        $projectOptions = collect($members)
+            ->pluck('allocations')
+            ->flatten(1)
+            ->pluck('name')
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    @endphp
+    <div data-assign-modal class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="assign-modal-title">
+        <div data-assign-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+        <div data-assign-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-violet-100">
+            <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <h3 id="assign-modal-title" class="text-[16px] font-bold text-[#1E1B4B] leading-tight">Atur Penugasan</h3>
+                    <p class="text-[12px] text-slate-500 mt-0.5">Untuk <span data-assign-member-name class="font-semibold text-violet-700">—</span></p>
+                </div>
+                <button type="button" data-assign-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer flex-shrink-0">
+                    <x-heroicon-o-x-mark class="w-5 h-5" />
+                </button>
+            </div>
+            <div class="px-6 py-5 overflow-y-auto space-y-5">
+                <section>
+                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Penugasan Saat Ini</h4>
+                    <div data-assign-current class="space-y-2"></div>
+                </section>
+                <section>
+                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Penugasan Tersimpan (Demo Lokal)</h4>
+                    <div data-assign-saved class="space-y-2"></div>
+                </section>
+                <section class="rounded-2xl border border-dashed border-violet-200 bg-violet-50/30 p-4">
+                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-violet-700 mb-3">Tambah Penugasan Baru</h4>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Proyek</label>
+                            <select data-assign-project class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">— Pilih proyek —</option>
+                                @foreach ($projectOptions as $pn)
+                                    <option value="{{ $pn }}">{{ $pn }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Peran</label>
+                                <input data-assign-role type="text" placeholder="mis. UI Lead" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Load %</label>
+                                <input data-assign-load type="number" min="0" max="100" step="5" placeholder="20" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2 flex-shrink-0">
+                <button type="button" data-assign-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Batal</button>
+                <button type="button" data-assign-save class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                    <x-heroicon-o-bookmark-square class="w-4 h-4" />
+                    Simpan
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const wire = () => {
+                const modal = document.querySelector('[data-assign-modal]');
+                if (! modal) return;
+                const overlay  = modal.querySelector('[data-assign-overlay]');
+                const panel    = modal.querySelector('[data-assign-panel]');
+                const nameEl   = modal.querySelector('[data-assign-member-name]');
+                const curEl    = modal.querySelector('[data-assign-current]');
+                const savedEl  = modal.querySelector('[data-assign-saved]');
+                const projSel  = modal.querySelector('[data-assign-project]');
+                const roleInp  = modal.querySelector('[data-assign-role]');
+                const loadInp  = modal.querySelector('[data-assign-load]');
+                const saveBtn  = modal.querySelector('[data-assign-save]');
+                let currentId  = null;
+
+                const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+                const lsKey = (id) => 'avt-team-assignment:' + id;
+                const loadSaved = (id) => {
+                    try { return JSON.parse(localStorage.getItem(lsKey(id)) || '[]'); }
+                    catch (e) { return []; }
+                };
+                const persistSaved = (id, list) => {
+                    try { localStorage.setItem(lsKey(id), JSON.stringify(list)); } catch (e) {}
+                };
+
+                const renderCurrent = (allocs) => {
+                    if (! curEl) return;
+                    if (! allocs || allocs.length === 0) {
+                        curEl.innerHTML = '<p class="text-[12.5px] text-slate-400 italic">Belum ada penugasan tercatat.</p>';
+                        return;
+                    }
+                    curEl.innerHTML = allocs.map(a =>
+                        '<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-violet-100 bg-white">'
+                        + '  <div class="flex items-center gap-3 min-w-0">'
+                        + '    <span class="w-8 h-8 rounded-lg text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0" style="background:' + esc(a.color || '#7C3AED') + ';">' + esc(a.code || '··') + '</span>'
+                        + '    <div class="min-w-0">'
+                        + '      <div class="text-[13px] font-semibold text-[#1E1B4B] truncate">' + esc(a.name || '—') + '</div>'
+                        + '      <div class="text-[11.5px] text-slate-500">' + esc(a.role || '—') + ' · ' + esc(a.hours || 0) + 'h/minggu</div>'
+                        + '    </div>'
+                        + '  </div>'
+                        + '  <span class="text-[12px] font-bold tabular-nums text-violet-700">' + esc(a.pct || 0) + '%</span>'
+                        + '</div>'
+                    ).join('');
+                };
+
+                const renderSaved = (id) => {
+                    if (! savedEl) return;
+                    const list = loadSaved(id);
+                    if (list.length === 0) {
+                        savedEl.innerHTML = '<p class="text-[12.5px] text-slate-400 italic">Belum ada penugasan tambahan tersimpan.</p>';
+                        return;
+                    }
+                    savedEl.innerHTML = list.map((row, idx) =>
+                        '<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-violet-200 bg-violet-50/40">'
+                        + '  <div class="min-w-0">'
+                        + '    <div class="text-[13px] font-semibold text-[#1E1B4B] truncate">' + esc(row.project) + '</div>'
+                        + '    <div class="text-[11.5px] text-slate-500">' + esc(row.role || '—') + ' · ' + esc(row.load) + '%</div>'
+                        + '  </div>'
+                        + '  <button type="button" data-assign-remove="' + idx + '" class="text-[11.5px] font-semibold text-rose-600 hover:text-rose-700 transition cursor-pointer">Hapus</button>'
+                        + '</div>'
+                    ).join('');
+                };
+
+                const openAssign = (id, fallbackName) => {
+                    currentId = id;
+                    const member = (window.__teamCsvMap && window.__teamCsvMap[id]) || null;
+                    const name   = (member && member.name) || fallbackName || 'Anggota';
+                    if (nameEl) nameEl.textContent = name;
+                    renderCurrent(member ? (member.allocations || []) : []);
+                    renderSaved(id);
+                    if (projSel) projSel.value = '';
+                    if (roleInp) roleInp.value = '';
+                    if (loadInp) loadInp.value = '';
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                };
+
+                const closeAssign = () => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    document.body.style.overflow = '';
+                    currentId = null;
+                };
+
+                /* Open trigger — delegated in CAPTURE phase so that the member modal's
+                   panel.stopPropagation() (used to prevent overlay-close) doesn't block us. */
+                document.addEventListener('click', (e) => {
+                    const trig = e.target.closest('[data-assign-trigger][data-assign-id]');
+                    if (! trig) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openAssign(trig.dataset.assignId, trig.dataset.assignName);
+                }, true);
+
+                /* Panel-level delegation (mirror pattern used by member modal) */
+                if (panel) {
+                    panel.addEventListener('click', (e) => {
+                        if (e.target.closest('[data-assign-close]')) { closeAssign(); return; }
+                        const rm = e.target.closest('[data-assign-remove]');
+                        if (rm && currentId !== null) {
+                            const idx = parseInt(rm.dataset.assignRemove, 10);
+                            const list = loadSaved(currentId);
+                            if (! isNaN(idx) && idx >= 0 && idx < list.length) {
+                                const removed = list.splice(idx, 1)[0];
+                                persistSaved(currentId, list);
+                                renderSaved(currentId);
+                                if (window.toast) window.toast('Penugasan "' + (removed?.project || '') + '" dihapus.');
+                            }
+                            return;
+                        }
+                        if (e.target.closest('[data-assign-save]')) {
+                            if (currentId === null) return;
+                            const project = (projSel?.value || '').trim();
+                            const role    = (roleInp?.value || '').trim();
+                            const loadStr = (loadInp?.value || '').trim();
+                            if (! project) { window.toast && window.toast('Pilih proyek dulu.'); return; }
+                            const load = Math.max(0, Math.min(100, parseInt(loadStr || '0', 10) || 0));
+                            const list = loadSaved(currentId);
+                            list.unshift({ project, role, load, at: Date.now() });
+                            persistSaved(currentId, list);
+                            renderSaved(currentId);
+                            if (projSel) projSel.value = '';
+                            if (roleInp) roleInp.value = '';
+                            if (loadInp) loadInp.value = '';
+                            if (window.toast) window.toast('Penugasan ke "' + project + '" disimpan (demo lokal).');
+                        }
+                    });
+                }
+                if (overlay) overlay.addEventListener('click', closeAssign);
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && ! modal.classList.contains('hidden')) closeAssign();
                 });
             };
 
@@ -1047,20 +1261,20 @@
                         '<button type="button" data-tm-tab="' + id + '" class="tm-tab h-10 px-5 rounded-xl text-[13px] font-semibold transition cursor-pointer' + (active ? ' is-active' : ' text-slate-500 hover:bg-white/70 hover:text-violet-700') + '">' + label + '</button>';
                     const emptyState = (text) =>
                         '<div class="text-[13px] text-slate-400 text-center py-10 rounded-2xl border border-violet-100 border-dashed">' + text + '</div>';
-                    const contactRow = (svgPath, valueText, href, missingMsg) => {
+                    const contactRow = (svgPath, valueText, href, missingMsg, missingLabel) => {
                         const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4 text-violet-600 flex-shrink-0">' + svgPath + '</svg>';
                         const body = href
                             ? '<a href="' + esc(href) + '" target="_blank" rel="noopener" class="text-[13.5px] text-[#1E1B4B] truncate hover:text-violet-700 transition">' + esc(valueText) + '</a>'
-                            : '<button type="button" data-toast="' + esc(missingMsg) + '" class="text-[13.5px] text-slate-400 cursor-pointer">—</button>';
+                            : '<span class="text-[13.5px] text-slate-400 italic" title="' + esc(missingMsg) + '">' + esc(missingLabel) + '</span>';
                         return '<div class="flex items-center gap-3">' + icon + body + '</div>';
                     };
                     const SVG_MAIL = '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>';
                     const SVG_PHONE = '<path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.37 1.9.72 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.35 1.85.59 2.81.72A2 2 0 0122 16.92z"/>';
                     const SVG_BRIEF = '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/>';
 
-                    const kirimPesanBtn = emailHref
-                        ? '<a href="' + esc(emailHref) + '" target="_blank" rel="noopener" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">Kirim Pesan</a>'
-                        : '<button type="button" data-toast="Email anggota tidak tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">Kirim Pesan</button>';
+                    const kirimPesanBtn = waHref
+                        ? '<a href="' + esc(waHref) + '" target="_blank" rel="noopener" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 transition cursor-pointer">Kirim Pesan</a>'
+                        : '<button type="button" disabled aria-disabled="true" title="Nomor WhatsApp anggota tidak tersedia" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-100 bg-slate-50 text-[13px] font-semibold text-slate-400 cursor-not-allowed">Kirim Pesan</button>';
 
                     const block = document.createElement('div');
                     block.setAttribute('data-member-content', m.id);
@@ -1093,8 +1307,8 @@
                         + '    <div class="rounded-2xl border border-violet-100 p-5 mb-5">'
                         + '      <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-3">Info Kontak</h4>'
                         + '      <div class="space-y-3">'
-                        +          contactRow(SVG_MAIL,  m.email || '—', emailHref, 'Email anggota tidak tersedia.')
-                        +          contactRow(SVG_PHONE, m.phone || '—', waHref,    'Nomor WhatsApp anggota tidak tersedia.')
+                        +          contactRow(SVG_MAIL,  m.email || '—', emailHref, 'Email anggota tidak tersedia', 'Email belum tersedia')
+                        +          contactRow(SVG_PHONE, m.phone || '—', waHref,    'Nomor WhatsApp anggota tidak tersedia', 'Nomor belum tersedia')
                         + '        <div class="flex items-center gap-3">'
                         + '          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4 text-violet-600 flex-shrink-0">' + SVG_BRIEF + '</svg>'
                         + '          <span class="text-[13.5px] text-[#1E1B4B]">' + esc(m.level || '—') + '</span>'
@@ -1117,7 +1331,7 @@
                         + '  </div>'
                         + '  <div class="flex items-center gap-2">'
                         +      kirimPesanBtn
-                        + '    <button type="button" data-toast="Pengaturan penugasan segera tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">Atur Penugasan</button>'
+                        + '    <button type="button" data-assign-trigger data-assign-id="' + esc(m.id) + '" data-assign-name="' + esc(m.name) + '" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">Atur Penugasan</button>'
                         + '  </div>'
                         + '</div>';
                     tmModalPanel.appendChild(block);

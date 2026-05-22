@@ -142,10 +142,26 @@
                         <p class="text-[13px] text-slate-500 mt-1">Status real-time semua proyek aktif</p>
                     </div>
                     <div class="flex items-center gap-3">
-                        <button type="button" data-toast="Filter Project Health segera tersedia." class="inline-flex items-center gap-2 px-3.5 h-9 rounded-lg border border-violet-100 text-[13px] text-slate-600 hover:bg-violet-50 transition cursor-pointer">
-                            <x-heroicon-o-funnel class="w-4 h-4" />
-                            Filter
-                        </button>
+                        <div class="relative" data-ph-filter>
+                            <button
+                                type="button"
+                                data-ph-trigger
+                                aria-haspopup="listbox"
+                                aria-expanded="false"
+                                class="inline-flex items-center gap-2 px-3.5 h-9 rounded-lg border border-violet-100 text-[13px] text-slate-600 hover:bg-violet-50 transition cursor-pointer"
+                            >
+                                <x-heroicon-o-funnel class="w-4 h-4" />
+                                <span>Filter:</span>
+                                <span data-ph-label class="font-semibold text-violet-700">Semua</span>
+                                <x-heroicon-o-chevron-down class="w-3.5 h-3.5" />
+                            </button>
+                            <div data-ph-menu role="listbox" class="hidden absolute right-0 top-full mt-2 z-20 w-48 bg-white rounded-xl border border-violet-100 shadow-[0_12px_32px_rgba(124,58,237,0.18)] overflow-hidden py-1">
+                                <button type="button" data-ph-option="all"       data-ph-label-text="Semua"           role="option" class="w-full text-left px-3 py-2 text-[13px] text-slate-600 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer">Semua status</button>
+                                <button type="button" data-ph-option="on-track"  data-ph-label-text="On Track"        role="option" class="w-full text-left px-3 py-2 text-[13px] text-slate-600 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer">On Track</button>
+                                <button type="button" data-ph-option="attention" data-ph-label-text="Needs Attention" role="option" class="w-full text-left px-3 py-2 text-[13px] text-slate-600 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer">Needs Attention</button>
+                                <button type="button" data-ph-option="critical"  data-ph-label-text="Critical"        role="option" class="w-full text-left px-3 py-2 text-[13px] text-slate-600 hover:bg-violet-50 hover:text-violet-700 transition cursor-pointer">Critical Blocker</button>
+                            </div>
+                        </div>
                         <button type="button" data-scroll-to="#project-health-section" class="text-[14px] font-semibold text-violet-700 hover:text-violet-900 transition flex items-center gap-1.5 cursor-pointer">
                             View Full Report
                             <x-heroicon-o-arrow-top-right-on-square class="w-4 h-4" />
@@ -167,7 +183,7 @@
                         </thead>
                         <tbody>
                             @foreach ($projects as $p)
-                                <tr onclick="window.location='{{ route('projects.show', $p['id']) }}'" class="hover:bg-[#FAF5FF] border-b border-violet-50/60 last:border-0 transition cursor-pointer">
+                                <tr data-ph-row data-ph-status="{{ $p['status'] }}" onclick="window.location='{{ route('projects.show', $p['id']) }}'" class="hover:bg-[#FAF5FF] border-b border-violet-50/60 last:border-0 transition cursor-pointer">
                                     <td class="px-7 py-5">
                                         <div class="flex items-center gap-3">
                                             <div class="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold text-[12px] flex-shrink-0" style="background: {{ $p['color'] }};">
@@ -201,9 +217,9 @@
                                         </div>
                                     </td>
                                     <td class="px-7 py-5 text-right">
-                                        <button type="button" class="w-8 h-8 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-700 transition inline-flex items-center justify-center cursor-pointer">
+                                        <span class="inline-flex items-center justify-center w-8 h-8 text-slate-300" aria-hidden="true">
                                             <x-heroicon-o-chevron-right class="w-4 h-4" />
-                                        </button>
+                                        </span>
                                     </td>
                                 </tr>
                             @endforeach
@@ -322,13 +338,13 @@
                             </div>
                             <h4 class="text-[15px] font-bold text-[#1E1B4B] mb-1">Yuda Prayoga mendekati kapasitas maksimum (90%)</h4>
                             <p class="text-[13px] text-slate-600 leading-relaxed">Saran: distribusi ulang 2-3 task UI review ke sprint berikutnya, atau prioritaskan deliverable kritis dengan diskusi singkat.</p>
-                            <div class="mt-3 flex gap-2 flex-wrap">
-                                <button type="button" data-toast="Permintaan rebalance dikirim ke SA/QA (demo)." class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-lg bg-white border border-violet-200 hover:border-violet-400 text-violet-700 transition cursor-pointer">
+                            <div class="mt-3 flex gap-2 flex-wrap" data-workload-actions>
+                                <button type="button" data-workload-rebalance class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-lg bg-white border border-violet-200 hover:border-violet-400 text-violet-700 transition cursor-pointer">
                                     <x-heroicon-o-arrows-right-left class="w-3.5 h-3.5" />
-                                    Rebalance Sprint
+                                    <span data-workload-rebalance-label>Rebalance Sprint</span>
                                 </button>
-                                <button type="button" data-toast="Saran AI workload diabaikan (demo)." class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-slate-500 hover:bg-white/70 transition cursor-pointer">
-                                    Abaikan
+                                <button type="button" data-workload-acknowledge class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-slate-500 hover:bg-white/70 transition cursor-pointer">
+                                    <span data-workload-acknowledge-label>Abaikan</span>
                                 </button>
                             </div>
                         </div>
@@ -400,6 +416,95 @@
                         setTimeout(() => target.classList.remove('ring-2', 'ring-violet-300', 'ring-offset-2'), 1200);
                     });
                 });
+
+                /* AI Workload Alert — Rebalance + Abaikan with localStorage state.
+                   Per project rule: card stays visible; buttons reflect persisted state and prevent repeat. */
+                const WL_REBALANCE_KEY = 'avt-workload-rebalance-requested-at';
+                const WL_ACK_KEY       = 'avt-workload-alert-acknowledged';
+                const fmtTime = (ts) => {
+                    try { return new Date(Number(ts)).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+                    catch (e) { return ''; }
+                };
+                const rebalanceBtn   = document.querySelector('[data-workload-rebalance]');
+                const rebalanceLabel = document.querySelector('[data-workload-rebalance-label]');
+                const ackBtn         = document.querySelector('[data-workload-acknowledge]');
+                const ackLabel       = document.querySelector('[data-workload-acknowledge-label]');
+
+                const markRebalanceDone = (ts) => {
+                    if (! rebalanceBtn || ! rebalanceLabel) return;
+                    rebalanceBtn.disabled = true;
+                    rebalanceBtn.setAttribute('aria-disabled', 'true');
+                    rebalanceBtn.title = 'Permintaan rebalance sudah dikirim pada ' + fmtTime(ts);
+                    rebalanceBtn.classList.remove('bg-white', 'border-violet-200', 'hover:border-violet-400', 'text-violet-700', 'cursor-pointer');
+                    rebalanceBtn.classList.add('bg-violet-50', 'border-violet-100', 'text-violet-500', 'cursor-not-allowed');
+                    rebalanceLabel.textContent = 'Sudah Dikirim';
+                };
+                const markAckDone = (ts) => {
+                    if (! ackBtn || ! ackLabel) return;
+                    ackBtn.disabled = true;
+                    ackBtn.setAttribute('aria-disabled', 'true');
+                    ackBtn.title = 'Saran ditandai diabaikan pada ' + fmtTime(ts);
+                    ackBtn.classList.remove('hover:bg-white/70', 'cursor-pointer');
+                    ackBtn.classList.add('opacity-60', 'cursor-not-allowed');
+                    ackLabel.textContent = 'Diabaikan';
+                };
+
+                /* Restore persisted state */
+                try {
+                    const rTs = localStorage.getItem(WL_REBALANCE_KEY);
+                    if (rTs) markRebalanceDone(rTs);
+                    const aTs = localStorage.getItem(WL_ACK_KEY);
+                    if (aTs) markAckDone(aTs);
+                } catch (e) {}
+
+                rebalanceBtn?.addEventListener('click', () => {
+                    if (rebalanceBtn.disabled) return;
+                    const ts = Date.now();
+                    try { localStorage.setItem(WL_REBALANCE_KEY, String(ts)); } catch (e) {}
+                    markRebalanceDone(ts);
+                    if (window.toast) window.toast('Permintaan rebalance dikirim ke SA/QA (demo).');
+                });
+                ackBtn?.addEventListener('click', () => {
+                    if (ackBtn.disabled) return;
+                    const ts = Date.now();
+                    try { localStorage.setItem(WL_ACK_KEY, String(ts)); } catch (e) {}
+                    markAckDone(ts);
+                    if (window.toast) window.toast('Saran AI workload ditandai diabaikan.');
+                });
+
+                /* Project Health status filter dropdown */
+                const phWrap = document.querySelector('[data-ph-filter]');
+                if (phWrap) {
+                    const phBtn   = phWrap.querySelector('[data-ph-trigger]');
+                    const phMenu  = phWrap.querySelector('[data-ph-menu]');
+                    const phLabel = phWrap.querySelector('[data-ph-label]');
+                    const rows    = document.querySelectorAll('[data-ph-row]');
+                    const openPh  = () => { phMenu.classList.remove('hidden'); phBtn.setAttribute('aria-expanded', 'true'); };
+                    const closePh = () => { phMenu.classList.add('hidden');    phBtn.setAttribute('aria-expanded', 'false'); };
+                    const applyPh = (status, label) => {
+                        rows.forEach(r => {
+                            const match = status === 'all' || r.dataset.phStatus === status;
+                            r.classList.toggle('hidden', ! match);
+                        });
+                        if (phLabel) phLabel.textContent = label;
+                    };
+                    phBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        phMenu.classList.contains('hidden') ? openPh() : closePh();
+                    });
+                    phWrap.querySelectorAll('[data-ph-option]').forEach(opt => {
+                        opt.addEventListener('click', () => {
+                            applyPh(opt.dataset.phOption, opt.dataset.phLabelText);
+                            closePh();
+                        });
+                    });
+                    document.addEventListener('click', (e) => {
+                        if (! phMenu.classList.contains('hidden') && ! phWrap.contains(e.target)) closePh();
+                    });
+                    document.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape' && ! phMenu.classList.contains('hidden')) closePh();
+                    });
+                }
 
                 /* Team Load month filter dropdown */
                 const monthWrap = document.querySelector('[data-month-filter]');

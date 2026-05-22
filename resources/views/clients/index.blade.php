@@ -376,9 +376,9 @@
                             <x-heroicon-o-envelope class="w-4 h-4" />
                             Email
                         </a>
-                        <button type="button" class="ml-auto text-slate-400 hover:text-violet-700 transition cursor-pointer">
+                        <span class="ml-auto text-slate-300" aria-hidden="true">
                             <x-heroicon-o-arrow-top-right-on-square class="w-4 h-4" />
-                        </button>
+                        </span>
                     </div>
                 </div>
             </article>
