@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ExecutiveController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -18,5 +19,11 @@ Route::middleware('auth')->group(function () {
     Route::view('/clients',   'clients.index', ['title' => 'Client Directory'])->name('clients.index');
     Route::view('/team',      'team.index', ['title' => 'Team Management'])->name('team.index');
     Route::view('/audit',     'audit.index', ['title' => 'Audit Trail'])->name('audit.index');
-    Route::view('/settings',  'settings.index', ['title' => 'Settings'])->name('settings.index');
+    Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
+    Route::put('/settings/preferences', [SettingsController::class, 'updatePreferences'])->name('settings.preferences.update');
+    Route::post('/settings/integrations/{provider}/toggle', [SettingsController::class, 'toggleIntegration'])->name('settings.integrations.toggle');
+    Route::put('/settings/password', [SettingsController::class, 'updatePassword'])->name('settings.password.update');
+    Route::post('/settings/recovery-codes', [SettingsController::class, 'regenerateRecoveryCodes'])->name('settings.recovery-codes.regenerate');
+    Route::delete('/settings/sessions/{session}', [SettingsController::class, 'destroySession'])->name('settings.sessions.destroy');
+    Route::post('/settings/account-deletion', [SettingsController::class, 'requestAccountDeletion'])->name('settings.account-deletion.request');
 });

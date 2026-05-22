@@ -49,6 +49,21 @@
         ['device' => 'Safari · iPhone 15',    'icon' => 'device-phone-mobile', 'where' => 'Jakarta, ID', 'time' => '2 jam lalu',     'current' => false],
         ['device' => 'Firefox · Windows 11',  'icon' => 'computer-desktop',    'where' => 'Bandung, ID', 'time' => '3 hari lalu',    'current' => false],
     ];
+    $workspace = $settingsWorkspace ?? null;
+    $notifRows = $settingsNotifRows ?? $notifRows;
+    $integrations = $settingsIntegrations ?? $integrations;
+    $security = $settingsSecurity ?? $security;
+    $sessions = $settingsSessions ?? $sessions;
+    $workspaceName = old('workspace_name', data_get($workspace, 'workspace_name', 'PT Ava Teknologi Nusantara'));
+    $workspaceSubdomain = old('subdomain', data_get($workspace, 'subdomain', 'avatech'));
+    $workspaceLanguage = old('interface_language', data_get($workspace, 'interface_language', 'id'));
+    $workspaceTimezone = old('timezone', data_get($workspace, 'timezone', 'Asia/Jakarta'));
+    $recoveryCodes = session('recovery_codes', []);
+    $flashStatus = session('status');
+    $flashErrors = collect($errors->getBag('default')->getMessages())
+        ->except(['current_password', 'new_password', 'new_password_confirmation'])
+        ->flatten()
+        ->all();
 @endphp
 
 <x-layouts.authenticated :title="$title">
@@ -59,6 +74,12 @@
         .js-switch.is-on { background: linear-gradient(135deg, #7C3AED, #A855F7); }
         .js-switch.is-on::after { left: 20px; }
     </style>
+
+    <form id="settings-preferences-form" method="POST" action="{{ route('settings.preferences.update') }}" class="hidden">
+        @csrf
+        @method('PUT')
+        <input type="hidden" name="active_tab" value="{{ request('tab', 'general') }}" data-settings-active-tab>
+    </form>
 
     <section class="mb-8">
         <h1 class="text-[44px] leading-[1.05] font-bold tracking-tight text-[#1E1B4B]">
@@ -100,27 +121,27 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Nama Workspace</label>
-                            <input type="text" value="PT Ava Teknologi Nusantara" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300 transition" />
+                            <input form="settings-preferences-form" name="workspace_name" type="text" value="{{ $workspaceName }}" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300 transition" />
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Subdomain</label>
                             <div class="flex items-center h-11 rounded-xl border border-violet-100 overflow-hidden focus-within:ring-2 focus-within:ring-violet-300 focus-within:border-violet-300 transition">
-                                <input type="text" value="avatech" class="flex-1 h-full px-4 text-[13.5px] text-[#1E1B4B] focus:outline-none" />
+                                <input form="settings-preferences-form" name="subdomain" type="text" value="{{ $workspaceSubdomain }}" class="flex-1 h-full px-4 text-[13.5px] text-[#1E1B4B] focus:outline-none" />
                                 <span class="px-3 text-[13px] text-slate-400 bg-violet-50/40 h-full flex items-center">.smartpmis.id</span>
                             </div>
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Bahasa Antarmuka</label>
-                            <select class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                                <option>Bahasa Indonesia</option>
-                                <option>English</option>
+                            <select form="settings-preferences-form" name="interface_language" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
+                                <option value="id" @selected($workspaceLanguage === 'id')>Bahasa Indonesia</option>
+                                <option value="en" @selected($workspaceLanguage === 'en')>English</option>
                             </select>
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Zona Waktu</label>
-                            <select class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                                <option>Asia/Jakarta · GMT+7</option>
-                                <option>Asia/Singapore · GMT+8</option>
+                            <select form="settings-preferences-form" name="timezone" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
+                                <option value="Asia/Jakarta" @selected($workspaceTimezone === 'Asia/Jakarta')>Asia/Jakarta · GMT+7</option>
+                                <option value="Asia/Singapore" @selected($workspaceTimezone === 'Asia/Singapore')>Asia/Singapore · GMT+8</option>
                             </select>
                         </div>
                     </div>
@@ -215,10 +236,19 @@
                                             <div class="text-[13.5px] font-semibold text-[#1E1B4B]">{{ $row['label'] }}</div>
                                             <div class="text-[12px] text-slate-500">{{ $row['desc'] }}</div>
                                         </td>
-                                        @php $rowSlug = Illuminate\Support\Str::slug($row['label']); @endphp
-                                        <td class="py-3 px-3"><div class="js-switch {{ $row['app']   ? 'is-on' : '' }} mx-auto" data-setting-key="notif_app_{{ $rowSlug }}" role="switch"></div></td>
-                                        <td class="py-3 px-3"><div class="js-switch {{ $row['email'] ? 'is-on' : '' }} mx-auto" data-setting-key="notif_email_{{ $rowSlug }}" role="switch"></div></td>
-                                        <td class="py-3 px-3"><div class="js-switch {{ $row['wa']    ? 'is-on' : '' }} mx-auto" data-setting-key="notif_wa_{{ $rowSlug }}" role="switch"></div></td>
+                                        @php $rowSlug = $row['key'] ?? Illuminate\Support\Str::slug($row['label']); @endphp
+                                        <td class="py-3 px-3">
+                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][app]" value="{{ $row['app'] ? '1' : '0' }}" data-switch-input>
+                                            <div class="js-switch {{ $row['app'] ? 'is-on' : '' }} mx-auto" data-backed-switch role="switch" aria-checked="{{ $row['app'] ? 'true' : 'false' }}"></div>
+                                        </td>
+                                        <td class="py-3 px-3">
+                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][email]" value="{{ $row['email'] ? '1' : '0' }}" data-switch-input>
+                                            <div class="js-switch {{ $row['email'] ? 'is-on' : '' }} mx-auto" data-backed-switch role="switch" aria-checked="{{ $row['email'] ? 'true' : 'false' }}"></div>
+                                        </td>
+                                        <td class="py-3 px-3">
+                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][wa]" value="{{ $row['wa'] ? '1' : '0' }}" data-switch-input>
+                                            <div class="js-switch {{ $row['wa'] ? 'is-on' : '' }} mx-auto" data-backed-switch role="switch" aria-checked="{{ $row['wa'] ? 'true' : 'false' }}"></div>
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -230,8 +260,8 @@
             <div data-panel="integrations" class="hidden">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     @foreach ($integrations as $ig)
-                        @php $igSlug = Illuminate\Support\Str::slug($ig['name']); @endphp
-                        <div data-integration-card data-integration-key="{{ $igSlug }}" data-integration-name="{{ $ig['name'] }}" data-integration-initial="{{ $ig['connected'] ? '1' : '0' }}" class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5">
+                        @php $igSlug = $ig['key'] ?? Illuminate\Support\Str::slug($ig['name']); @endphp
+                        <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5">
                             <div class="flex items-start gap-3 mb-3">
                                 <div class="w-11 h-11 rounded-xl flex items-center justify-center text-white flex-shrink-0" style="background: {{ $ig['color'] }};">
                                     <x-dynamic-component :component="'heroicon-o-' . $ig['icon']" class="w-5 h-5" />
@@ -248,17 +278,20 @@
                                     <p class="text-[12.5px] text-slate-500 mt-1 leading-relaxed">{{ $ig['desc'] }}</p>
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                data-integration-toggle
-                                @class([
-                                    'w-full h-9 rounded-lg text-[12.5px] font-semibold transition cursor-pointer',
-                                    'bg-violet-50 text-violet-700 hover:bg-violet-100' => $ig['connected'],
-                                    'bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:-translate-y-0.5' => ! $ig['connected'],
-                                ])
-                            >
-                                {{ $ig['connected'] ? 'Kelola' : 'Hubungkan' }}
-                            </button>
+                            <form method="POST" action="{{ route('settings.integrations.toggle', $igSlug) }}">
+                                @csrf
+                                <button
+                                    type="submit"
+                                    @if($ig['connected']) onclick="return confirm('Putuskan koneksi {{ $ig['name'] }}?')" @endif
+                                    @class([
+                                        'w-full h-9 rounded-lg text-[12.5px] font-semibold transition cursor-pointer',
+                                        'bg-violet-50 text-violet-700 hover:bg-violet-100' => $ig['connected'],
+                                        'bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:-translate-y-0.5' => ! $ig['connected'],
+                                    ])
+                                >
+                                    {{ $ig['connected'] ? 'Putuskan' : 'Hubungkan' }}
+                                </button>
+                            </form>
                         </div>
                     @endforeach
                 </div>
@@ -276,13 +309,21 @@
                                     <div class="text-[12px] text-slate-500 mt-0.5">{{ $s['desc'] }}</div>
                                 </div>
                                 @if ($s['kind'] === 'switch')
-                                    @php $secSlug = Illuminate\Support\Str::slug($s['label']); @endphp
-                                    <div class="js-switch {{ $s['on'] ? 'is-on' : '' }}" data-setting-key="security_{{ $secSlug }}" role="switch"></div>
+                                    @php $secSlug = $s['key'] ?? Illuminate\Support\Str::slug($s['label']); @endphp
+                                    <input form="settings-preferences-form" type="hidden" name="security[{{ $secSlug }}]" value="{{ $s['on'] ? '1' : '0' }}" data-switch-input>
+                                    <div class="js-switch {{ $s['on'] ? 'is-on' : '' }}" data-backed-switch role="switch" aria-checked="{{ $s['on'] ? 'true' : 'false' }}"></div>
                                 @else
                                     @if (str_starts_with(Illuminate\Support\Str::lower($s['label']), 'recovery'))
-                                        <button type="button" data-show-recovery-codes class="h-9 px-3.5 rounded-lg border border-violet-200 text-[12.5px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer flex-shrink-0">{{ $s['btn'] }}</button>
+                                        @if (! empty($recoveryCodes))
+                                            <button type="button" data-show-recovery-codes class="h-9 px-3.5 rounded-lg border border-violet-200 text-[12.5px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer flex-shrink-0">Lihat</button>
+                                        @else
+                                            <form method="POST" action="{{ route('settings.recovery-codes.regenerate') }}">
+                                                @csrf
+                                                <button type="submit" class="h-9 px-3.5 rounded-lg border border-violet-200 text-[12.5px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer flex-shrink-0">{{ $s['btn'] }}</button>
+                                            </form>
+                                        @endif
                                     @else
-                                        <button type="button" data-toast="{{ $s['label'] }} segera tersedia." class="h-9 px-3.5 rounded-lg border border-violet-200 text-[12.5px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer flex-shrink-0">{{ $s['btn'] }}</button>
+                                        <button type="button" data-show-password-modal class="h-9 px-3.5 rounded-lg border border-violet-200 text-[12.5px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer flex-shrink-0">{{ $s['btn'] }}</button>
                                     @endif
                                 @endif
                             </div>
@@ -310,7 +351,11 @@
                                 @if ($ses['current'])
                                     <button type="button" disabled class="h-9 px-3 rounded-lg text-[12px] font-semibold text-slate-400 cursor-not-allowed flex-shrink-0">Sesi saat ini</button>
                                 @else
-                                    <button type="button" data-confirm="Hentikan sesi ini?" data-toast-after="Sesi dihentikan (demo)." class="h-9 px-3 rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 transition cursor-pointer flex-shrink-0">Hentikan</button>
+                                    <form method="POST" action="{{ route('settings.sessions.destroy', $ses['id']) }}" onsubmit="return confirm('Hentikan sesi ini?')">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="h-9 px-3 rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 transition cursor-pointer flex-shrink-0">Hentikan</button>
+                                    </form>
                                 @endif
                             </div>
                         @endforeach
@@ -323,19 +368,75 @@
                         <h4 class="text-[14px] font-bold text-rose-900">Hapus Akun</h4>
                         <p class="text-[12.5px] text-rose-700 mt-1">Tindakan ini permanen. Semua data audit Anda akan tetap tersimpan untuk kepatuhan.</p>
                     </div>
-                    <button type="button" data-confirm="Hapus akun ini? Tindakan ini tidak dapat dibatalkan." data-toast-after="Permintaan hapus akun tercatat (demo — tidak ada penghapusan nyata)." class="h-9 px-4 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[12.5px] font-semibold transition cursor-pointer flex-shrink-0">Hapus Akun</button>
+                    <form method="POST" action="{{ route('settings.account-deletion.request') }}" onsubmit="return confirm('Ajukan permintaan hapus akun? Akun tidak akan dihapus otomatis.')">
+                        @csrf
+                        <button type="submit" class="h-9 px-4 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[12.5px] font-semibold transition cursor-pointer flex-shrink-0">
+                            {{ ($deletionPending ?? false) ? 'Permintaan Tercatat' : 'Hapus Akun' }}
+                        </button>
+                    </form>
                 </div>
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-4 border-t border-violet-100">
-                <button type="button" data-settings-cancel class="h-10 px-4 rounded-xl text-[13px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Batal</button>
-                <button type="button" data-settings-save class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[13px] shadow-[0_4px_14px_rgba(124,58,237,0.35)] hover:shadow-[0_6px_20px_rgba(124,58,237,0.45)] hover:-translate-y-0.5 transition-all cursor-pointer">
+                <a href="{{ route('settings.index', ['tab' => request('tab', 'general')]) }}" class="h-10 px-4 rounded-xl text-[13px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer inline-flex items-center">Batal</a>
+                <button form="settings-preferences-form" type="submit" data-settings-save class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[13px] shadow-[0_4px_14px_rgba(124,58,237,0.35)] hover:shadow-[0_6px_20px_rgba(124,58,237,0.45)] hover:-translate-y-0.5 transition-all cursor-pointer">
                     <x-heroicon-o-bookmark-square class="w-4 h-4" />
                     Simpan Perubahan
                 </button>
             </div>
 
         </section>
+    </div>
+
+    {{-- ===== Password Modal ===== --}}
+    <div data-pw-modal data-pw-has-errors="{{ $errors->has('current_password') || $errors->has('new_password') || $errors->has('new_password_confirmation') ? '1' : '0' }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="pw-title">
+        <div data-pw-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+        <form method="POST" action="{{ route('settings.password.update') }}" data-pw-panel novalidate class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
+            @csrf
+            @method('PUT')
+            <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center">
+                        <x-heroicon-o-lock-closed class="w-5 h-5 text-violet-700" />
+                    </div>
+                    <h3 id="pw-title" class="text-[16px] font-bold text-[#1E1B4B]">Ubah Password</h3>
+                </div>
+                <button type="button" data-pw-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
+                    <x-heroicon-o-x-mark class="w-5 h-5" />
+                </button>
+            </div>
+            <div class="px-6 py-5 space-y-4">
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Password Saat Ini</label>
+                    <input name="current_password" type="password" autocomplete="current-password" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300 transition">
+                    @error('current_password')
+                        <p data-pw-server-error class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p>
+                    @enderror
+                    <p data-pw-error="current_password" class="hidden mt-1.5 text-[12px] font-semibold text-rose-600"></p>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Password Baru</label>
+                    <input name="new_password" type="password" autocomplete="new-password" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300 transition">
+                    @error('new_password')
+                        <p data-pw-server-error class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p>
+                    @enderror
+                    <p data-pw-error="new_password" class="hidden mt-1.5 text-[12px] font-semibold text-rose-600"></p>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Konfirmasi Password Baru</label>
+                    <input name="new_password_confirmation" type="password" autocomplete="new-password" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300 transition">
+                    @error('new_password_confirmation')
+                        <p data-pw-server-error class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p>
+                    @enderror
+                    <p data-pw-error="new_password_confirmation" class="hidden mt-1.5 text-[12px] font-semibold text-rose-600"></p>
+                </div>
+            </div>
+            <p data-pw-success class="hidden mx-6 mb-4 rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-2 text-[12.5px] font-semibold text-emerald-700"></p>
+            <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-3">
+                <button type="button" data-pw-close class="px-5 h-9 rounded-xl bg-white border border-violet-200 text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">Batal</button>
+                <button type="submit" data-pw-submit class="px-5 h-9 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white text-[13px] font-semibold transition cursor-pointer">Simpan</button>
+            </div>
+        </form>
     </div>
 
     <script>
@@ -347,6 +448,8 @@
                 tabs.forEach(t => {
                     t.addEventListener('click', () => {
                         const id = t.dataset.tab;
+                        const activeTab = document.querySelector('[data-settings-active-tab]');
+                        if (activeTab) activeTab.value = id;
                         tabs.forEach(x => {
                             const active = x.dataset.tab === id;
                             x.classList.toggle('bg-gradient-to-br', active);
@@ -366,48 +469,16 @@
                 document.querySelectorAll('.js-switch').forEach(s => {
                     s.addEventListener('click', () => {
                         s.classList.toggle('is-on');
-                        s.setAttribute('aria-checked', s.classList.contains('is-on') ? 'true' : 'false');
+                        const on = s.classList.contains('is-on');
+                        s.setAttribute('aria-checked', on ? 'true' : 'false');
+                        const input = s.previousElementSibling?.matches?.('[data-switch-input]') ? s.previousElementSibling : null;
+                        if (input) input.value = on ? '1' : '0';
                     });
                 });
 
-                /* === Settings persistence: localStorage Save / Cancel === */
-                const SETTINGS_LS_KEY = 'avt-settings-prefs';
-                const keyedSwitches = () => document.querySelectorAll('.js-switch[data-setting-key]');
-                const snapshot = () => {
-                    const out = {};
-                    keyedSwitches().forEach(s => {
-                        out[s.dataset.settingKey] = s.classList.contains('is-on');
-                    });
-                    return out;
-                };
-                const applySnapshot = (snap) => {
-                    if (! snap || typeof snap !== 'object') return;
-                    keyedSwitches().forEach(s => {
-                        const key = s.dataset.settingKey;
-                        if (! (key in snap)) return;
-                        const on = !! snap[key];
-                        s.classList.toggle('is-on', on);
-                        s.setAttribute('aria-checked', on ? 'true' : 'false');
-                    });
-                };
-                // 1) On load: restore from localStorage if any
-                try {
-                    const raw = localStorage.getItem(SETTINGS_LS_KEY);
-                    if (raw) applySnapshot(JSON.parse(raw));
-                } catch (e) {}
-                // 2) Track lastSaved (post-restore baseline) for Cancel revert
-                let lastSaved = snapshot();
-                // 3) Simpan
-                document.querySelector('[data-settings-save]')?.addEventListener('click', () => {
-                    const snap = snapshot();
-                    try { localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(snap)); } catch (e) {}
-                    lastSaved = snap;
-                    if (window.toast) window.toast('Pengaturan tersimpan.');
-                });
-                // 4) Batal
-                document.querySelector('[data-settings-cancel]')?.addEventListener('click', () => {
-                    applySnapshot(lastSaved);
-                    if (window.toast) window.toast('Perubahan dibatalkan.');
+                const flashMessages = @json(array_values(array_filter(array_merge($flashStatus ? [$flashStatus] : [], $flashErrors))));
+                flashMessages.forEach((msg, idx) => {
+                    setTimeout(() => window.toast && window.toast(msg), idx * 350);
                 });
 
                 /* Activate a tab from URL: /settings?tab=notif or /settings#notif */
@@ -448,8 +519,12 @@
                 </button>
             </div>
             <div class="px-6 py-5">
-                <p class="text-[12.5px] text-slate-500 mb-4">Simpan 10 kode cadangan ini di tempat aman. Tiap kode dapat digunakan sekali bila kehilangan akses 2FA.</p>
-                <div data-rc-grid class="grid grid-cols-2 gap-2 font-mono text-[13px] text-[#1E1B4B] bg-violet-50/40 border border-violet-100 rounded-xl p-4"></div>
+                <p class="text-[12.5px] text-slate-500 mb-4">Backup-code preparation sampai full 2FA tersedia. Plaintext hanya ditampilkan sekali; database menyimpan hash.</p>
+                <div data-rc-grid data-rc-has-codes="{{ ! empty($recoveryCodes) ? '1' : '0' }}" class="grid grid-cols-2 gap-2 font-mono text-[13px] text-[#1E1B4B] bg-violet-50/40 border border-violet-100 rounded-xl p-4">
+                    @foreach ($recoveryCodes as $code)
+                        <div class="px-2 py-1.5 bg-white rounded-md text-center tracking-wider">{{ $code }}</div>
+                    @endforeach
+                </div>
             </div>
             <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-between gap-3">
                 <button type="button" data-rc-copy class="text-[12px] font-semibold text-violet-700 hover:text-violet-900 transition cursor-pointer inline-flex items-center gap-1.5">
@@ -464,10 +539,10 @@
     <script>
         (function () {
             const wire = () => {
-                /* === Integration Hubungkan/Kelola toggle with localStorage === */
+                /* === Legacy integration helper kept inert; forms now submit to DB-backed routes === */
                 const IG_KEY = 'avt-integrations';
                 let igState = {};
-                try { igState = JSON.parse(localStorage.getItem(IG_KEY) || '{}'); } catch (e) {}
+                try { igState = {}; } catch (e) {}
 
                 const renderIntegration = (card) => {
                     const key       = card.dataset.integrationKey;
@@ -475,7 +550,7 @@
                     const initial   = card.dataset.integrationInitial === '1';
                     const connected = (key in igState) ? !! igState[key] : initial;
                     const badge = card.querySelector('[data-integration-badge]');
-                    const btn   = card.querySelector('[data-integration-toggle]');
+                    const btn   = card.querySelector('[data-db-integration-toggle]');
                     if (badge) {
                         badge.className = 'text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md ' + (connected ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500');
                         badge.textContent = connected ? 'Terhubung' : 'Belum';
@@ -489,7 +564,7 @@
 
                 document.querySelectorAll('[data-integration-card]').forEach(renderIntegration);
 
-                document.querySelectorAll('[data-integration-toggle]').forEach(btn => {
+                document.querySelectorAll('[data-db-integration-toggle]').forEach(btn => {
                     btn.addEventListener('click', () => {
                         const card = btn.closest('[data-integration-card]');
                         if (! card) return;
@@ -498,18 +573,18 @@
                         const cur  = card.dataset.integrationConnected === '1';
                         // Toggle: connected -> open mgmt (toast); not-connected -> connect (toast confirmation)
                         if (cur) {
-                            // Currently connected → "Kelola" is mgmt action (placeholder), don't disconnect on first click
+                            // Currently connected keeps an explicit disconnect confirmation.
                             // Provide a confirm to disconnect for clarity:
                             if (! confirm('Putuskan koneksi ' + name + '?')) return;
                             igState[key] = false;
-                            try { localStorage.setItem(IG_KEY, JSON.stringify(igState)); } catch (e) {}
+                            try {} catch (e) {}
                             renderIntegration(card);
                             window.toast && window.toast(name + ' diputus.');
                         } else {
                             igState[key] = true;
-                            try { localStorage.setItem(IG_KEY, JSON.stringify(igState)); } catch (e) {}
+                            try {} catch (e) {}
                             renderIntegration(card);
-                            window.toast && window.toast(name + ' terhubung (demo).');
+                            window.toast && window.toast(name + ' terhubung.');
                         }
                     });
                 });
@@ -520,21 +595,8 @@
                 const rcPanel   = rcModal?.querySelector('[data-rc-panel]');
                 const rcGrid    = rcModal?.querySelector('[data-rc-grid]');
                 const rcCopy    = rcModal?.querySelector('[data-rc-copy]');
-                const genCode = () => {
-                    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // omit confusable chars
-                    const arr = new Uint8Array(8);
-                    (window.crypto || window.msCrypto).getRandomValues(arr);
-                    return Array.from(arr).map(b => chars[b % chars.length]).join('').replace(/(.{4})/, '$1-');
-                };
                 const openRc = () => {
                     if (! rcModal || ! rcGrid) return;
-                    rcGrid.innerHTML = '';
-                    for (let i = 0; i < 10; i++) {
-                        const cell = document.createElement('div');
-                        cell.className = 'px-2 py-1.5 bg-white rounded-md text-center tracking-wider';
-                        cell.textContent = genCode();
-                        rcGrid.appendChild(cell);
-                    }
                     rcModal.classList.remove('hidden');
                     rcModal.classList.add('flex');
                     document.body.style.overflow = 'hidden';
@@ -546,11 +608,13 @@
                     document.body.style.overflow = '';
                 };
                 document.querySelector('[data-show-recovery-codes]')?.addEventListener('click', openRc);
+                if (rcGrid?.dataset.rcHasCodes === '1') openRc();
                 rcPanel?.addEventListener('click', (e) => e.stopPropagation());
                 rcOverlay?.addEventListener('click', closeRc);
                 rcModal?.querySelectorAll('[data-rc-close]').forEach(b => b.addEventListener('click', closeRc));
                 document.addEventListener('keydown', (e) => {
                     if (e.key === 'Escape' && rcModal && ! rcModal.classList.contains('hidden')) closeRc();
+                    if (e.key === 'Escape' && pwModal && ! pwModal.classList.contains('hidden')) closePw();
                 });
                 rcCopy?.addEventListener('click', () => {
                     const codes = Array.from(rcGrid?.children || []).map(el => el.textContent).join('\n');
@@ -563,6 +627,98 @@
                         window.toast && window.toast('Clipboard API tidak tersedia.');
                     }
                 });
+
+                /* === Password modal === */
+                const pwModal = document.querySelector('[data-pw-modal]');
+                const pwOverlay = pwModal?.querySelector('[data-pw-overlay]');
+                const pwPanel = pwModal?.querySelector('[data-pw-panel]');
+                const pwSubmit = pwModal?.querySelector('[data-pw-submit]');
+                const pwSuccess = pwModal?.querySelector('[data-pw-success]');
+                let pwSubmitting = false;
+                const setPwClientError = (name, message) => {
+                    const el = pwModal?.querySelector(`[data-pw-error="${name}"]`);
+                    if (! el) return;
+                    el.textContent = Array.isArray(message) ? message[0] : (message || '');
+                    el.classList.toggle('hidden', !message);
+                };
+                const clearPwFeedback = () => {
+                    ['current_password', 'new_password', 'new_password_confirmation'].forEach(name => setPwClientError(name, ''));
+                    pwModal?.querySelectorAll('[data-pw-server-error]').forEach(el => el.classList.add('hidden'));
+                    if (pwSuccess) {
+                        pwSuccess.textContent = '';
+                        pwSuccess.classList.add('hidden');
+                    }
+                };
+                const setPwSubmitting = (submitting) => {
+                    pwSubmitting = submitting;
+                    if (! pwSubmit) return;
+                    pwSubmit.disabled = submitting;
+                    pwSubmit.classList.toggle('opacity-70', submitting);
+                    pwSubmit.classList.toggle('cursor-not-allowed', submitting);
+                    pwSubmit.textContent = submitting ? 'Menyimpan...' : 'Simpan';
+                };
+                const showPwErrors = (errors) => {
+                    Object.entries(errors || {}).forEach(([name, messages]) => setPwClientError(name, messages));
+                };
+                const openPw = () => {
+                    if (! pwModal) return;
+                    pwModal.classList.remove('hidden');
+                    pwModal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                };
+                const closePw = () => {
+                    if (! pwModal) return;
+                    pwModal.classList.add('hidden');
+                    pwModal.classList.remove('flex');
+                    document.body.style.overflow = '';
+                };
+                document.querySelector('[data-show-password-modal]')?.addEventListener('click', openPw);
+                pwPanel?.addEventListener('click', (e) => e.stopPropagation());
+                pwPanel?.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    if (pwSubmitting) return;
+                    clearPwFeedback();
+                    setPwSubmitting(true);
+
+                    try {
+                        const response = await fetch(pwPanel.action, {
+                            method: 'POST',
+                            body: new FormData(pwPanel),
+                            credentials: 'same-origin',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                        });
+                        const data = await response.json().catch(() => ({}));
+
+                        if (response.status === 422) {
+                            showPwErrors(data.errors || {});
+                            openPw();
+                            return;
+                        }
+
+                        if (! response.ok) {
+                            window.toast && window.toast(data.message || 'Gagal memperbarui password.');
+                            return;
+                        }
+
+                        pwPanel.querySelectorAll('input[type="password"]').forEach(input => { input.value = ''; });
+                        if (pwSuccess) {
+                            pwSuccess.textContent = data.message || 'Password berhasil diperbarui.';
+                            pwSuccess.classList.remove('hidden');
+                        }
+                        window.toast && window.toast(data.message || 'Password berhasil diperbarui.');
+                        setTimeout(closePw, 1100);
+                    } catch (err) {
+                        window.toast && window.toast('Gagal memperbarui password.');
+                    } finally {
+                        setPwSubmitting(false);
+                    }
+                });
+                pwOverlay?.addEventListener('click', closePw);
+                pwModal?.querySelectorAll('[data-pw-close]').forEach(b => b.addEventListener('click', closePw));
+                if (pwModal?.dataset.pwHasErrors === '1') openPw();
             };
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', wire);
