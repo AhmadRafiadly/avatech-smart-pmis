@@ -21,6 +21,11 @@ class Client extends Model
         'total_engagement',
         'relationship_health',
         'last_touch_label',
+        'archived_at',
+    ];
+
+    protected $casts = [
+        'archived_at' => 'datetime',
     ];
 
     public function projects(): HasMany

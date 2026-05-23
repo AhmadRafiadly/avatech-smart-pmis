@@ -1,6 +1,7 @@
 @php
     $clients ??= [];
     $errors ??= new \Illuminate\Support\ViewErrorBag;
+    $archiveScope ??= 'active';
 
     $filters = [
         ['id' => 'all',       'label' => 'Semua'],
@@ -21,6 +22,14 @@
         'Prospect'  => $col->where('tier', 'Prospect')->count(),
         'attention' => $col->where('attention', true)->count(),
     ];
+
+    $archiveFilters = [
+        'active' => 'Active',
+        'archived' => 'Archived',
+        'all' => 'All',
+    ];
+    $editClientId = old('_form') === 'edit' ? old('_client_id') : null;
+    $editAction = $editClientId ? route('clients.update', $editClientId) : '#';
 
     $stats = [
         ['label' => 'Total Klien',  'value' => count($clients),                                        'note' => '+2 kuartal ini',  'color' => '#7C3AED'],
@@ -148,6 +157,21 @@
 
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5 mb-6 flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2 flex-wrap">
+            @foreach ($archiveFilters as $scope => $label)
+                <a
+                    href="{{ route('clients.index', ['archive' => $scope]) }}"
+                    @class([
+                        'text-[12.5px] font-semibold px-3.5 py-1.5 rounded-full transition border inline-flex items-center gap-1.5',
+                        'bg-[#1E1B4B] text-white border-[#1E1B4B] shadow-sm' => $archiveScope === $scope,
+                        'bg-white text-slate-600 border-violet-100 hover:border-violet-300 hover:text-violet-700' => $archiveScope !== $scope,
+                    ])
+                >
+                    {{ $label }}
+                </a>
+            @endforeach
+        </div>
+        <span class="h-6 w-px bg-violet-100"></span>
+        <div class="flex items-center gap-2 flex-wrap">
             @foreach ($filters as $idx => $f)
                 @php $isFirst = $idx === 0; @endphp
                 <button
@@ -208,6 +232,16 @@
                 data-sort-projects="{{ $c['active_projects'] }}"
                 data-sort-idle="{{ $c['last_touch_sort'] }}"
                 data-sort-name="{{ $c['name'] }}"
+                data-archived="{{ $c['archived'] ? 'true' : 'false' }}"
+                data-code="{{ $c['raw_code'] }}"
+                data-name="{{ $c['raw_name'] }}"
+                data-industry="{{ $c['raw_industry'] }}"
+                data-location="{{ $c['raw_location'] }}"
+                data-pic-name="{{ $c['raw_pic_name'] }}"
+                data-pic-role="{{ $c['raw_pic_role'] }}"
+                data-email="{{ $c['raw_email'] }}"
+                data-phone="{{ $c['raw_phone'] }}"
+                data-update-url="{{ route('clients.update', $c['id']) }}"
                 class="group bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:shadow-[0_8px_24px_rgba(124,58,237,0.12)] transition p-6 flex flex-col relative overflow-hidden cursor-pointer"
             >
                 <span class="absolute top-0 left-6 right-6 h-[3px] rounded-b-full {{ $tierStripe[$c['tier']] }}"></span>
@@ -229,6 +263,12 @@
                         <x-heroicon-o-star class="w-3 h-3" />
                         <span>{{ $c['tier'] }}</span>
                     </span>
+                    @if ($c['archived'])
+                        <span class="inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-full px-2.5 py-1 flex-shrink-0 bg-slate-100 text-slate-600">
+                            <x-heroicon-o-archive-box class="w-3 h-3" />
+                            Archived
+                        </span>
+                    @endif
                 </div>
 
                 <div class="flex items-center gap-2.5 mb-4 px-3 py-2.5 rounded-xl bg-violet-50/40 border border-violet-50">
@@ -276,9 +316,26 @@
                             <x-heroicon-o-envelope class="w-4 h-4" />
                             Email
                         </a>
-                        <span class="ml-auto text-slate-300" aria-hidden="true">
-                            <x-heroicon-o-arrow-top-right-on-square class="w-4 h-4" />
-                        </span>
+                        <button type="button" data-edit-client data-no-modal class="ml-auto w-9 h-9 inline-flex items-center justify-center rounded-lg border border-violet-100 text-slate-500 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer" aria-label="Edit klien">
+                            <x-heroicon-o-pencil-square class="w-4 h-4" />
+                        </button>
+                        @if (! $c['archived'])
+                            <form method="POST" action="{{ route('clients.archive', $c['id']) }}" data-no-modal onsubmit="return confirm('Arsipkan klien ini? Proyek terkait tetap aman.');">
+                                @csrf
+                                @method('PATCH')
+                                <button type="submit" class="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-amber-100 text-amber-600 hover:bg-amber-50 transition cursor-pointer" aria-label="Archive klien">
+                                    <x-heroicon-o-archive-box class="w-4 h-4" />
+                                </button>
+                            </form>
+                        @else
+                            <form method="POST" action="{{ route('clients.restore', $c['id']) }}" data-no-modal>
+                                @csrf
+                                @method('PATCH')
+                                <button type="submit" class="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-emerald-100 text-emerald-600 hover:bg-emerald-50 transition cursor-pointer" aria-label="Restore klien">
+                                    <x-heroicon-o-arrow-path class="w-4 h-4" />
+                                </button>
+                            </form>
+                        @endif
                     </div>
                 </div>
             </article>
@@ -321,6 +378,16 @@
                             data-sort-projects="{{ $c['active_projects'] }}"
                             data-sort-idle="{{ $c['last_touch_sort'] }}"
                             data-sort-name="{{ $c['name'] }}"
+                            data-archived="{{ $c['archived'] ? 'true' : 'false' }}"
+                            data-code="{{ $c['raw_code'] }}"
+                            data-name="{{ $c['raw_name'] }}"
+                            data-industry="{{ $c['raw_industry'] }}"
+                            data-location="{{ $c['raw_location'] }}"
+                            data-pic-name="{{ $c['raw_pic_name'] }}"
+                            data-pic-role="{{ $c['raw_pic_role'] }}"
+                            data-email="{{ $c['raw_email'] }}"
+                            data-phone="{{ $c['raw_phone'] }}"
+                            data-update-url="{{ route('clients.update', $c['id']) }}"
                             class="hover:bg-[#FAF5FF] border-b border-violet-50/60 last:border-0 transition cursor-pointer"
                         >
                             <td class="px-7 py-4">
@@ -330,7 +397,12 @@
                                     </div>
                                     <div class="min-w-0">
                                         <div class="text-[14px] font-semibold text-[#1E1B4B]">{{ $c['name'] }}</div>
-                                        <div class="text-[12px] text-slate-500">{{ $c['location'] }}</div>
+                                        <div class="text-[12px] text-slate-500 flex items-center gap-1.5">
+                                            <span>{{ $c['location'] }}</span>
+                                            @if ($c['archived'])
+                                                <span class="inline-flex items-center gap-1 text-[10px] font-semibold rounded-full px-2 py-0.5 bg-slate-100 text-slate-600">Archived</span>
+                                            @endif
+                                        </div>
                                     </div>
                                 </div>
                             </td>
@@ -355,6 +427,26 @@
                                 <a href="{{ $c['wa_link'] }}" target="_blank" rel="noopener" data-no-modal class="inline-flex items-center text-emerald-600 mr-3">
                                     <x-heroicon-o-chat-bubble-oval-left class="w-4 h-4" />
                                 </a>
+                                <button type="button" data-edit-client data-no-modal class="inline-flex items-center text-violet-600 mr-3 cursor-pointer" aria-label="Edit klien">
+                                    <x-heroicon-o-pencil-square class="w-4 h-4" />
+                                </button>
+                                @if (! $c['archived'])
+                                    <form method="POST" action="{{ route('clients.archive', $c['id']) }}" data-no-modal class="inline-flex mr-3" onsubmit="return confirm('Arsipkan klien ini? Proyek terkait tetap aman.');">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="inline-flex items-center text-amber-600 cursor-pointer" aria-label="Archive klien">
+                                            <x-heroicon-o-archive-box class="w-4 h-4" />
+                                        </button>
+                                    </form>
+                                @else
+                                    <form method="POST" action="{{ route('clients.restore', $c['id']) }}" data-no-modal class="inline-flex mr-3">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="inline-flex items-center text-emerald-600 cursor-pointer" aria-label="Restore klien">
+                                            <x-heroicon-o-arrow-path class="w-4 h-4" />
+                                        </button>
+                                    </form>
+                                @endif
                                 <x-heroicon-o-chevron-right class="w-4 h-4 text-slate-400 inline-block" />
                             </td>
                         </tr>
@@ -386,6 +478,12 @@
                                         <span class="inline-flex text-[10.5px] font-bold tracking-[0.12em] uppercase rounded-full px-2.5 py-1 {{ $tierPillSolid[$c['tier']] }}">
                                             {{ $c['tier'] }} Account
                                         </span>
+                                        @if ($c['archived'])
+                                            <span class="inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-full px-2.5 py-1 bg-slate-100 text-slate-600">
+                                                <x-heroicon-o-archive-box class="w-3 h-3" />
+                                                Archived
+                                            </span>
+                                        @endif
                                         <span class="text-[12px] text-slate-500">{{ $c['industry'] }}</span>
                                         <span class="w-1 h-1 rounded-full bg-slate-300"></span>
                                         <span class="text-[12px] text-slate-500">{{ $c['location'] }}</span>
@@ -394,9 +492,31 @@
                                     <p class="text-[13px] text-slate-500 mt-1 max-w-md">{{ $c['desc'] }}</p>
                                 </div>
                             </div>
-                            <button type="button" data-modal-close class="w-9 h-9 rounded-xl hover:bg-violet-100 text-slate-500 hover:text-violet-700 flex items-center justify-center transition flex-shrink-0 cursor-pointer" aria-label="Tutup">
-                                <x-heroicon-o-x-mark class="w-5 h-5" />
-                            </button>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <button type="button" data-edit-client data-client-id="{{ $c['id'] }}" class="w-9 h-9 rounded-xl border border-violet-100 hover:border-violet-300 text-slate-500 hover:text-violet-700 flex items-center justify-center transition cursor-pointer" aria-label="Edit klien">
+                                    <x-heroicon-o-pencil-square class="w-5 h-5" />
+                                </button>
+                                @if (! $c['archived'])
+                                    <form method="POST" action="{{ route('clients.archive', $c['id']) }}" onsubmit="return confirm('Arsipkan klien ini? Proyek terkait tetap aman.');">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="w-9 h-9 rounded-xl border border-amber-100 hover:bg-amber-50 text-amber-600 flex items-center justify-center transition cursor-pointer" aria-label="Archive klien">
+                                            <x-heroicon-o-archive-box class="w-5 h-5" />
+                                        </button>
+                                    </form>
+                                @else
+                                    <form method="POST" action="{{ route('clients.restore', $c['id']) }}">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="w-9 h-9 rounded-xl border border-emerald-100 hover:bg-emerald-50 text-emerald-600 flex items-center justify-center transition cursor-pointer" aria-label="Restore klien">
+                                            <x-heroicon-o-arrow-path class="w-5 h-5" />
+                                        </button>
+                                    </form>
+                                @endif
+                                <button type="button" data-modal-close class="w-9 h-9 rounded-xl hover:bg-violet-100 text-slate-500 hover:text-violet-700 flex items-center justify-center transition cursor-pointer" aria-label="Tutup">
+                                    <x-heroicon-o-x-mark class="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -737,10 +857,83 @@
     </script>
 
     {{-- ===== Create Client Modal ===== --}}
-    <div data-create-modal="client" data-create-has-errors="{{ $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+    <div data-edit-modal="client" data-edit-has-errors="{{ old('_form') === 'edit' && $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+        <div data-edit-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+        <form method="POST" action="{{ $editAction }}" data-edit-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
+            @csrf
+            @method('PUT')
+            <input type="hidden" name="_form" value="edit">
+            <input type="hidden" name="_client_id" value="{{ old('_client_id') }}">
+            <input type="hidden" name="_archive_scope" value="{{ old('_archive_scope', $archiveScope) }}">
+            <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
+                <h3 class="text-[16px] font-bold text-[#1E1B4B]">Edit Klien</h3>
+                <button type="button" data-edit-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
+                    <x-heroicon-o-x-mark class="w-5 h-5" />
+                </button>
+            </div>
+            <div class="px-6 py-5 space-y-3 max-h-[72vh] overflow-y-auto">
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Kode</label>
+                    <input name="code" value="{{ old('_form') === 'edit' ? old('code') : '' }}" maxlength="8" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] uppercase focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="MJ" />
+                    @if (old('_form') === 'edit') @error('code') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Nama Perusahaan</label>
+                    <input name="name" value="{{ old('_form') === 'edit' ? old('name') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="PT ..." />
+                    @if (old('_form') === 'edit') @error('name') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Industri</label>
+                        <input name="industry" value="{{ old('_form') === 'edit' ? old('industry') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Fintech" />
+                        @if (old('_form') === 'edit') @error('industry') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Lokasi</label>
+                        <input name="location" value="{{ old('_form') === 'edit' ? old('location') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Jakarta" />
+                        @if (old('_form') === 'edit') @error('location') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">PIC</label>
+                        <input name="pic_name" value="{{ old('_form') === 'edit' ? old('pic_name') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Nama lengkap" />
+                        @if (old('_form') === 'edit') @error('pic_name') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">PIC Role</label>
+                        <input name="pic_role" value="{{ old('_form') === 'edit' ? old('pic_role') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="CTO / Director" />
+                        @if (old('_form') === 'edit') @error('pic_role') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Email</label>
+                        <input name="email" value="{{ old('_form') === 'edit' ? old('email') : '' }}" type="email" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="kontak@klien.id" />
+                        @if (old('_form') === 'edit') @error('email') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">WhatsApp</label>
+                        <input name="phone" value="{{ old('_form') === 'edit' ? old('phone') : '' }}" type="tel" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="+62 812 3456 7890" />
+                        @if (old('_form') === 'edit') @error('phone') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                    </div>
+                </div>
+            </div>
+            <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2">
+                <button type="button" data-edit-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Batal</button>
+                <button type="submit" class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                    <x-heroicon-o-bookmark-square class="w-4 h-4" />
+                    Simpan Perubahan
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div data-create-modal="client" data-create-has-errors="{{ old('_form') !== 'edit' && $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
         <div data-create-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
         <form method="POST" action="{{ route('clients.store') }}" data-create-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
             @csrf
+            <input type="hidden" name="_form" value="create">
             <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
                 <h3 class="text-[16px] font-bold text-[#1E1B4B]">Klien Baru</h3>
                 <button type="button" data-create-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
@@ -812,6 +1005,54 @@
     <script>
         (function () {
             const wire = () => {
+                const editModal = document.querySelector('[data-edit-modal="client"]');
+                const editForm = editModal?.querySelector('[data-edit-panel]');
+                const editOverlay = editModal?.querySelector('[data-edit-overlay]');
+                const openEdit = (source) => {
+                    if (! editModal || ! editForm || ! source) return;
+                    editForm.action = source.dataset.updateUrl || editForm.action;
+                    editForm.querySelector('[name="_client_id"]').value = source.dataset.clientId || '';
+                    editForm.querySelector('[name="_archive_scope"]').value = @json($archiveScope);
+                    editForm.querySelector('[name="code"]').value = source.dataset.code || '';
+                    editForm.querySelector('[name="name"]').value = source.dataset.name || '';
+                    editForm.querySelector('[name="industry"]').value = source.dataset.industry || '';
+                    editForm.querySelector('[name="location"]').value = source.dataset.location || '';
+                    editForm.querySelector('[name="pic_name"]').value = source.dataset.picName || '';
+                    editForm.querySelector('[name="pic_role"]').value = source.dataset.picRole || '';
+                    editForm.querySelector('[name="email"]').value = source.dataset.email || '';
+                    editForm.querySelector('[name="phone"]').value = source.dataset.phone || '';
+                    editModal.classList.remove('hidden');
+                    editModal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                    editForm.querySelector('input[name="name"]')?.focus();
+                };
+                const closeEdit = () => {
+                    if (! editModal) return;
+                    editModal.classList.add('hidden');
+                    editModal.classList.remove('flex');
+                    document.body.style.overflow = '';
+                };
+
+                document.querySelectorAll('[data-edit-client]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const id = btn.dataset.clientId || btn.closest('[data-client-id]')?.dataset.clientId;
+                        const source = id
+                            ? Array.from(document.querySelectorAll('[data-view-panel="grid"] [data-client-id]')).find(el => el.dataset.clientId === String(id))
+                            : btn.closest('[data-client-id]');
+                        openEdit(source);
+                    });
+                });
+                editOverlay?.addEventListener('click', closeEdit);
+                editModal?.querySelectorAll('[data-edit-close]').forEach(btn => btn.addEventListener('click', closeEdit));
+                editForm?.addEventListener('click', (e) => e.stopPropagation());
+                if (editModal?.dataset.editHasErrors === '1') {
+                    editModal.classList.remove('hidden');
+                    editModal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                }
+
                 const modal = document.querySelector('[data-create-modal="client"]');
                 const trigger = document.querySelector('[data-create-trigger="client"]');
                 if (! modal || ! trigger) return;

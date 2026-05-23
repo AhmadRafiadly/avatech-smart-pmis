@@ -16,9 +16,16 @@ class ClientController extends Controller
         'prospect' => 'Prospect',
     ];
 
-    public function index()
+    public function index(Request $request)
     {
+        $archiveScope = $request->query('archive', 'active');
+        if (! in_array($archiveScope, ['active', 'archived', 'all'], true)) {
+            $archiveScope = 'active';
+        }
+
         $clients = Client::with(['projects' => fn ($query) => $query->orderByDesc('created_at')->orderByDesc('id')])
+            ->when($archiveScope === 'active', fn ($query) => $query->whereNull('archived_at'))
+            ->when($archiveScope === 'archived', fn ($query) => $query->whereNotNull('archived_at'))
             ->orderByRaw("FIELD(tier, 'strategic', 'growth', 'standard', 'prospect')")
             ->orderBy('name')
             ->get()
@@ -28,33 +35,13 @@ class ClientController extends Controller
         return view('clients.index', [
             'title' => 'Client Directory',
             'clients' => $clients,
+            'archiveScope' => $archiveScope,
         ]);
     }
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'code' => ['required', 'string', 'max:8', 'regex:/^[A-Za-z0-9]+$/', Rule::unique('clients', 'code')],
-            'name' => ['required', 'string', 'max:160'],
-            'industry' => ['required', 'string', 'max:120'],
-            'location' => ['required', 'string', 'max:120'],
-            'pic_name' => ['required', 'string', 'max:160'],
-            'pic_role' => ['required', 'string', 'max:120'],
-            'email' => ['required', 'email', 'max:160'],
-            'phone' => ['required', 'string', 'max:40'],
-        ], [
-            'code.required' => 'Kode klien wajib diisi.',
-            'code.regex' => 'Kode hanya boleh huruf dan angka.',
-            'code.unique' => 'Kode klien sudah digunakan.',
-            'name.required' => 'Nama perusahaan wajib diisi.',
-            'industry.required' => 'Industri wajib diisi.',
-            'location.required' => 'Lokasi wajib diisi.',
-            'pic_name.required' => 'Nama PIC wajib diisi.',
-            'pic_role.required' => 'Role PIC wajib diisi.',
-            'email.required' => 'Email wajib diisi.',
-            'email.email' => 'Format email tidak valid.',
-            'phone.required' => 'Nomor WhatsApp wajib diisi.',
-        ]);
+        $validated = $this->validateClient($request);
 
         $client = Client::create([
             'code' => mb_strtoupper($validated['code']),
@@ -76,6 +63,82 @@ class ClientController extends Controller
             ->with('status', 'Klien "' . $client->name . '" berhasil ditambahkan.');
     }
 
+    public function update(Request $request, Client $client)
+    {
+        $validated = $this->validateClient($request, $client);
+
+        $client->update([
+            'code' => mb_strtoupper($validated['code']),
+            'name' => $validated['name'],
+            'industry' => $validated['industry'],
+            'location' => $validated['location'],
+            'pic_name' => $validated['pic_name'],
+            'pic_role' => $validated['pic_role'],
+            'email' => $validated['email'],
+            'phone' => $validated['phone'],
+        ]);
+
+        return redirect()
+            ->route('clients.index', [
+                'archive' => $request->input('_archive_scope', $client->archived_at ? 'archived' : 'active'),
+                'open' => 'client:' . $client->id,
+            ])
+            ->with('status', 'Klien "' . $client->name . '" berhasil diperbarui.');
+    }
+
+    public function archive(Client $client)
+    {
+        if (! $client->archived_at) {
+            $client->forceFill(['archived_at' => now()])->save();
+        }
+
+        return redirect()
+            ->route('clients.index')
+            ->with('status', 'Klien "' . $client->name . '" berhasil diarsipkan.');
+    }
+
+    public function restore(Client $client)
+    {
+        if ($client->archived_at) {
+            $client->forceFill(['archived_at' => null])->save();
+        }
+
+        return redirect()
+            ->route('clients.index', ['open' => 'client:' . $client->id])
+            ->with('status', 'Klien "' . $client->name . '" berhasil dipulihkan.');
+    }
+
+    private function validateClient(Request $request, ?Client $client = null): array
+    {
+        $codeRule = Rule::unique('clients', 'code');
+        if ($client) {
+            $codeRule->ignore($client->id);
+        }
+
+        return $request->validate([
+            'code' => ['required', 'string', 'max:8', 'regex:/^[A-Za-z0-9]+$/', $codeRule],
+            'name' => ['required', 'string', 'max:160'],
+            'industry' => ['required', 'string', 'max:120'],
+            'location' => ['required', 'string', 'max:120'],
+            'pic_name' => ['required', 'string', 'max:160'],
+            'pic_role' => ['required', 'string', 'max:120'],
+            'email' => ['required', 'email', 'max:160'],
+            'phone' => ['required', 'string', 'max:40'],
+        ], [
+            'code.required' => 'Kode klien wajib diisi.',
+            'code.regex' => 'Kode hanya boleh huruf dan angka.',
+            'code.unique' => 'Kode klien sudah digunakan.',
+            'name.required' => 'Nama perusahaan wajib diisi.',
+            'industry.required' => 'Industri wajib diisi.',
+            'location.required' => 'Lokasi wajib diisi.',
+            'pic_name.required' => 'Nama PIC wajib diisi.',
+            'pic_role.required' => 'Role PIC wajib diisi.',
+            'email.required' => 'Email wajib diisi.',
+            'email.email' => 'Format email tidak valid.',
+            'phone.required' => 'Nomor WhatsApp wajib diisi.',
+        ]);
+    }
+
     private function clientRow(Client $client): array
     {
         $projects = $client->projects;
@@ -90,6 +153,15 @@ class ClientController extends Controller
             'id' => $client->id,
             'code' => $client->code ?: $this->initials($client->name),
             'name' => $client->name,
+            'raw_code' => $client->code,
+            'raw_name' => $client->name,
+            'raw_industry' => $client->industry,
+            'raw_location' => $client->location,
+            'raw_pic_name' => $client->pic_name,
+            'raw_pic_role' => $client->pic_role,
+            'raw_email' => $client->email,
+            'raw_phone' => $client->phone,
+            'archived' => (bool) $client->archived_at,
             'industry' => $client->industry ?: 'Belum diisi',
             'location' => $client->location ?: 'Belum diisi',
             'tier' => $tier,

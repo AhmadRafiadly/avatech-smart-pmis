@@ -23,6 +23,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
     Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
     Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
+    Route::put('/clients/{client}', [ClientController::class, 'update'])->name('clients.update');
+    Route::patch('/clients/{client}/archive', [ClientController::class, 'archive'])->name('clients.archive');
+    Route::patch('/clients/{client}/restore', [ClientController::class, 'restore'])->name('clients.restore');
     Route::view('/team',      'team.index', ['title' => 'Team Management'])->name('team.index');
     Route::view('/audit',     'audit.index', ['title' => 'Audit Trail'])->name('audit.index');
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
