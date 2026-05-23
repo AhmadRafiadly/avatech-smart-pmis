@@ -1,0 +1,183 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Client;
+use App\Models\Project;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+
+class ClientController extends Controller
+{
+    private const TIER_LABELS = [
+        'strategic' => 'Strategic',
+        'growth' => 'Growth',
+        'standard' => 'Standard',
+        'prospect' => 'Prospect',
+    ];
+
+    public function index()
+    {
+        $clients = Client::with(['projects' => fn ($query) => $query->orderByDesc('created_at')->orderByDesc('id')])
+            ->orderByRaw("FIELD(tier, 'strategic', 'growth', 'standard', 'prospect')")
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Client $client) => $this->clientRow($client))
+            ->all();
+
+        return view('clients.index', [
+            'title' => 'Client Directory',
+            'clients' => $clients,
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:8', 'regex:/^[A-Za-z0-9]+$/', Rule::unique('clients', 'code')],
+            'name' => ['required', 'string', 'max:160'],
+            'industry' => ['required', 'string', 'max:120'],
+            'location' => ['required', 'string', 'max:120'],
+            'pic_name' => ['required', 'string', 'max:160'],
+            'pic_role' => ['required', 'string', 'max:120'],
+            'email' => ['required', 'email', 'max:160'],
+            'phone' => ['required', 'string', 'max:40'],
+        ], [
+            'code.required' => 'Kode klien wajib diisi.',
+            'code.regex' => 'Kode hanya boleh huruf dan angka.',
+            'code.unique' => 'Kode klien sudah digunakan.',
+            'name.required' => 'Nama perusahaan wajib diisi.',
+            'industry.required' => 'Industri wajib diisi.',
+            'location.required' => 'Lokasi wajib diisi.',
+            'pic_name.required' => 'Nama PIC wajib diisi.',
+            'pic_role.required' => 'Role PIC wajib diisi.',
+            'email.required' => 'Email wajib diisi.',
+            'email.email' => 'Format email tidak valid.',
+            'phone.required' => 'Nomor WhatsApp wajib diisi.',
+        ]);
+
+        $client = Client::create([
+            'code' => mb_strtoupper($validated['code']),
+            'name' => $validated['name'],
+            'industry' => $validated['industry'],
+            'location' => $validated['location'],
+            'pic_name' => $validated['pic_name'],
+            'pic_role' => $validated['pic_role'],
+            'email' => $validated['email'],
+            'phone' => $validated['phone'],
+            'tier' => 'prospect',
+            'total_engagement' => 0,
+            'relationship_health' => 50,
+            'last_touch_label' => 'baru saja',
+        ]);
+
+        return redirect()
+            ->route('clients.index', ['open' => 'client:' . $client->id])
+            ->with('status', 'Klien "' . $client->name . '" berhasil ditambahkan.');
+    }
+
+    private function clientRow(Client $client): array
+    {
+        $projects = $client->projects;
+        $activeProjects = $projects->where('phase', '!=', 'Done')->count();
+        $totalProjects = max((int) ($client->total_engagement ?? 0), $projects->count());
+        $health = (int) ($client->relationship_health ?? 50);
+        $picName = $client->pic_name ?: 'Belum ada PIC';
+        $tier = self::TIER_LABELS[$client->tier] ?? 'Prospect';
+        $lastTouch = $client->last_touch_label ?: $client->created_at?->diffForHumans() ?: 'baru saja';
+
+        return [
+            'id' => $client->id,
+            'code' => $client->code ?: $this->initials($client->name),
+            'name' => $client->name,
+            'industry' => $client->industry ?: 'Belum diisi',
+            'location' => $client->location ?: 'Belum diisi',
+            'tier' => $tier,
+            'health' => max(0, min(100, $health)),
+            'active_projects' => $activeProjects,
+            'total_projects' => $totalProjects,
+            'last_touch' => $lastTouch,
+            'last_touch_sort' => $this->lastTouchSort($lastTouch),
+            'pic' => $picName,
+            'pic_initials' => $this->initials($picName),
+            'pic_role' => $client->pic_role ?: 'Belum diisi',
+            'attention' => $health < 65,
+            'phone' => $client->phone ?: '-',
+            'email' => $client->email ?: '-',
+            'wa_link' => $this->whatsAppLink($client->phone),
+            'email_link' => $this->gmailLink($client->email),
+            'desc' => $client->description ?: 'Profil klien belum dilengkapi.',
+            'projects' => $projects->map(fn (Project $project) => [
+                'id' => $project->id,
+                'code' => $project->code,
+                'color' => $project->color,
+                'name' => $project->name,
+                'phase' => $project->phase,
+                'progress' => (int) $project->progress,
+                'status' => $project->phase === 'Done' ? 'done' : $project->status,
+                'status_label' => $this->projectStatusLabel($project),
+            ])->all(),
+            'timeline' => [
+                ['color' => '#7C3AED', 'text' => '<strong>Profil klien</strong> tersedia dari database.', 'time' => $lastTouch],
+            ],
+        ];
+    }
+
+    private function whatsAppLink(?string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+        if ($digits === '') {
+            return '#';
+        }
+        if (str_starts_with($digits, '0')) {
+            $digits = '62' . substr($digits, 1);
+        }
+
+        return 'https://wa.me/' . $digits;
+    }
+
+    private function gmailLink(?string $email): string
+    {
+        if (! $email) {
+            return '#';
+        }
+
+        return 'https://mail.google.com/mail/?view=cm&fs=1&to=' . rawurlencode($email);
+    }
+
+    private function initials(string $value): string
+    {
+        $parts = array_values(array_filter(preg_split('/\s+/', trim($value)) ?: []));
+        if ($parts === []) {
+            return '?';
+        }
+        if (count($parts) === 1) {
+            return mb_strtoupper(mb_substr($parts[0], 0, 2));
+        }
+
+        return mb_strtoupper(mb_substr($parts[0], 0, 1) . mb_substr($parts[1], 0, 1));
+    }
+
+    private function lastTouchSort(string $label): int
+    {
+        if (str_contains($label, 'baru')) {
+            return 0;
+        }
+
+        preg_match('/\d+/', $label, $match);
+        return (int) ($match[0] ?? 0);
+    }
+
+    private function projectStatusLabel(Project $project): string
+    {
+        if ($project->phase === 'Done') {
+            return 'Selesai';
+        }
+
+        return match ($project->status) {
+            'attention' => 'Needs Attention',
+            'critical' => 'Critical',
+            default => 'On Track',
+        };
+    }
+}

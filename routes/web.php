@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ExecutiveController;
+use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
@@ -17,7 +18,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
-    Route::view('/clients',   'clients.index', ['title' => 'Client Directory'])->name('clients.index');
+    Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
+    Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
     Route::view('/team',      'team.index', ['title' => 'Team Management'])->name('team.index');
     Route::view('/audit',     'audit.index', ['title' => 'Audit Trail'])->name('audit.index');
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');

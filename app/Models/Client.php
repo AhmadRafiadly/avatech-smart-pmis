@@ -7,7 +7,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Client extends Model
 {
-    protected $fillable = ['name', 'code', 'tier'];
+    protected $fillable = [
+        'name',
+        'code',
+        'tier',
+        'industry',
+        'location',
+        'pic_name',
+        'pic_role',
+        'email',
+        'phone',
+        'description',
+        'total_engagement',
+        'relationship_health',
+        'last_touch_label',
+    ];
 
     public function projects(): HasMany
     {
