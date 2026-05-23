@@ -39,9 +39,16 @@ class ProjectController extends Controller
         'KP' => ['team' => ['IK', 'AR'],       'team_more' => 1, 'tasks_done' => 30, 'tasks_total' => 38, 'mom' => 7],
     ];
 
-    public function index()
+    public function index(Request $request)
     {
+        $archiveScope = $request->query('archive', 'active');
+        if (! in_array($archiveScope, ['active', 'archived', 'all'], true)) {
+            $archiveScope = 'active';
+        }
+
         $projects = Project::with(['client', 'lead'])
+            ->when($archiveScope === 'active', fn ($query) => $query->whereNull('archived_at'))
+            ->when($archiveScope === 'archived', fn ($query) => $query->whereNotNull('archived_at'))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->get()
@@ -52,6 +59,7 @@ class ProjectController extends Controller
             'title'    => 'Project Master',
             'projects' => $projects,
             'clients'  => Client::orderBy('name')->get(['id', 'name']),
+            'archiveScope' => $archiveScope,
         ]);
     }
 
@@ -93,6 +101,45 @@ class ProjectController extends Controller
             ->with('status', 'Proyek "' . $project->name . '" berhasil dibuat.');
     }
 
+    public function update(Request $request, Project $project)
+    {
+        $validated = $this->validateProject($request, $project);
+
+        $project->update([
+            'code'        => mb_strtoupper($validated['code']),
+            'name'        => $validated['name'],
+            'client_id'   => $validated['client_id'],
+            'description' => $validated['description'] ?? null,
+            'due_at'      => $validated['due_at'] ?? null,
+        ]);
+
+        return redirect()
+            ->back()
+            ->with('status', 'Proyek "' . $project->name . '" berhasil diperbarui.');
+    }
+
+    public function archive(Project $project)
+    {
+        if (! $project->archived_at) {
+            $project->forceFill(['archived_at' => now()])->save();
+        }
+
+        return redirect()
+            ->route('projects.index')
+            ->with('status', 'Proyek "' . $project->name . '" berhasil diarsipkan.');
+    }
+
+    public function restore(Project $project)
+    {
+        if ($project->archived_at) {
+            $project->forceFill(['archived_at' => null])->save();
+        }
+
+        return redirect()
+            ->route('projects.index')
+            ->with('status', 'Proyek "' . $project->name . '" berhasil dipulihkan.');
+    }
+
     public function show(Project $project)
     {
         $project->load(['client', 'lead']);
@@ -118,6 +165,26 @@ class ProjectController extends Controller
             'leadName'     => $leadName,
             'leadInitials' => $leadInitials,
             'useReferenceProjectData' => $this->usesReferenceProjectData($project),
+            'clients'      => Client::orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
+    private function validateProject(Request $request, ?Project $project = null): array
+    {
+        return $request->validate([
+            'code'        => ['required', 'string', 'max:4', 'regex:/^[A-Za-z0-9]+$/', Rule::unique('projects', 'code')->ignore($project?->id)],
+            'name'        => ['required', 'string', 'max:160'],
+            'client_id'   => ['required', Rule::exists('clients', 'id')],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'due_at'      => ['nullable', 'date'],
+        ], [
+            'code.required'      => 'Kode proyek wajib diisi.',
+            'code.regex'         => 'Kode hanya boleh huruf dan angka.',
+            'code.unique'        => 'Kode proyek sudah digunakan.',
+            'name.required'      => 'Nama proyek wajib diisi.',
+            'client_id.required' => 'Klien wajib dipilih.',
+            'client_id.exists'   => 'Klien tidak valid.',
+            'due_at.date'        => 'Due date tidak valid.',
         ]);
     }
 
@@ -161,13 +228,16 @@ class ProjectController extends Controller
             'color'        => $project->color,
             'name'         => $project->name,
             'client'       => $project->client?->name ?? '—',
+            'client_id'    => $project->client_id,
             'desc'         => $project->description ?: (self::DESC_MAP[$project->code] ?? 'Belum ada deskripsi untuk proyek ini.'),
             'phase'        => $project->phase,
             'phase_key'    => $this->phaseKey($project->phase),
             'due'          => $project->due_at ? $this->formatDateId($project->due_at) : '—',
+            'due_at'       => $project->due_at?->format('Y-m-d'),
             'progress'     => (int) $project->progress,
             'status'       => $project->status,
             'status_label' => $this->statusLabel($project->status),
+            'archived'     => (bool) $project->archived_at,
             'team'         => $team,
             'team_more'    => (int) ($meta['team_more'] ?? 0),
             'tasks_done'   => (int) ($meta['tasks_done'] ?? 0),

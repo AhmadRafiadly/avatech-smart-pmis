@@ -2,6 +2,7 @@
     $projects ??= [];
     $clients ??= collect();
     $errors ??= new \Illuminate\Support\ViewErrorBag;
+    $archiveScope ??= 'active';
 
     $filters = [
         ['id' => 'all',      'label' => 'Semua'],
@@ -43,6 +44,14 @@
         'critical'  => 'bg-rose-500',
         'done'      => 'bg-slate-400',
     ];
+
+    $archiveFilters = [
+        'active'   => 'Active',
+        'archived' => 'Archived',
+        'all'      => 'All',
+    ];
+    $editProjectId = old('_form') === 'edit' ? old('_project_id') : null;
+    $editAction = $editProjectId ? route('projects.update', $editProjectId) : '#';
 
     $monthNum = ['Jan'=>1,'Feb'=>2,'Mar'=>3,'Apr'=>4,'Mei'=>5,'Jun'=>6,'Jul'=>7,'Ags'=>8,'Sep'=>9,'Okt'=>10,'Nov'=>11,'Des'=>12];
     $dueSort = function ($due) use ($monthNum) {
@@ -87,6 +96,21 @@
     </section>
 
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5 mb-6 flex flex-wrap items-center gap-4">
+        <div class="flex items-center gap-2 flex-wrap">
+            @foreach ($archiveFilters as $scope => $label)
+                <a
+                    href="{{ route('projects.index', ['archive' => $scope]) }}"
+                    @class([
+                        'text-[12.5px] font-semibold px-3.5 py-1.5 rounded-full transition border inline-flex items-center gap-1.5',
+                        'bg-[#1E1B4B] text-white border-[#1E1B4B] shadow-sm' => $archiveScope === $scope,
+                        'bg-white text-slate-600 border-violet-100 hover:border-violet-300 hover:text-violet-700' => $archiveScope !== $scope,
+                    ])
+                >
+                    {{ $label }}
+                </a>
+            @endforeach
+        </div>
+        <span class="h-6 w-px bg-violet-100"></span>
         <div class="flex items-center gap-2 flex-wrap">
             @foreach ($filters as $idx => $f)
                 @php $isFirst = $idx === 0; @endphp
@@ -179,6 +203,12 @@
                             AI WBS ready
                         </span>
                     @endif
+                    @if ($p['archived'])
+                        <span class="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 inline-flex items-center gap-1">
+                            <x-heroicon-o-archive-box class="w-3 h-3" />
+                            Archived
+                        </span>
+                    @endif
                 </div>
 
                 <p class="text-[13px] text-slate-500 leading-relaxed mb-5 line-clamp-2">{{ $p['desc'] }}</p>
@@ -190,6 +220,43 @@
                     </div>
                     <div class="h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                         <div class="h-full rounded-full {{ $statusDot[$p['status']] }}" style="width: {{ $p['progress'] }}%"></div>
+                    </div>
+
+                    <div class="mt-4 flex items-center gap-2" onclick="event.stopPropagation()">
+                        <button
+                            type="button"
+                            data-edit-project
+                            data-action="{{ route('projects.update', $p['id']) }}"
+                            data-project-id="{{ $p['id'] }}"
+                            data-code="{{ $p['code'] }}"
+                            data-name="{{ $p['name'] }}"
+                            data-client-id="{{ $p['client_id'] }}"
+                            data-description="{{ $p['desc'] }}"
+                            data-due-at="{{ $p['due_at'] }}"
+                            class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-100 bg-white text-[12px] font-semibold text-slate-600 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer"
+                        >
+                            <x-heroicon-o-pencil-square class="w-3.5 h-3.5" />
+                            Edit
+                        </button>
+                        @if (! $p['archived'])
+                            <form method="POST" action="{{ route('projects.archive', $p['id']) }}" onsubmit="return confirm('Arsipkan proyek ini?');">
+                                @csrf
+                                @method('PATCH')
+                                <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-amber-100 bg-amber-50 text-[12px] font-semibold text-amber-700 hover:bg-amber-100 transition cursor-pointer">
+                                    <x-heroicon-o-archive-box class="w-3.5 h-3.5" />
+                                    Archive
+                                </button>
+                            </form>
+                        @else
+                            <form method="POST" action="{{ route('projects.restore', $p['id']) }}">
+                                @csrf
+                                @method('PATCH')
+                                <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-emerald-100 bg-emerald-50 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-100 transition cursor-pointer">
+                                    <x-heroicon-o-arrow-path class="w-3.5 h-3.5" />
+                                    Restore
+                                </button>
+                            </form>
+                        @endif
                     </div>
 
                     <div class="mt-4 pt-4 border-t border-violet-50 flex items-center justify-between gap-3">
@@ -286,7 +353,40 @@
                                 </span>
                             </td>
                             <td class="px-7 py-4 text-right">
-                                <x-heroicon-o-chevron-right class="w-4 h-4 text-slate-400 inline-block" />
+                                <div class="inline-flex items-center gap-2" onclick="event.stopPropagation()">
+                                    <button
+                                        type="button"
+                                        data-edit-project
+                                        data-action="{{ route('projects.update', $p['id']) }}"
+                                        data-project-id="{{ $p['id'] }}"
+                                        data-code="{{ $p['code'] }}"
+                                        data-name="{{ $p['name'] }}"
+                                        data-client-id="{{ $p['client_id'] }}"
+                                        data-description="{{ $p['desc'] }}"
+                                        data-due-at="{{ $p['due_at'] }}"
+                                        class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-violet-100 bg-white text-slate-500 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer"
+                                        aria-label="Edit proyek {{ $p['name'] }}"
+                                    >
+                                        <x-heroicon-o-pencil-square class="w-4 h-4" />
+                                    </button>
+                                    @if (! $p['archived'])
+                                        <form method="POST" action="{{ route('projects.archive', $p['id']) }}" onsubmit="return confirm('Arsipkan proyek ini?');">
+                                            @csrf
+                                            @method('PATCH')
+                                            <button type="submit" class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-amber-100 bg-amber-50 text-amber-700 hover:bg-amber-100 transition cursor-pointer" aria-label="Arsipkan proyek {{ $p['name'] }}">
+                                                <x-heroicon-o-archive-box class="w-4 h-4" />
+                                            </button>
+                                        </form>
+                                    @else
+                                        <form method="POST" action="{{ route('projects.restore', $p['id']) }}">
+                                            @csrf
+                                            @method('PATCH')
+                                            <button type="submit" class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer" aria-label="Pulihkan proyek {{ $p['name'] }}">
+                                                <x-heroicon-o-arrow-path class="w-4 h-4" />
+                                            </button>
+                                        </form>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @endforeach
@@ -399,11 +499,78 @@
         })();
     </script>
 
+    {{-- ===== Edit Project Modal ===== --}}
+    <div data-edit-modal="project" data-edit-has-errors="{{ old('_form') === 'edit' && $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+        <div data-edit-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+        <form method="POST" action="{{ $editAction }}" data-edit-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
+            @csrf
+            @method('PUT')
+            <input type="hidden" name="_form" value="edit">
+            <input type="hidden" name="_project_id" value="{{ old('_project_id') }}">
+            <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
+                <h3 class="text-[16px] font-bold text-[#1E1B4B]">Edit Proyek</h3>
+                <button type="button" data-edit-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
+                    <x-heroicon-o-x-mark class="w-5 h-5" />
+                </button>
+            </div>
+            <div class="px-6 py-5 space-y-3">
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Kode</label>
+                    <input name="code" value="{{ old('_form') === 'edit' ? old('code') : '' }}" maxlength="4" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] uppercase focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="AC" />
+                    @if (old('_form') === 'edit')
+                        @error('code') <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    @endif
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Nama Proyek</label>
+                    <input name="name" value="{{ old('_form') === 'edit' ? old('name') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Nama proyek..." />
+                    @if (old('_form') === 'edit')
+                        @error('name') <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    @endif
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Klien</label>
+                    <select name="client_id" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
+                        <option value="">Pilih klien...</option>
+                        @foreach ($clients as $client)
+                            <option value="{{ $client->id }}" @selected(old('_form') === 'edit' && (string) old('client_id') === (string) $client->id)>{{ $client->name }}</option>
+                        @endforeach
+                    </select>
+                    @if (old('_form') === 'edit')
+                        @error('client_id') <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    @endif
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Deskripsi</label>
+                    <textarea name="description" rows="3" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Ringkasan singkat proyek...">{{ old('_form') === 'edit' ? old('description') : '' }}</textarea>
+                    @if (old('_form') === 'edit')
+                        @error('description') <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    @endif
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Due Date</label>
+                    <input name="due_at" type="date" value="{{ old('_form') === 'edit' ? old('due_at') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                    @if (old('_form') === 'edit')
+                        @error('due_at') <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    @endif
+                </div>
+            </div>
+            <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2">
+                <button type="button" data-edit-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Batal</button>
+                <button type="submit" class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                    <x-heroicon-o-bookmark-square class="w-4 h-4" />
+                    Simpan
+                </button>
+            </div>
+        </form>
+    </div>
+
     {{-- ===== Create Project Modal ===== --}}
-    <div data-create-modal="project" data-create-has-errors="{{ $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+    <div data-create-modal="project" data-create-has-errors="{{ old('_form') === 'create' && $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
         <div data-create-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
         <form method="POST" action="{{ route('projects.store') }}" data-create-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
             @csrf
+            <input type="hidden" name="_form" value="create">
             <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
                 <h3 class="text-[16px] font-bold text-[#1E1B4B]">Proyek Baru</h3>
                 <button type="button" data-create-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
@@ -499,6 +666,43 @@
                 @if (session('status'))
                     window.toast && window.toast(@json(session('status')));
                 @endif
+
+                const editModal = document.querySelector('[data-edit-modal="project"]');
+                const editForm = editModal?.querySelector('form');
+                const editOverlay = editModal?.querySelector('[data-edit-overlay]');
+                const editOpen = () => {
+                    editModal.classList.remove('hidden');
+                    editModal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                    editModal.querySelector('[name="name"]')?.focus();
+                };
+                const editClose = () => {
+                    editModal.classList.add('hidden');
+                    editModal.classList.remove('flex');
+                    document.body.style.overflow = '';
+                };
+
+                document.querySelectorAll('[data-edit-project]').forEach(btn => {
+                    btn.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                        if (! editModal || ! editForm) return;
+                        editForm.action = btn.dataset.action || '#';
+                        editForm.querySelector('[name="_project_id"]').value = btn.dataset.projectId || '';
+                        editForm.querySelector('[name="code"]').value = btn.dataset.code || '';
+                        editForm.querySelector('[name="name"]').value = btn.dataset.name || '';
+                        editForm.querySelector('[name="client_id"]').value = btn.dataset.clientId || '';
+                        editForm.querySelector('[name="description"]').value = btn.dataset.description || '';
+                        editForm.querySelector('[name="due_at"]').value = btn.dataset.dueAt || '';
+                        editOpen();
+                    });
+                });
+                editModal?.querySelector('[data-edit-panel]')?.addEventListener('click', (event) => event.stopPropagation());
+                editOverlay?.addEventListener('click', editClose);
+                editModal?.querySelectorAll('[data-edit-close]').forEach(btn => btn.addEventListener('click', editClose));
+                document.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape' && editModal && ! editModal.classList.contains('hidden')) editClose();
+                });
+                if (editModal?.dataset.editHasErrors === '1') editOpen();
             };
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', wire);

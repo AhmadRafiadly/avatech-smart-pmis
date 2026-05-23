@@ -10,11 +10,12 @@ class Project extends Model
     protected $fillable = [
         'code', 'color', 'name', 'description', 'client_id', 'lead_user_id',
         'phase', 'due_at', 'progress', 'status',
-        'ai_wbs_generated', 'is_featured',
+        'ai_wbs_generated', 'is_featured', 'archived_at',
     ];
 
     protected $casts = [
         'due_at'           => 'date',
+        'archived_at'      => 'datetime',
         'progress'         => 'integer',
         'ai_wbs_generated' => 'boolean',
         'is_featured'      => 'boolean',

@@ -222,6 +222,12 @@
                 <span class="w-1 h-1 rounded-full bg-emerald-500"></span>
                 {{ $statusUi['label'] }}
             </span>
+            @if ($project->archived_at)
+                <span class="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase rounded-full px-2.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-200">
+                    <x-heroicon-o-archive-box class="w-3 h-3" />
+                    Archived
+                </span>
+            @endif
             <span class="h-3 w-px bg-slate-200"></span>
             <span class="text-[12px] text-slate-500 inline-flex items-center gap-1.5">
                 <x-heroicon-o-user class="w-3.5 h-3.5 opacity-60" />
@@ -273,6 +279,16 @@
                 <x-heroicon-o-beaker class="w-4 h-4" />
                 Export Test Case (PDF)
             </button>
+            @if ($project->archived_at)
+                <form method="POST" action="{{ route('projects.restore', $project) }}">
+                    @csrf
+                    @method('PATCH')
+                    <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-emerald-100 bg-emerald-50 text-[13px] font-semibold text-emerald-700 hover:bg-emerald-100 transition cursor-pointer">
+                        <x-heroicon-o-arrow-path class="w-4 h-4" />
+                        Restore Project
+                    </button>
+                </form>
+            @endif
         </div>
     </section>
 
