@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
 use App\Models\Project;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
@@ -25,6 +28,71 @@ class ProjectController extends Controller
         'KP' => 'Point-of-sale lightweight untuk SMB ritel dengan multi-cabang.',
     ];
 
+    private const PROJECT_META = [
+        'AC' => ['team' => ['AR', 'IK', 'YP'], 'team_more' => 1, 'tasks_done' => 21, 'tasks_total' => 42, 'mom' => 6],
+        'BP' => ['team' => ['YP', 'AR'],       'team_more' => 0, 'tasks_done' => 8,  'tasks_total' => 28, 'mom' => 4],
+        'GA' => ['team' => ['IK', 'AR', 'FA'], 'team_more' => 0, 'tasks_done' => 26, 'tasks_total' => 30, 'mom' => 8],
+        'DL' => ['team' => ['FA', 'IK', 'YP'], 'team_more' => 2, 'tasks_done' => 15, 'tasks_total' => 48, 'mom' => 3],
+        'EX' => ['team' => ['AR', 'YP'],       'team_more' => 0, 'tasks_done' => 2,  'tasks_total' => 18, 'mom' => 2],
+        'ZN' => ['team' => ['YP', 'FA', 'IK'], 'team_more' => 0, 'tasks_done' => 19, 'tasks_total' => 34, 'mom' => 5],
+        'OT' => ['team' => ['AR', 'YP'],       'team_more' => 0, 'tasks_done' => 24, 'tasks_total' => 24, 'mom' => 9],
+        'KP' => ['team' => ['IK', 'AR'],       'team_more' => 1, 'tasks_done' => 30, 'tasks_total' => 38, 'mom' => 7],
+    ];
+
+    public function index()
+    {
+        $projects = Project::with(['client', 'lead'])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (Project $project) => $this->projectRow($project))
+            ->all();
+
+        return view('projects.index', [
+            'title'    => 'Project Master',
+            'projects' => $projects,
+            'clients'  => Client::orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'code'        => ['required', 'string', 'max:4', 'regex:/^[A-Za-z0-9]+$/', Rule::unique('projects', 'code')],
+            'name'        => ['required', 'string', 'max:160'],
+            'client_id'   => ['required', Rule::exists('clients', 'id')],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'due_at'      => ['nullable', 'date'],
+        ], [
+            'code.required'      => 'Kode proyek wajib diisi.',
+            'code.regex'         => 'Kode hanya boleh huruf dan angka.',
+            'code.unique'        => 'Kode proyek sudah digunakan.',
+            'name.required'      => 'Nama proyek wajib diisi.',
+            'client_id.required' => 'Klien wajib dipilih.',
+            'client_id.exists'   => 'Klien tidak valid.',
+            'due_at.date'        => 'Due date tidak valid.',
+        ]);
+
+        $project = Project::create([
+            'code'             => mb_strtoupper($validated['code']),
+            'color'            => '#7C3AED',
+            'name'             => $validated['name'],
+            'description'      => $validated['description'] ?? null,
+            'client_id'        => $validated['client_id'],
+            'lead_user_id'     => null,
+            'phase'            => 'Planning',
+            'due_at'           => $validated['due_at'] ?? null,
+            'progress'         => 0,
+            'status'           => 'on-track',
+            'ai_wbs_generated' => false,
+            'is_featured'      => false,
+        ]);
+
+        return redirect()
+            ->route('projects.show', $project)
+            ->with('status', 'Proyek "' . $project->name . '" berhasil dibuat.');
+    }
+
     public function show(Project $project)
     {
         $project->load(['client', 'lead']);
@@ -34,7 +102,7 @@ class ProjectController extends Controller
         $leadName     = $project->lead?->name;
         $leadInitials = $leadName ? $this->initials($leadName) : '—';
 
-        $desc = self::DESC_MAP[$project->code] ?? 'Proyek demo internal Avatech untuk validasi sistem PMIS.';
+        $desc = $project->description ?: (self::DESC_MAP[$project->code] ?? 'Belum ada deskripsi untuk proyek ini.');
 
         $due       = $project->due_at ? $this->formatDateId($project->due_at) : '—';
         $createdAt = $project->created_at ? $this->formatDateLongId($project->created_at) : '—';
@@ -49,7 +117,13 @@ class ProjectController extends Controller
             'statusUi'     => $statusUi,
             'leadName'     => $leadName,
             'leadInitials' => $leadInitials,
+            'useReferenceProjectData' => $this->usesReferenceProjectData($project),
         ]);
+    }
+
+    private function usesReferenceProjectData(Project $project): bool
+    {
+        return array_key_exists($project->code, self::PROJECT_META);
     }
 
     private function initials(string $fullName): string
@@ -74,5 +148,52 @@ class ProjectController extends Controller
     {
         $month = self::ID_MONTHS[((int) $date->format('n')) - 1] ?? $date->format('M');
         return $date->format('d') . ' ' . $month . ' ' . $date->format('Y');
+    }
+
+    private function projectRow(Project $project): array
+    {
+        $meta = self::PROJECT_META[$project->code] ?? null;
+        $team = $meta['team'] ?? ($project->lead ? [$this->initials($project->lead->name)] : []);
+
+        return [
+            'id'           => $project->id,
+            'code'         => $project->code,
+            'color'        => $project->color,
+            'name'         => $project->name,
+            'client'       => $project->client?->name ?? '—',
+            'desc'         => $project->description ?: (self::DESC_MAP[$project->code] ?? 'Belum ada deskripsi untuk proyek ini.'),
+            'phase'        => $project->phase,
+            'phase_key'    => $this->phaseKey($project->phase),
+            'due'          => $project->due_at ? $this->formatDateId($project->due_at) : '—',
+            'progress'     => (int) $project->progress,
+            'status'       => $project->status,
+            'status_label' => $this->statusLabel($project->status),
+            'team'         => $team,
+            'team_more'    => (int) ($meta['team_more'] ?? 0),
+            'tasks_done'   => (int) ($meta['tasks_done'] ?? 0),
+            'tasks_total'  => (int) ($meta['tasks_total'] ?? 0),
+            'mom'          => (int) ($meta['mom'] ?? 0),
+            'ai_flag'      => (bool) $project->ai_wbs_generated,
+        ];
+    }
+
+    private function phaseKey(string $phase): string
+    {
+        return match (mb_strtolower($phase)) {
+            'design' => 'design',
+            'development' => 'dev',
+            'qa' => 'qa',
+            'done' => 'done',
+            default => 'planning',
+        };
+    }
+
+    private function statusLabel(string $status): string
+    {
+        return match ($status) {
+            'attention' => 'Needs Attention',
+            'critical' => 'Critical',
+            default => 'On Track',
+        };
     }
 }

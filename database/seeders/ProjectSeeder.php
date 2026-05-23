@@ -49,34 +49,12 @@ class ProjectSeeder extends Seeder
             );
         }
 
-        $clientIds = Client::pluck('id')->all();
-        $leadIds   = User::whereHas('roles', function ($q) {
-            $q->whereIn('name', ['fullstack_dev', 'uiux_designer', 'sa_qa']);
-        })->pluck('id')->all();
-
-        $phases   = ['Discovery', 'Design', 'Development', 'QA', 'Done'];
-        $statuses = ['on-track', 'on-track', 'on-track', 'on-track', 'attention', 'attention', 'critical'];
-        $colors   = ['#7C3AED', '#A855F7', '#C084FC', '#8B5CF6', '#9333EA'];
-
-        for ($i = 9; $i <= 142; $i++) {
-            $code = 'P' . str_pad((string) $i, 3, '0', STR_PAD_LEFT);
-            $aiOn = $i <= 138;
-
-            Project::updateOrCreate(
-                ['code' => $code],
-                [
-                    'color'            => $colors[$i % count($colors)],
-                    'name'             => 'Proyek Demo ' . $code,
-                    'client_id'        => $clientIds[$i % count($clientIds)] ?? null,
-                    'lead_user_id'     => $leadIds[$i % count($leadIds)] ?? null,
-                    'phase'            => $phases[$i % count($phases)],
-                    'due_at'           => Carbon::create(2026, 1, 1)->addDays(($i * 7) % 270),
-                    'progress'         => ($i * 17) % 100,
-                    'status'           => $statuses[$i % count($statuses)],
-                    'ai_wbs_generated' => $aiOn,
-                    'is_featured'      => false,
-                ],
-            );
-        }
+        Project::where('is_featured', false)
+            ->where(function ($query) {
+                $query
+                    ->where('name', 'like', 'Proyek Demo%')
+                    ->orWhere('code', 'regexp', '^P[0-9]{3}$');
+            })
+            ->delete();
     }
 }

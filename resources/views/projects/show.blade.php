@@ -2,6 +2,7 @@
     $role    = auth()->user()?->roles?->first()?->name;
     $isCeo   = $role === 'ceo_pm';
     $canEdit = ! $isCeo;
+    $useReferenceProjectData = (bool) ($useReferenceProjectData ?? false);
 
     $tabs = [
         ['id' => 'overview',   'label' => 'Overview',         'count' => 0],
@@ -89,6 +90,73 @@
         ['id' => 'TC-0013', 'scenario' => 'Validasi audit trail modul Dashboard & Laporan',      'module' => 'Dashboard & Laporan', 'status' => 'pending'],
         ['id' => 'TC-0014', 'scenario' => 'Validasi kestabilan data setelah refresh',            'module' => 'Dashboard & Laporan', 'status' => 'pending'],
     ];
+
+    $workspaceTaskTotal = 14;
+    $workspaceTaskDone = 0;
+    $qcSummary = ['lulus' => 7, 'gagal' => 1, 'pending' => 2];
+
+    if (! $useReferenceProjectData) {
+        $tabs = [
+            ['id' => 'overview',   'label' => 'Overview',         'count' => 0],
+            ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => 0],
+            ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => 0],
+            ['id' => 'qc',         'label' => 'Quality Control',  'count' => 0],
+        ];
+
+        $phaseLabels = ['Gathering', 'Planning', 'Design', 'Development', 'QC'];
+        $phaseIcons = [
+            'Gathering' => 'clipboard',
+            'Planning' => 'clipboard',
+            'Design' => 'paint-brush',
+            'Development' => 'code-bracket',
+            'QC' => 'bug-ant',
+        ];
+        $phaseIndex = array_search($project->phase, $phaseLabels, true);
+        if ($phaseIndex === false) {
+            $phaseIndex = 1;
+        }
+
+        $steps = collect($phaseLabels)->map(function ($label, $index) use ($phaseIndex, $phaseIcons) {
+            $state = $index < $phaseIndex ? 'done' : ($index === $phaseIndex ? 'active' : 'todo');
+
+            return [
+                'label' => $label,
+                'state' => $state,
+                'icon' => $phaseIcons[$label],
+                'tag' => $state === 'done' ? 'Completed' : ($state === 'active' ? 'In Progress' : 'Pending'),
+            ];
+        })->all();
+
+        $metrics = [
+            ['code' => 'MOD',  'value' => '0/0', 'label' => 'Modul Disetujui',    'color' => '#3B82F6', 'progress' => 0, 'sub' => 'Belum ada modul'],
+            ['code' => 'TASK', 'value' => '0/0', 'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => 0, 'sub' => 'Belum ada task'],
+            ['code' => 'MOM',  'value' => '0/0', 'label' => 'MoM AI Rapi',        'color' => '#10B981', 'progress' => 0, 'sub' => 'Belum ada MoM'],
+            ['code' => 'QC',   'value' => '0%',  'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0, 'sub' => 'Pass Rate'],
+        ];
+
+        $statusCards = [
+            ['count' => 0, 'label' => 'Disetujui',       'bg' => '#ECFDF5', 'border' => '#A7F3D0', 'value' => '#047857', 'caption' => '#059669'],
+            ['count' => 0, 'label' => 'Menunggu Dev',    'bg' => '#EFF6FF', 'border' => '#BFDBFE', 'value' => '#1D4ED8', 'caption' => '#2563EB'],
+            ['count' => 0, 'label' => 'Menunggu Design', 'bg' => '#FFFBEB', 'border' => '#FDE68A', 'value' => '#B45309', 'caption' => '#D97706'],
+            ['count' => 0, 'label' => 'Perlu Revisi',    'bg' => '#FFF1F2', 'border' => '#FECDD3', 'value' => '#BE123C', 'caption' => '#E11D48'],
+        ];
+
+        $modules = [];
+        $activities = [
+            ['dot' => '#7C3AED', 'time' => $createdAt, 'title' => 'Project dibuat', 'text' => 'Project baru dibuat dan menunggu perencanaan awal.'],
+        ];
+        $kanban = [
+            ['id' => 'todo',    'label' => 'Todo',    'color' => '#475569', 'bg' => '#F1F5F9', 'tasks' => []],
+            ['id' => 'doing',   'label' => 'Doing',   'color' => '#2563EB', 'bg' => '#DBEAFE', 'tasks' => []],
+            ['id' => 'testing', 'label' => 'Testing', 'color' => '#D97706', 'bg' => '#FEF3C7', 'tasks' => []],
+            ['id' => 'done',    'label' => 'Done',    'color' => '#059669', 'bg' => '#D1FAE5', 'tasks' => []],
+        ];
+        $moms = [];
+        $testCases = [];
+        $workspaceTaskTotal = 0;
+        $workspaceTaskDone = 0;
+        $qcSummary = ['lulus' => 0, 'gagal' => 0, 'pending' => 0];
+    }
 
     $tcStatusPill = [
         'lulus'   => 'bg-emerald-50 text-emerald-700 border border-emerald-100',
@@ -367,7 +435,7 @@
                 </div>
 
                 <div class="space-y-3">
-                    @foreach ($modules as $mod)
+                    @forelse ($modules as $mod)
                         @php $st = $modStatusStyles[$mod['status']] ?? ['bg' => '#F3F4F6', 'color' => '#374151']; @endphp
                         <div class="flex items-center justify-between gap-4 p-4 rounded-xl border border-violet-50 hover:bg-[#FAF5FF] transition">
                             <div class="min-w-0">
@@ -381,7 +449,11 @@
                                 {{ $mod['status'] }}
                             </span>
                         </div>
-                    @endforeach
+                    @empty
+                        <div class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
+                            Belum ada modul WBS untuk project ini.
+                        </div>
+                    @endforelse
                 </div>
             </div>
         </div>
@@ -412,7 +484,7 @@
             <h3 class="inline-flex items-center gap-2 text-[12px] font-bold tracking-[0.12em] uppercase text-violet-600">
                 <span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span> Kanban Proyek
             </h3>
-            <div class="text-[13px] text-slate-400">14 task &middot; <span class="font-semibold text-slate-500">0 selesai</span></div>
+            <div class="text-[13px] text-slate-400">{{ $workspaceTaskTotal }} task &middot; <span class="font-semibold text-slate-500">{{ $workspaceTaskDone }} selesai</span></div>
         </div>
 
         <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
@@ -510,7 +582,7 @@
                 @endif
 
                 <div data-mom-list class="space-y-4 pt-1">
-                    @foreach ($moms as $mom)
+                    @forelse ($moms as $mom)
                         <div class="p-5 rounded-xl border border-violet-100 bg-violet-50/20 hover:border-violet-300 transition group cursor-pointer">
                             <div class="flex justify-between items-start mb-2">
                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{{ $mom['date'] }}</span>
@@ -522,7 +594,11 @@
                             <h4 class="font-bold text-[#1E1B4B] text-[14px] group-hover:text-violet-700 transition mb-1">{{ $mom['title'] }}</h4>
                             <p class="text-[12px] text-slate-500 leading-relaxed">{{ $mom['body'] }}</p>
                         </div>
-                    @endforeach
+                    @empty
+                        <div data-mom-empty class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
+                            Belum ada MoM untuk project ini.
+                        </div>
+                    @endforelse
                 </div>
             </div>
 
@@ -560,7 +636,7 @@
                 </div>
 
                 <div class="space-y-3">
-                    @foreach ($modules as $mod)
+                    @forelse ($modules as $mod)
                         @php $st = $modStatusStyles[$mod['status']] ?? ['bg' => '#F3F4F6', 'color' => '#374151']; @endphp
                         <div class="p-5 rounded-xl border border-violet-100 bg-violet-50/20 space-y-3">
                             <h4 class="text-[14px] font-bold text-[#1E1B4B] truncate">{{ $mod['name'] }}</h4>
@@ -574,7 +650,11 @@
                                 </span>
                             </div>
                         </div>
-                    @endforeach
+                    @empty
+                        <div class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
+                            Belum ada WBS terbentuk.
+                        </div>
+                    @endforelse
                 </div>
             </div>
 
@@ -610,9 +690,9 @@
             </div>
             <div class="text-[13px] text-slate-500 font-medium">
                 {{ count($testCases) }} case &middot;
-                <span class="text-emerald-600 font-semibold">7 lulus</span> ·
-                <span class="text-rose-600 font-semibold">1 gagal</span> ·
-                <span class="text-amber-600 font-semibold">2 pending</span>
+                <span class="text-emerald-600 font-semibold">{{ $qcSummary['lulus'] }} lulus</span> ·
+                <span class="text-rose-600 font-semibold">{{ $qcSummary['gagal'] }} gagal</span> ·
+                <span class="text-amber-600 font-semibold">{{ $qcSummary['pending'] }} pending</span>
             </div>
         </div>
 
@@ -630,7 +710,7 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-violet-100/40">
-                    @foreach ($testCases as $tc)
+                    @forelse ($testCases as $tc)
                         <tr data-tc-row data-tc-id="{{ $tc['id'] }}" data-tc-initial-status="{{ $tc['status'] }}" class="hover:bg-[#FAF5FF] transition">
                             <td class="px-7 py-4 text-[12px] font-bold text-violet-600/70">{{ $tc['id'] }}</td>
                             <td class="px-4 py-4 text-[13.5px] font-medium text-[#1E1B4B]">{{ $tc['scenario'] }}</td>
@@ -658,7 +738,13 @@
                                 </td>
                             @endif
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr>
+                            <td colspan="{{ $canEdit ? 5 : 4 }}" class="px-7 py-10 text-center text-[13px] font-medium text-slate-400">
+                                Belum ada test case untuk project ini.
+                            </td>
+                        </tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>

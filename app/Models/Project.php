@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Project extends Model
 {
     protected $fillable = [
-        'code', 'color', 'name', 'client_id', 'lead_user_id',
+        'code', 'color', 'name', 'description', 'client_id', 'lead_user_id',
         'phase', 'due_at', 'progress', 'status',
         'ai_wbs_generated', 'is_featured',
     ];
