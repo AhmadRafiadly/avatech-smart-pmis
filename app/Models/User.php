@@ -5,6 +5,8 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -22,6 +24,13 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'phone',
+        'position',
+        'department',
+        'level',
+        'skills',
+        'avatar_color',
+        'archived_at',
     ];
 
     /**
@@ -44,6 +53,18 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'skills' => 'array',
+            'archived_at' => 'datetime',
         ];
+    }
+
+    public function workload(): HasOne
+    {
+        return $this->hasOne(TeamWorkload::class);
+    }
+
+    public function teamAssignments(): HasMany
+    {
+        return $this->hasMany(TeamAssignment::class);
     }
 }

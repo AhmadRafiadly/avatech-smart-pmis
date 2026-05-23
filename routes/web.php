@@ -4,6 +4,7 @@ use App\Http\Controllers\ExecutiveController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -26,7 +27,12 @@ Route::middleware('auth')->group(function () {
     Route::put('/clients/{client}', [ClientController::class, 'update'])->name('clients.update');
     Route::patch('/clients/{client}/archive', [ClientController::class, 'archive'])->name('clients.archive');
     Route::patch('/clients/{client}/restore', [ClientController::class, 'restore'])->name('clients.restore');
-    Route::view('/team',      'team.index', ['title' => 'Team Management'])->name('team.index');
+    Route::get('/team', [TeamController::class, 'index'])->name('team.index');
+    Route::post('/team/members', [TeamController::class, 'store'])->name('team.members.store');
+    Route::put('/team/members/{member}', [TeamController::class, 'update'])->name('team.members.update');
+    Route::patch('/team/members/{member}/archive', [TeamController::class, 'archive'])->name('team.members.archive');
+    Route::patch('/team/members/{member}/restore', [TeamController::class, 'restore'])->name('team.members.restore');
+    Route::post('/team/members/{member}/assignments', [TeamController::class, 'storeAssignment'])->name('team.assignments.store');
     Route::view('/audit',     'audit.index', ['title' => 'Audit Trail'])->name('audit.index');
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
     Route::put('/settings/preferences', [SettingsController::class, 'updatePreferences'])->name('settings.preferences.update');

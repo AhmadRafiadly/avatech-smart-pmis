@@ -1,4 +1,8 @@
 @php
+    $errors ??= new \Illuminate\Support\ViewErrorBag;
+    $projects ??= collect();
+    $archiveScope ??= 'active';
+    if (! isset($members)) {
     $members = [
         [
             'id' => 1, 'name' => 'Joshua Raphael', 'initials' => 'JR', 'email' => 'joshua.raphael@avatech.test',
@@ -157,15 +161,16 @@
             ],
         ],
     ];
+    }
 
     // Team Management lists delivery resources only; CEO/PM keeps page access but is not a workload card.
     $deliveryMembers = collect($members)->reject(fn ($m) => $m['role_key'] === 'ceo')->values()->all();
 
     $filters = [
         ['id' => 'all',       'label' => 'Semua'],
-        ['id' => 'sa-qa',     'label' => 'SA/QA'],
-        ['id' => 'fullstack', 'label' => 'Fullstack'],
-        ['id' => 'uiux',      'label' => 'UI/UX'],
+        ['id' => 'sa_qa',     'label' => 'SA/QA'],
+        ['id' => 'fullstack_dev', 'label' => 'Fullstack'],
+        ['id' => 'ui_ux',      'label' => 'UI/UX'],
         ['id' => 'risk',      'label' => 'Burnout Risk'],
     ];
 
@@ -173,11 +178,19 @@
 
     $filterCounts = [
         'all'       => count($deliveryMembers),
-        'sa-qa'     => $col->where('role_key', 'sa-qa')->count(),
-        'fullstack' => $col->where('role_key', 'fullstack')->count(),
-        'uiux'      => $col->where('role_key', 'uiux')->count(),
+        'sa_qa'     => $col->where('role_key', 'sa_qa')->count(),
+        'fullstack_dev' => $col->where('role_key', 'fullstack_dev')->count(),
+        'ui_ux'      => $col->where('role_key', 'ui_ux')->count(),
         'risk'      => $col->where('load', '>=', 85)->count(),
     ];
+
+    $archiveFilters = [
+        'active' => 'Active',
+        'archived' => 'Archived',
+        'all' => 'All',
+    ];
+    $editMemberId = old('_form') === 'edit' ? old('_member_id') : null;
+    $editAction = $editMemberId ? route('team.members.update', $editMemberId) : '#';
 
     $stats = [
         ['label' => 'Total Anggota', 'value' => count($deliveryMembers),                                              'suffix' => '',      'color' => '#7C3AED'],
@@ -189,9 +202,9 @@
 
     $rolePill = [
         'ceo'       => 'bg-fuchsia-50 text-fuchsia-700',
-        'sa-qa'     => 'bg-violet-50 text-violet-700',
-        'fullstack' => 'bg-cyan-50 text-cyan-700',
-        'uiux'      => 'bg-pink-50 text-pink-700',
+        'sa_qa'     => 'bg-violet-50 text-violet-700',
+        'fullstack_dev' => 'bg-cyan-50 text-cyan-700',
+        'ui_ux'      => 'bg-pink-50 text-pink-700',
     ];
 
     $presenceClass = [
@@ -306,6 +319,21 @@
 
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5 mb-6 flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2 flex-wrap">
+            @foreach ($archiveFilters as $scope => $label)
+                <a
+                    href="{{ route('team.index', ['archive' => $scope]) }}"
+                    @class([
+                        'text-[12.5px] font-semibold px-3.5 py-1.5 rounded-full transition border inline-flex items-center gap-1.5',
+                        'bg-[#1E1B4B] text-white border-[#1E1B4B] shadow-sm' => $archiveScope === $scope,
+                        'bg-white text-slate-600 border-violet-100 hover:border-violet-300 hover:text-violet-700' => $archiveScope !== $scope,
+                    ])
+                >
+                    {{ $label }}
+                </a>
+            @endforeach
+        </div>
+        <span class="h-6 w-px bg-violet-100"></span>
+        <div class="flex items-center gap-2 flex-wrap">
             @foreach ($filters as $idx => $f)
                 @php $isFirst = $idx === 0; @endphp
                 <button
@@ -363,6 +391,15 @@
                 data-sort-load="{{ $m['load'] }}"
                 data-sort-name="{{ $m['name'] }}"
                 data-sort-projects="{{ $m['projects_active'] }}"
+                data-archived="{{ $m['archived'] ? 'true' : 'false' }}"
+                data-name="{{ $m['name'] }}"
+                data-email="{{ $m['email'] }}"
+                data-role-value="{{ $m['raw_role'] }}"
+                data-phone="{{ $m['raw_phone'] }}"
+                data-level="{{ $m['raw_level'] }}"
+                data-skills="{{ $m['raw_skills'] }}"
+                data-avatar-color="{{ $m['raw_avatar_color'] }}"
+                data-update-url="{{ route('team.members.update', $m['id']) }}"
                 class="group bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:shadow-[0_8px_24px_rgba(124,58,237,0.12)] transition p-6 flex flex-col relative overflow-hidden cursor-pointer"
             >
                 <span class="absolute top-0 left-6 right-6 h-[3px] rounded-b-full" style="background: {{ $loadFill($m['load']) }};"></span>
@@ -377,7 +414,15 @@
                     <div class="flex-1 min-w-0">
                         <h3 class="text-[16px] font-bold text-[#1E1B4B] leading-tight group-hover:text-violet-700 transition truncate">{{ $m['name'] }}</h3>
                         <div class="text-[12.5px] text-slate-500 mt-0.5 truncate">{{ $m['email'] }}</div>
-                        <span class="inline-flex items-center text-[10.5px] font-bold tracking-wide uppercase px-2 py-1 rounded-md mt-2 {{ $rolePill[$m['role_key']] }}">{{ $m['role'] }}</span>
+                        <div class="flex items-center gap-1.5 flex-wrap mt-2">
+                            <span class="inline-flex items-center text-[10.5px] font-bold tracking-wide uppercase px-2 py-1 rounded-md {{ $rolePill[$m['role_key']] }}">{{ $m['role'] }}</span>
+                            @if ($m['archived'])
+                                <span class="inline-flex items-center gap-1 text-[10px] font-semibold rounded-md px-2 py-1 bg-slate-100 text-slate-600">
+                                    <x-heroicon-o-archive-box class="w-3 h-3" />
+                                    Archived
+                                </span>
+                            @endif
+                        </div>
                     </div>
                 </div>
 
@@ -418,6 +463,28 @@
                         <div class="text-[10.5px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Skor</div>
                     </div>
                 </div>
+                <div class="mt-4 pt-4 border-t border-violet-50 flex items-center justify-end gap-2">
+                    <button type="button" data-edit-member data-no-modal class="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-violet-100 text-slate-500 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer" aria-label="Edit anggota">
+                        <x-heroicon-o-pencil-square class="w-4 h-4" />
+                    </button>
+                    @if (! $m['archived'])
+                        <form method="POST" action="{{ route('team.members.archive', $m['id']) }}" data-no-modal onsubmit="return confirm('Arsipkan anggota ini? Data dan penugasan tetap aman.');">
+                            @csrf
+                            @method('PATCH')
+                            <button type="submit" class="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-amber-100 text-amber-600 hover:bg-amber-50 transition cursor-pointer" aria-label="Archive anggota">
+                                <x-heroicon-o-archive-box class="w-4 h-4" />
+                            </button>
+                        </form>
+                    @else
+                        <form method="POST" action="{{ route('team.members.restore', $m['id']) }}" data-no-modal>
+                            @csrf
+                            @method('PATCH')
+                            <button type="submit" class="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-emerald-100 text-emerald-600 hover:bg-emerald-50 transition cursor-pointer" aria-label="Restore anggota">
+                                <x-heroicon-o-arrow-path class="w-4 h-4" />
+                            </button>
+                        </form>
+                    @endif
+                </div>
             </article>
         @endforeach
 
@@ -455,6 +522,15 @@
                             data-sort-load="{{ $m['load'] }}"
                             data-sort-name="{{ $m['name'] }}"
                             data-sort-projects="{{ $m['projects_active'] }}"
+                            data-archived="{{ $m['archived'] ? 'true' : 'false' }}"
+                            data-name="{{ $m['name'] }}"
+                            data-email="{{ $m['email'] }}"
+                            data-role-value="{{ $m['raw_role'] }}"
+                            data-phone="{{ $m['raw_phone'] }}"
+                            data-level="{{ $m['raw_level'] }}"
+                            data-skills="{{ $m['raw_skills'] }}"
+                            data-avatar-color="{{ $m['raw_avatar_color'] }}"
+                            data-update-url="{{ route('team.members.update', $m['id']) }}"
                             class="hover:bg-[#FAF5FF] border-b border-violet-50/60 last:border-0 transition cursor-pointer"
                         >
                             <td class="px-7 py-4">
@@ -467,7 +543,12 @@
                                     </div>
                                     <div class="min-w-0">
                                         <div class="text-[13.5px] font-semibold text-[#1E1B4B]">{{ $m['name'] }}</div>
-                                        <div class="text-[12px] text-slate-500 truncate">{{ $m['email'] }}</div>
+                                        <div class="text-[12px] text-slate-500 truncate flex items-center gap-1.5">
+                                            <span>{{ $m['email'] }}</span>
+                                            @if ($m['archived'])
+                                                <span class="inline-flex items-center text-[10px] font-semibold rounded-full px-2 py-0.5 bg-slate-100 text-slate-600">Archived</span>
+                                            @endif
+                                        </div>
                                     </div>
                                 </div>
                             </td>
@@ -486,6 +567,26 @@
                             <td class="px-4 py-4 text-[13px] font-semibold text-[#1E1B4B] tabular-nums">{{ $m['tasks_open'] }}</td>
                             <td class="px-4 py-4 text-[13px] font-bold tabular-nums" style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</td>
                             <td class="px-7 py-4 text-right">
+                                <button type="button" data-edit-member data-no-modal class="inline-flex items-center text-violet-600 mr-3 cursor-pointer" aria-label="Edit anggota">
+                                    <x-heroicon-o-pencil-square class="w-4 h-4" />
+                                </button>
+                                @if (! $m['archived'])
+                                    <form method="POST" action="{{ route('team.members.archive', $m['id']) }}" data-no-modal class="inline-flex mr-3" onsubmit="return confirm('Arsipkan anggota ini? Data dan penugasan tetap aman.');">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="inline-flex items-center text-amber-600 cursor-pointer" aria-label="Archive anggota">
+                                            <x-heroicon-o-archive-box class="w-4 h-4" />
+                                        </button>
+                                    </form>
+                                @else
+                                    <form method="POST" action="{{ route('team.members.restore', $m['id']) }}" data-no-modal class="inline-flex mr-3">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="inline-flex items-center text-emerald-600 cursor-pointer" aria-label="Restore anggota">
+                                            <x-heroicon-o-arrow-path class="w-4 h-4" />
+                                        </button>
+                                    </form>
+                                @endif
                                 <x-heroicon-o-chevron-right class="w-4 h-4 text-slate-400 inline-block" />
                             </td>
                         </tr>
@@ -521,6 +622,12 @@
                             <div class="flex-1 min-w-0 pt-1">
                                 <div class="flex items-center gap-2 flex-wrap mb-2">
                                     <span class="inline-flex items-center text-[10.5px] font-bold tracking-wide uppercase px-2 py-1 rounded-md {{ $rolePill[$m['role_key']] }}">{{ $m['role'] }}</span>
+                                    @if ($m['archived'])
+                                        <span class="inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-md px-2 py-1 bg-slate-100 text-slate-600">
+                                            <x-heroicon-o-archive-box class="w-3 h-3" />
+                                            Archived
+                                        </span>
+                                    @endif
                                     <span class="text-[11.5px] text-slate-500 inline-flex items-center gap-1">
                                         <x-heroicon-o-map-pin class="w-3 h-3" />
                                         {{ $m['location'] }}
@@ -566,7 +673,7 @@
                                         <div class="flex items-center gap-3">
                                             <x-heroicon-o-envelope class="w-4 h-4 text-violet-600 flex-shrink-0" />
                                             @if (! empty($m['email']))
-                                                <a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ urlencode($m['email']) }}" target="_blank" rel="noopener" class="text-[13.5px] text-[#1E1B4B] truncate hover:text-violet-700 transition">{{ $m['email'] }}</a>
+                                                <a href="{{ $m['email_link'] }}" target="_blank" rel="noopener" class="text-[13.5px] text-[#1E1B4B] truncate hover:text-violet-700 transition">{{ $m['email'] }}</a>
                                             @else
                                                 <span class="text-[13.5px] text-slate-400 italic" title="Email anggota tidak tersedia">Email belum tersedia</span>
                                             @endif
@@ -574,7 +681,7 @@
                                         <div class="flex items-center gap-3">
                                             <x-heroicon-o-phone class="w-4 h-4 text-violet-600 flex-shrink-0" />
                                             @if (! empty($m['phone']))
-                                                <a href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $m['phone']) }}" target="_blank" rel="noopener" class="text-[13.5px] text-[#1E1B4B] hover:text-emerald-600 transition">{{ $m['phone'] }}</a>
+                                                <a href="{{ $m['wa_link'] }}" target="_blank" rel="noopener" class="text-[13.5px] text-[#1E1B4B] hover:text-emerald-600 transition">{{ $m['phone'] }}</a>
                                             @else
                                                 <span class="text-[13.5px] text-slate-400 italic" title="Nomor WhatsApp anggota tidak tersedia">Nomor belum tersedia</span>
                                             @endif
@@ -720,8 +827,12 @@
                             Aktivitas terakhir: <span class="font-semibold text-[#1E1B4B]">{{ $m['last_active'] }}</span>
                         </div>
                         <div class="flex items-center gap-2">
+                            <button type="button" data-edit-member data-member-id="{{ $m['id'] }}" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">
+                                <x-heroicon-o-pencil-square class="w-4 h-4" />
+                                Edit
+                            </button>
                             @if (! empty($m['phone']))
-                                <a href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $m['phone']) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 transition cursor-pointer">
+                                <a href="{{ $m['wa_link'] }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 transition cursor-pointer">
                                     <x-heroicon-o-chat-bubble-left-right class="w-4 h-4" />
                                     Kirim Pesan
                                 </a>
@@ -735,6 +846,25 @@
                                 <x-heroicon-o-user class="w-4 h-4" />
                                 Atur Penugasan
                             </button>
+                            @if (! $m['archived'])
+                                <form method="POST" action="{{ route('team.members.archive', $m['id']) }}" onsubmit="return confirm('Arsipkan anggota ini? Data dan penugasan tetap aman.');">
+                                    @csrf
+                                    @method('PATCH')
+                                    <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-amber-100 text-amber-600 hover:bg-amber-50 text-[13px] font-semibold transition cursor-pointer">
+                                        <x-heroicon-o-archive-box class="w-4 h-4" />
+                                        Archive
+                                    </button>
+                                </form>
+                            @else
+                                <form method="POST" action="{{ route('team.members.restore', $m['id']) }}">
+                                    @csrf
+                                    @method('PATCH')
+                                    <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-emerald-100 text-emerald-600 hover:bg-emerald-50 text-[13px] font-semibold transition cursor-pointer">
+                                        <x-heroicon-o-arrow-path class="w-4 h-4" />
+                                        Restore
+                                    </button>
+                                </form>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -970,20 +1100,10 @@
     </script>
 
     {{-- ===== Atur Penugasan Modal (shared across seeded + dynamic members) ===== --}}
-    @php
-        $projectOptions = collect($members)
-            ->pluck('allocations')
-            ->flatten(1)
-            ->pluck('name')
-            ->filter()
-            ->unique()
-            ->sort()
-            ->values()
-            ->all();
-    @endphp
     <div data-assign-modal class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="assign-modal-title">
         <div data-assign-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
-        <div data-assign-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-violet-100">
+        <form method="POST" action="#" data-assign-panel data-assign-form class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-violet-100">
+            @csrf
             <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between gap-3">
                 <div class="min-w-0">
                     <h3 id="assign-modal-title" class="text-[16px] font-bold text-[#1E1B4B] leading-tight">Atur Penugasan</h3>
@@ -999,7 +1119,7 @@
                     <div data-assign-current class="space-y-2"></div>
                 </section>
                 <section>
-                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Penugasan Tersimpan (Demo Lokal)</h4>
+                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Penugasan Tersimpan</h4>
                     <div data-assign-saved class="space-y-2"></div>
                 </section>
                 <section class="rounded-2xl border border-dashed border-violet-200 bg-violet-50/30 p-4">
@@ -1007,34 +1127,56 @@
                     <div class="space-y-3">
                         <div>
                             <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Proyek</label>
-                            <select data-assign-project class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            <select name="project_id" data-assign-project class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
                                 <option value="">— Pilih proyek —</option>
-                                @foreach ($projectOptions as $pn)
-                                    <option value="{{ $pn }}">{{ $pn }}</option>
+                                @foreach ($projects as $project)
+                                    <option value="{{ $project->id }}">{{ $project->name }}</option>
                                 @endforeach
                             </select>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Peran</label>
-                                <input data-assign-role type="text" placeholder="mis. UI Lead" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                <input name="title" data-assign-title type="text" placeholder="mis. Review flow onboarding" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
                             </div>
                             <div>
-                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Load %</label>
-                                <input data-assign-load type="number" min="0" max="100" step="5" placeholder="20" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Status</label>
+                                <select name="status" data-assign-status class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    <option value="planned">Planned</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="done">Done</option>
+                                </select>
                             </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tipe</label>
+                                <select name="type" data-assign-type class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    <option value="task">Task</option>
+                                    <option value="review">Review</option>
+                                    <option value="support">Support</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Due Date</label>
+                                <input name="due_date" data-assign-due type="date" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Catatan</label>
+                            <textarea name="notes" data-assign-notes rows="3" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Catatan singkat untuk konteks penugasan"></textarea>
                         </div>
                     </div>
                 </section>
             </div>
             <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2 flex-shrink-0">
                 <button type="button" data-assign-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Batal</button>
-                <button type="button" data-assign-save class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                <button type="submit" class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                     <x-heroicon-o-bookmark-square class="w-4 h-4" />
                     Simpan
                 </button>
             </div>
-        </div>
+        </form>
     </div>
 
     <script>
@@ -1044,24 +1186,21 @@
                 if (! modal) return;
                 const overlay  = modal.querySelector('[data-assign-overlay]');
                 const panel    = modal.querySelector('[data-assign-panel]');
+                const form     = modal.querySelector('[data-assign-form]');
                 const nameEl   = modal.querySelector('[data-assign-member-name]');
                 const curEl    = modal.querySelector('[data-assign-current]');
                 const savedEl  = modal.querySelector('[data-assign-saved]');
                 const projSel  = modal.querySelector('[data-assign-project]');
-                const roleInp  = modal.querySelector('[data-assign-role]');
-                const loadInp  = modal.querySelector('[data-assign-load]');
-                const saveBtn  = modal.querySelector('[data-assign-save]');
+                const titleInp = modal.querySelector('[data-assign-title]');
+                const typeSel = modal.querySelector('[data-assign-type]');
+                const statusSel = modal.querySelector('[data-assign-status]');
+                const dueInp = modal.querySelector('[data-assign-due]');
+                const notesInp = modal.querySelector('[data-assign-notes]');
                 let currentId  = null;
 
                 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-                const lsKey = (id) => 'avt-team-assignment:' + id;
-                const loadSaved = (id) => {
-                    try { return JSON.parse(localStorage.getItem(lsKey(id)) || '[]'); }
-                    catch (e) { return []; }
-                };
-                const persistSaved = (id, list) => {
-                    try { localStorage.setItem(lsKey(id), JSON.stringify(list)); } catch (e) {}
-                };
+                const loadSaved = () => [];
+                const persistSaved = () => {};
 
                 const renderCurrent = (allocs) => {
                     if (! curEl) return;
@@ -1105,12 +1244,16 @@
                     currentId = id;
                     const member = (window.__teamCsvMap && window.__teamCsvMap[id]) || null;
                     const name   = (member && member.name) || fallbackName || 'Anggota';
+                    if (form && member?.assignment_url) form.action = member.assignment_url;
                     if (nameEl) nameEl.textContent = name;
                     renderCurrent(member ? (member.allocations || []) : []);
                     renderSaved(id);
                     if (projSel) projSel.value = '';
-                    if (roleInp) roleInp.value = '';
-                    if (loadInp) loadInp.value = '';
+                    if (titleInp) titleInp.value = '';
+                    if (typeSel) typeSel.value = 'task';
+                    if (statusSel) statusSel.value = 'planned';
+                    if (dueInp) dueInp.value = '';
+                    if (notesInp) notesInp.value = '';
                     modal.classList.remove('hidden');
                     modal.classList.add('flex');
                     document.body.style.overflow = 'hidden';
@@ -1149,22 +1292,6 @@
                             }
                             return;
                         }
-                        if (e.target.closest('[data-assign-save]')) {
-                            if (currentId === null) return;
-                            const project = (projSel?.value || '').trim();
-                            const role    = (roleInp?.value || '').trim();
-                            const loadStr = (loadInp?.value || '').trim();
-                            if (! project) { window.toast && window.toast('Pilih proyek dulu.'); return; }
-                            const load = Math.max(0, Math.min(100, parseInt(loadStr || '0', 10) || 0));
-                            const list = loadSaved(currentId);
-                            list.unshift({ project, role, load, at: Date.now() });
-                            persistSaved(currentId, list);
-                            renderSaved(currentId);
-                            if (projSel) projSel.value = '';
-                            if (roleInp) roleInp.value = '';
-                            if (loadInp) loadInp.value = '';
-                            if (window.toast) window.toast('Penugasan ke "' + project + '" disimpan (demo lokal).');
-                        }
                     });
                 }
                 if (overlay) overlay.addEventListener('click', closeAssign);
@@ -1181,10 +1308,76 @@
         })();
     </script>
 
+    {{-- ===== Edit Team Member Modal ===== --}}
+    <div data-edit-modal="team" data-edit-has-errors="{{ old('_form') === 'edit' && $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-[70] items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+        <div data-edit-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+        <form method="POST" action="{{ $editAction }}" data-edit-panel class="relative z-10 bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
+            @csrf
+            @method('PUT')
+            <input type="hidden" name="_form" value="edit">
+            <input type="hidden" name="_member_id" value="{{ old('_member_id') }}">
+            <input type="hidden" name="_archive_scope" value="{{ old('_archive_scope', $archiveScope) }}">
+            <input type="hidden" name="avatar_color" value="{{ old('_form') === 'edit' ? old('avatar_color') : '' }}">
+            <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
+                <h3 class="text-[16px] font-bold text-[#1E1B4B]">Edit Anggota</h3>
+                <button type="button" data-edit-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
+                    <x-heroicon-o-x-mark class="w-5 h-5" />
+                </button>
+            </div>
+            <div class="px-6 py-5 space-y-3 max-h-[72vh] overflow-y-auto">
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Nama Lengkap</label>
+                    <input name="name" value="{{ old('_form') === 'edit' ? old('name') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                    @if (old('_form') === 'edit') @error('name') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Email</label>
+                    <input name="email" value="{{ old('_form') === 'edit' ? old('email') : '' }}" type="email" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                    @if (old('_form') === 'edit') @error('email') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Role</label>
+                        <select name="role" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            <option value="sa_qa">SA/QA</option>
+                            <option value="fullstack_dev">Fullstack Dev</option>
+                            <option value="ui_ux">UI/UX Designer</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Level</label>
+                        <select name="level" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            <option>Junior</option>
+                            <option>Mid</option>
+                            <option>Senior</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">WhatsApp</label>
+                    <input name="phone" value="{{ old('_form') === 'edit' ? old('phone') : '' }}" type="tel" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Skills</label>
+                    <input name="skills" value="{{ old('_form') === 'edit' ? old('skills') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                </div>
+            </div>
+            <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2">
+                <button type="button" data-edit-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Batal</button>
+                <button type="submit" class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                    <x-heroicon-o-bookmark-square class="w-4 h-4" />
+                    Simpan Perubahan
+                </button>
+            </div>
+        </form>
+    </div>
+
     {{-- ===== Invite Team Member Modal ===== --}}
-    <div data-create-modal="team" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+    <div data-create-modal="team" data-create-has-errors="{{ old('_form') === 'create' && $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-[70] items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
         <div data-create-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
-        <div data-create-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
+        <form method="POST" action="{{ route('team.members.store') }}" data-create-panel class="relative z-10 bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
+            @csrf
+            <input type="hidden" name="_form" value="create">
             <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
                 <h3 class="text-[16px] font-bold text-[#1E1B4B]">Undang Anggota</h3>
                 <button type="button" data-create-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
@@ -1194,220 +1387,198 @@
             <div class="px-6 py-5 space-y-3">
                 <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Nama Lengkap</label>
-                    <input data-ct-name class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Nama anggota..." />
+                    <input name="name" value="{{ old('_form') === 'create' ? old('name') : '' }}" data-ct-name class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Nama anggota..." />
+                    @if (old('_form') === 'create') @error('name') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Email</label>
-                    <input data-ct-email type="email" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="nama@avatech.test" />
+                    <input name="email" value="{{ old('_form') === 'create' ? old('email') : '' }}" data-ct-email type="email" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="nama@avatech.test" />
+                    @if (old('_form') === 'create') @error('email') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Role</label>
-                        <select data-ct-role class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
-                            <option value="sa-qa">SA/QA</option>
-                            <option value="fullstack" selected>Fullstack Dev</option>
-                            <option value="uiux">UI/UX Designer</option>
+                        <select name="role" data-ct-role class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            <option value="sa_qa" @selected(old('role') === 'sa_qa')>SA/QA</option>
+                            <option value="fullstack_dev" @selected(old('role', 'fullstack_dev') === 'fullstack_dev')>Fullstack Dev</option>
+                            <option value="ui_ux" @selected(old('role') === 'ui_ux')>UI/UX Designer</option>
                         </select>
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Level</label>
-                        <select data-ct-level class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
-                            <option>Junior</option>
-                            <option selected>Mid</option>
-                            <option>Senior</option>
+                        <select name="level" data-ct-level class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            <option @selected(old('level') === 'Junior')>Junior</option>
+                            <option @selected(old('level', 'Mid') === 'Mid')>Mid</option>
+                            <option @selected(old('level') === 'Senior')>Senior</option>
                         </select>
                     </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">WhatsApp</label>
+                    <input name="phone" value="{{ old('_form') === 'create' ? old('phone') : '' }}" type="tel" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="+62 812 3456 7890" />
+                    @if (old('_form') === 'create') @error('phone') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Skills</label>
+                    <input name="skills" value="{{ old('_form') === 'create' ? old('skills') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Laravel, QA, Figma" />
+                    @if (old('_form') === 'create') @error('skills') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror @endif
                 </div>
             </div>
             <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2">
                 <button type="button" data-create-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Batal</button>
-                <button type="button" data-create-save class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                <button type="submit" class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                     <x-heroicon-o-paper-airplane class="w-4 h-4" />
                     Kirim Undangan
                 </button>
             </div>
-        </div>
+        </form>
     </div>
 
     <script>
         (function () {
             const wire = () => {
+                const findMemberSource = (id, fallback) => {
+                    if (id) {
+                        const match = Array.from(document.querySelectorAll('[data-member-id][data-update-url]'))
+                            .find(el => el.dataset.memberId === String(id));
+                        if (match) return match;
+                    }
+
+                    return fallback?.closest?.('[data-member-id][data-update-url]') || null;
+                };
+
+                const openCreateModal = () => {
+                    const modal = document.querySelector('[data-create-modal="team"]');
+                    if (! modal) return;
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                    modal.querySelector('[data-ct-name]')?.focus();
+                };
+
+                const openEditModal = (source) => {
+                    const editModal = document.querySelector('[data-edit-modal="team"]');
+                    const editForm = editModal?.querySelector('[data-edit-panel]');
+                    if (! editModal || ! editForm || ! source) return;
+
+                    editForm.action = source.dataset.updateUrl || editForm.action;
+                    editForm.querySelector('[name="_member_id"]').value = source.dataset.memberId || '';
+                    editForm.querySelector('[name="_archive_scope"]').value = @json($archiveScope);
+                    editForm.querySelector('[name="name"]').value = source.dataset.name || '';
+                    editForm.querySelector('[name="email"]').value = source.dataset.email || '';
+                    editForm.querySelector('[name="role"]').value = source.dataset.roleValue || 'fullstack_dev';
+                    editForm.querySelector('[name="phone"]').value = source.dataset.phone || '';
+                    editForm.querySelector('[name="level"]').value = source.dataset.level || 'Mid';
+                    editForm.querySelector('[name="skills"]').value = source.dataset.skills || '';
+                    editForm.querySelector('[name="avatar_color"]').value = source.dataset.avatarColor || '';
+
+                    editModal.classList.remove('hidden');
+                    editModal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                    editForm.querySelector('input[name="name"]')?.focus();
+                };
+
+                document.addEventListener('click', (e) => {
+                    const createTrigger = e.target.closest('[data-create-trigger="team"]');
+                    if (createTrigger) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openCreateModal();
+                        return;
+                    }
+
+                    const editTrigger = e.target.closest('[data-edit-member]');
+                    if (editTrigger) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const source = findMemberSource(editTrigger.dataset.memberId, editTrigger);
+                        openEditModal(source);
+                    }
+                }, true);
+
+                const editModal = document.querySelector('[data-edit-modal="team"]');
+                const editForm = editModal?.querySelector('[data-edit-panel]');
+                const editOverlay = editModal?.querySelector('[data-edit-overlay]');
+                const hasVisibleModal = () => Array.from(document.querySelectorAll('[data-edit-modal="team"], [data-create-modal="team"], [data-tm-modal], [data-assign-modal]'))
+                    .some(item => ! item.classList.contains('hidden'));
+                const syncScrollLock = () => {
+                    document.body.style.overflow = hasVisibleModal() ? 'hidden' : '';
+                };
+                const openEdit = (source) => {
+                    if (! editModal || ! editForm || ! source) return;
+                    editForm.action = source.dataset.updateUrl || editForm.action;
+                    editForm.querySelector('[name="_member_id"]').value = source.dataset.memberId || '';
+                    editForm.querySelector('[name="_archive_scope"]').value = @json($archiveScope);
+                    editForm.querySelector('[name="name"]').value = source.dataset.name || '';
+                    editForm.querySelector('[name="email"]').value = source.dataset.email || '';
+                    editForm.querySelector('[name="role"]').value = source.dataset.roleValue || 'fullstack_dev';
+                    editForm.querySelector('[name="phone"]').value = source.dataset.phone || '';
+                    editForm.querySelector('[name="level"]').value = source.dataset.level || 'Mid';
+                    editForm.querySelector('[name="skills"]').value = source.dataset.skills || '';
+                    editForm.querySelector('[name="avatar_color"]').value = source.dataset.avatarColor || '';
+                    editModal.classList.remove('hidden');
+                    editModal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                    editForm.querySelector('input[name="name"]')?.focus();
+                };
+                const closeEdit = () => {
+                    if (! editModal) return;
+                    editModal.classList.add('hidden');
+                    editModal.classList.remove('flex');
+                    syncScrollLock();
+                };
+                document.querySelectorAll('[data-edit-member]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const id = btn.dataset.memberId || btn.closest('[data-member-id]')?.dataset.memberId;
+                        const source = id
+                            ? Array.from(document.querySelectorAll('[data-view-panel="grid"] [data-member-id]')).find(el => el.dataset.memberId === String(id))
+                            : btn.closest('[data-member-id]');
+                        openEdit(source);
+                    });
+                });
+                editOverlay?.addEventListener('click', closeEdit);
+                editModal?.querySelectorAll('[data-edit-close]').forEach(btn => btn.addEventListener('click', closeEdit));
+                editForm?.addEventListener('click', (e) => e.stopPropagation());
+                if (editModal?.dataset.editHasErrors === '1') {
+                    editModal.classList.remove('hidden');
+                    editModal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                }
+
                 const modal   = document.querySelector('[data-create-modal="team"]');
                 const trigger = document.querySelector('[data-create-trigger="team"]');
                 if (! modal || ! trigger) return;
                 const overlay = modal.querySelector('[data-create-overlay]');
                 const panel   = modal.querySelector('[data-create-panel]');
-                const grid    = document.querySelector('[data-view-panel="grid"]');
-                const LS_KEY  = 'avt-team-added';
-                const roleLabel = { 'sa-qa':'SA/QA', fullstack:'Fullstack Dev', uiux:'UI/UX Designer' };
-                const rolePill  = { 'sa-qa':'bg-violet-50 text-violet-700', fullstack:'bg-cyan-50 text-cyan-700', uiux:'bg-pink-50 text-pink-700' };
-                const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-                const gmailUrl = (email) => 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(email || '');
-
-                const tmModalPanel = document.querySelector('[data-tm-modal] [data-tm-panel]');
-
-                const injectDynamicMemberContent = (m) => {
-                    if (! tmModalPanel) return;
-                    if (tmModalPanel.querySelector('[data-member-content="' + m.id + '"]')) return;
-                    const initials = (m.name || '').split(/\s+/).slice(0, 2).map(w => (w[0] || '').toUpperCase()).join('') || '?';
-                    const rLabel = roleLabel[m.role_key] || m.role_key || '—';
-                    const rPill  = rolePill[m.role_key] || 'bg-slate-100 text-slate-600';
-                    const emailHref = m.email ? gmailUrl(m.email) : '';
-                    const phoneDigits = (m.phone || '').replace(/[^0-9]/g, '');
-                    const waHref = phoneDigits ? ('https://wa.me/' + phoneDigits) : '';
-
-                    /* Slim builders to avoid duplicated innerHTML */
-                    const tabBtn = (id, label, active) =>
-                        '<button type="button" data-tm-tab="' + id + '" class="tm-tab h-10 px-5 rounded-xl text-[13px] font-semibold transition cursor-pointer' + (active ? ' is-active' : ' text-slate-500 hover:bg-white/70 hover:text-violet-700') + '">' + label + '</button>';
-                    const emptyState = (text) =>
-                        '<div class="text-[13px] text-slate-400 text-center py-10 rounded-2xl border border-violet-100 border-dashed">' + text + '</div>';
-                    const contactRow = (svgPath, valueText, href, missingMsg, missingLabel) => {
-                        const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4 text-violet-600 flex-shrink-0">' + svgPath + '</svg>';
-                        const body = href
-                            ? '<a href="' + esc(href) + '" target="_blank" rel="noopener" class="text-[13.5px] text-[#1E1B4B] truncate hover:text-violet-700 transition">' + esc(valueText) + '</a>'
-                            : '<span class="text-[13.5px] text-slate-400 italic" title="' + esc(missingMsg) + '">' + esc(missingLabel) + '</span>';
-                        return '<div class="flex items-center gap-3">' + icon + body + '</div>';
-                    };
-                    const SVG_MAIL = '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>';
-                    const SVG_PHONE = '<path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.37 1.9.72 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.35 1.85.59 2.81.72A2 2 0 0122 16.92z"/>';
-                    const SVG_BRIEF = '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/>';
-
-                    const kirimPesanBtn = waHref
-                        ? '<a href="' + esc(waHref) + '" target="_blank" rel="noopener" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 transition cursor-pointer">Kirim Pesan</a>'
-                        : '<button type="button" disabled aria-disabled="true" title="Nomor WhatsApp anggota tidak tersedia" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-100 bg-slate-50 text-[13px] font-semibold text-slate-400 cursor-not-allowed">Kirim Pesan</button>';
-
-                    const block = document.createElement('div');
-                    block.setAttribute('data-member-content', m.id);
-                    block.className = 'hidden flex-col flex-1 min-h-0';
-                    block.innerHTML =
-                        '<div class="relative px-7 sm:px-8 pt-8 pb-6 bg-gradient-to-br from-violet-100 via-fuchsia-50 to-white">'
-                        + '  <button type="button" data-modal-close aria-label="Tutup" class="absolute top-5 right-5 w-9 h-9 rounded-xl hover:bg-white/70 text-slate-500 hover:text-violet-700 flex items-center justify-center transition cursor-pointer">'
-                        + '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-5 h-5"><path d="M6 18L18 6M6 6l12 12"/></svg>'
-                        + '  </button>'
-                        + '  <div class="flex items-start gap-5">'
-                        + '    <div class="w-20 h-20 rounded-2xl flex items-center justify-center text-white font-bold text-[24px]" style="background:#7C3AED">' + esc(initials) + '</div>'
-                        + '    <div class="flex-1 min-w-0 pt-1">'
-                        + '      <div class="flex items-center gap-2 flex-wrap mb-2">'
-                        + '        <span class="inline-flex items-center text-[10.5px] font-bold tracking-wide uppercase px-2 py-1 rounded-md ' + rPill + '">' + esc(rLabel) + '</span>'
-                        + '        <span class="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-fuchsia-100 text-fuchsia-700">DEMO</span>'
-                        + '      </div>'
-                        + '      <h2 class="text-[26px] font-bold text-[#1E1B4B] leading-tight">' + esc(m.name) + '</h2>'
-                        + '      <div class="text-[13px] text-slate-500 mt-1 truncate">' + esc(m.email || '—') + '</div>'
-                        + '    </div>'
-                        + '  </div>'
-                        + '  <div class="mt-6 flex items-center gap-2 flex-wrap">'
-                        +    tabBtn('profile', 'Profil & Skill', true)
-                        +    tabBtn('load',    'Beban Kerja',    false)
-                        +    tabBtn('activity','Aktivitas',      false)
-                        +    tabBtn('access',  'Role & Akses',   false)
-                        + '  </div>'
-                        + '</div>'
-                        + '<div class="flex-1 overflow-y-auto px-7 sm:px-8 py-6">'
-                        + '  <div data-tm-panel="profile">'
-                        + '    <div class="rounded-2xl border border-violet-100 p-5 mb-5">'
-                        + '      <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-3">Info Kontak</h4>'
-                        + '      <div class="space-y-3">'
-                        +          contactRow(SVG_MAIL,  m.email || '—', emailHref, 'Email anggota tidak tersedia', 'Email belum tersedia')
-                        +          contactRow(SVG_PHONE, m.phone || '—', waHref,    'Nomor WhatsApp anggota tidak tersedia', 'Nomor belum tersedia')
-                        + '        <div class="flex items-center gap-3">'
-                        + '          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4 text-violet-600 flex-shrink-0">' + SVG_BRIEF + '</svg>'
-                        + '          <span class="text-[13.5px] text-[#1E1B4B]">' + esc(m.level || '—') + '</span>'
-                        + '        </div>'
-                        + '      </div>'
-                        + '    </div>'
-                        + '    <div class="rounded-2xl border border-violet-100 p-5">'
-                        + '      <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-3">Performa &amp; Bio</h4>'
-                        + '      <p class="text-[13.5px] text-slate-400 italic">Skor performa, skill, dan bio akan tercatat setelah anggota menerima undangan dan mengerjakan task.</p>'
-                        + '    </div>'
-                        + '  </div>'
-                        + '  <div data-tm-panel="load" class="hidden">'     + emptyState('Belum ada beban kerja tercatat untuk anggota baru.') + '</div>'
-                        + '  <div data-tm-panel="activity" class="hidden">' + emptyState('Belum ada aktivitas tercatat.') + '</div>'
-                        + '  <div data-tm-panel="access" class="hidden">'   + emptyState('Permissions akan diatur setelah anggota menerima undangan.') + '</div>'
-                        + '</div>'
-                        + '<div class="px-7 sm:px-8 py-5 border-t border-violet-100 bg-violet-50/30 flex items-center justify-between gap-3 flex-wrap">'
-                        + '  <div class="text-[12.5px] text-slate-500 inline-flex items-center gap-2">'
-                        + '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4 text-violet-500"><circle cx="12" cy="12" r="9"/><polyline points="12,7 12,12 15,15"/></svg>'
-                        + '    Aktivitas terakhir: <span class="font-semibold text-[#1E1B4B]">baru saja</span>'
-                        + '  </div>'
-                        + '  <div class="flex items-center gap-2">'
-                        +      kirimPesanBtn
-                        + '    <button type="button" data-assign-trigger data-assign-id="' + esc(m.id) + '" data-assign-name="' + esc(m.name) + '" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">Atur Penugasan</button>'
-                        + '  </div>'
-                        + '</div>';
-                    tmModalPanel.appendChild(block);
-                };
-
-                const renderCard = (m) => {
-                    if (! grid) return;
-                    const a = document.createElement('article');
-                    a.setAttribute('data-role', m.role_key);
-                    a.setAttribute('data-load', '0');
-                    a.setAttribute('data-search-item', '');
-                    a.setAttribute('data-sort-load', '0');
-                    a.setAttribute('data-sort-name', m.name);
-                    a.setAttribute('data-sort-projects', '0');
-                    a.setAttribute('data-member-id', m.id);
-                    a.setAttribute('data-modal-trigger', '');
-                    a.className = 'group bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:shadow-[0_8px_24px_rgba(124,58,237,0.12)] transition p-6 flex flex-col relative overflow-hidden cursor-pointer';
-                    a.title = m.name + ' — anggota baru (demo)';
-                    const initials = (m.name || '').split(/\s+/).slice(0, 2).map(w => (w[0] || '').toUpperCase()).join('') || '?';
-                    a.innerHTML = ''
-                        + '<span class="absolute top-0 left-6 right-6 h-[3px] rounded-b-full bg-emerald-500"></span>'
-                        + '<div class="flex items-start gap-4 mb-5">'
-                        + '  <div class="relative flex-shrink-0">'
-                        + '    <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-[16px]" style="background:#7C3AED">' + esc(initials) + '</div>'
-                        + '  </div>'
-                        + '  <div class="flex-1 min-w-0">'
-                        + '    <h3 class="text-[16px] font-bold text-[#1E1B4B] leading-tight group-hover:text-violet-700 transition truncate">' + esc(m.name) + '</h3>'
-                        + '    <div class="text-[12.5px] text-slate-500 mt-0.5 truncate">' + esc(m.email) + '</div>'
-                        + '    <span class="inline-flex items-center text-[10.5px] font-bold tracking-wide uppercase px-2 py-1 rounded-md mt-2 ' + (rolePill[m.role_key] || 'bg-slate-100 text-slate-600') + '">' + (roleLabel[m.role_key] || m.role_key) + '</span>'
-                        + '  </div>'
-                        + '</div>'
-                        + '<div class="mb-4 text-[12px] text-slate-500 italic">Undangan terkirim (demo) — beban kerja akan terlihat setelah anggota menerima.</div>'
-                        + '<div class="mt-auto pt-4 border-t border-violet-50 grid grid-cols-3 gap-3 text-center">'
-                        + '  <div><div class="text-[18px] font-bold text-[#1E1B4B] tabular-nums">0</div><div class="text-[10.5px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Proyek</div></div>'
-                        + '  <div class="border-x border-violet-50"><div class="text-[18px] font-bold text-[#1E1B4B] tabular-nums">0</div><div class="text-[10.5px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Task</div></div>'
-                        + '  <div><div class="text-[18px] font-bold text-violet-500 tabular-nums">—</div><div class="text-[10.5px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Skor</div></div>'
-                        + '</div>';
-                    grid.insertBefore(a, grid.firstChild);
-                    injectDynamicMemberContent(m);
-                };
-
-                try {
-                    const saved = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
-                    saved.forEach(renderCard);
-                } catch (e) {}
-
                 const open  = () => { modal.classList.remove('hidden'); modal.classList.add('flex'); document.body.style.overflow = 'hidden'; modal.querySelector('[data-ct-name]')?.focus(); };
-                const close = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); document.body.style.overflow = ''; };
+                const close = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); syncScrollLock(); };
                 trigger.addEventListener('click', open);
                 panel?.addEventListener('click', (e) => e.stopPropagation());
                 overlay?.addEventListener('click', close);
                 modal.querySelectorAll('[data-create-close]').forEach(b => b.addEventListener('click', close));
-                document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ! modal.classList.contains('hidden')) close(); });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Escape') return;
 
-                modal.querySelector('[data-create-save]')?.addEventListener('click', () => {
-                    const m = {
-                        id: Date.now(),
-                        name:  (modal.querySelector('[data-ct-name]').value || '').trim(),
-                        email: (modal.querySelector('[data-ct-email]').value || '').trim(),
-                        role_key: modal.querySelector('[data-ct-role]').value,
-                        level:    modal.querySelector('[data-ct-level]').value,
-                    };
-                    if (! m.name || ! m.email) {
-                        window.toast && window.toast('Lengkapi nama dan email.');
+                    if (editModal && ! editModal.classList.contains('hidden')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeEdit();
                         return;
                     }
-                    renderCard(m);
-                    try {
-                        const cur = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
-                        cur.push(m);
-                        localStorage.setItem(LS_KEY, JSON.stringify(cur));
-                    } catch (e) {}
-                    modal.querySelectorAll('input').forEach(i => i.value = '');
-                    close();
-                    window.toast && window.toast('Undangan terkirim ke ' + m.email + ' (demo).');
-                });
+
+                    if (! modal.classList.contains('hidden')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        close();
+                    }
+                }, true);
+                if (modal.dataset.createHasErrors === '1') open();
+                @if (session('status'))
+                    window.toast && window.toast(@json(session('status')));
+                @endif
+
             };
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', wire);
