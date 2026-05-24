@@ -51,3 +51,25 @@ Important:
 - Project Detail Kanban Filter Anggota is real.
 - Team Management modal actions polished.
 - Client decorative card chevron cleaned.
+
+## Latest checkpoint
+- Executive Monitor is now DB-backed.
+- Overview metrics use projects, clients, team assignments, and audit logs.
+- Recent Activity comes from audit_logs.
+- Team Load calculates from team_assignments.estimated_hours.
+- CEO/PM is excluded from operational load.
+- Executive activity links route to Audit Trail with the correct chip filter.
+- Audit and Executive category colors are now consistent.
+
+## Completed roadmap
+- Settings DB-backed
+- Project Master CRUD
+- Client Directory CRUD
+- Team Management DB-backed + Assignment
+- Audit Trail DB-backed
+- Executive Monitor DB-backed
+
+## Remaining roadmap
+- Project Detail WBS/Kanban/MoM/QC DB-backed
+- Operational role implementation
+- Gemini AI integration

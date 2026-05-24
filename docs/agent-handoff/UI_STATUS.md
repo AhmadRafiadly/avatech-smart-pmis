@@ -44,3 +44,22 @@ Completed:
 - Project Detail Kanban Filter Anggota works with operational members.
 - Team Management modal actions are polished.
 - Client decorative chevron is no longer a dead button.
+
+## Latest UI checkpoint
+- Executive Monitor now uses real DB metrics.
+- Overview cards are no longer static demo metrics.
+- Recent Activity is sourced from audit_logs.
+- Team Load is calculated from team_assignments.estimated_hours.
+- Executive Monitor activity cards link to Audit Trail filters.
+- WBS Coverage label no longer implies AI implementation.
+- Audit/Executive category colors are consistent:
+  - Project: purple
+  - Client: green
+  - Team/Penugasan: fuchsia-pink
+  - Settings: orange
+  - Login: slate
+
+## Remaining UI/backend work
+- Project Detail WBS/Kanban/MoM/QC DB-backed
+- Operational role pages
+- Gemini AI integration
