@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -35,14 +36,31 @@ class AuditController extends Controller
         $logs = $this->buildQuery($request)->limit(500)->get();
 
         $events = $logs->map(fn (AuditLog $log) => $this->mapEntry($log))->all();
-        $actorOptions = collect($events)->pluck('actor')->filter()->unique()->values()->all();
 
         return view('audit.index', [
             'title'        => 'Audit Trail',
             'events'       => $events,
-            'actorOptions' => $actorOptions,
+            'actorOptions' => $this->actorOptions(),
             'todayCount'   => $this->todayCount(),
         ]);
+    }
+
+    /**
+     * Dropdown options for the actor filter — sourced from the users table so
+     * the list stays in sync with Team Management even when a user has no
+     * audit activity yet. Mirrors Team Management's default scope by hiding
+     * archived users.
+     */
+    private function actorOptions(): array
+    {
+        return User::query()
+            ->whereNull('archived_at')
+            ->orderBy('name')
+            ->pluck('name')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function exportCsv(Request $request): StreamedResponse
@@ -64,7 +82,7 @@ class AuditController extends Controller
                     $created->format('H:i'),
                     $log->user?->name ?? 'Sistem',
                     $log->module,
-                    self::tagForLog($log->module, $log->action),
+                    self::tagForLog($log->module, $log->action, $log->auditable_type, $log->description),
                     $log->action,
                     trim(strip_tags((string) $log->description)),
                     $log->ip_address ?? '',
@@ -106,10 +124,23 @@ class AuditController extends Controller
         };
     }
 
-    public static function tagForLog(string $module, string $action): string
+    public static function tagForLog(string $module, string $action, ?string $auditableType = null, ?string $description = null): string
     {
         if (isset(self::STANDALONE_TAGS[$action])) {
             return self::STANDALONE_TAGS[$action];
+        }
+
+        // Backfill: older logs may have action='created' with auditable_type
+        // pointing at TeamAssignment (or description starting with "Menambah penugasan"),
+        // even though the action wasn't yet specialised as 'assignment_created'.
+        if ($action === 'created' && $module === 'Team Management') {
+            $isAssignmentByType = $auditableType !== null
+                && str_ends_with($auditableType, '\\TeamAssignment');
+            $isAssignmentByDesc = $description !== null
+                && stripos(trim(strip_tags($description)), 'Menambah penugasan') === 0;
+            if ($isAssignmentByType || $isAssignmentByDesc) {
+                return self::STANDALONE_TAGS['assignment_created'];
+            }
         }
 
         $actionSuffix = match ($action) {
@@ -183,7 +214,7 @@ class AuditController extends Controller
         }
 
         $actor = $log->user?->name ?? 'Sistem';
-        $tag = self::tagForLog($log->module, $log->action);
+        $tag = self::tagForLog($log->module, $log->action, $log->auditable_type, $log->description);
         $filter = self::categoryForModule($log->module, $log->action);
 
         return [

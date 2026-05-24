@@ -118,7 +118,7 @@
         <div class="ml-auto flex items-center gap-3 flex-wrap">
             <div class="relative">
                 <select data-audit-actor class="appearance-none h-10 pl-4 pr-9 rounded-xl border border-violet-100 bg-white text-[13px] text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                    <option value="all">Semua Anggota</option>
+                    <option value="all">Semua Pengguna</option>
                     @foreach ($actorOptions as $actorName)
                         <option value="{{ $actorName }}">{{ $actorName }}</option>
                     @endforeach

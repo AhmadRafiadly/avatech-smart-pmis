@@ -45,7 +45,7 @@
 
         foreach ($recentLogs as $log) {
             $filterKey = \App\Http\Controllers\AuditController::categoryForModule($log->module, $log->action);
-            $tag = \App\Http\Controllers\AuditController::tagForLog($log->module, $log->action);
+            $tag = \App\Http\Controllers\AuditController::tagForLog($log->module, $log->action, $log->auditable_type, $log->description);
             $actorName = $log->user?->name ?? 'Sistem';
             $parts = array_values(array_filter(preg_split('/\s+/', trim($actorName)) ?: []));
             if ($parts === []) {

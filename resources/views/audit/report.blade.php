@@ -76,7 +76,7 @@
         <div class="meta">
             <span><b>Dibuat:</b> {{ $generatedAt->translatedFormat('d F Y H:i') }}</span>
             <span><b>Modul:</b> {{ $filterLabels[$filters['chip']] ?? $filters['chip'] }}</span>
-            <span><b>Anggota:</b> {{ $filters['actor'] === 'all' ? 'Semua anggota' : $filters['actor'] }}</span>
+            <span><b>Pengguna:</b> {{ $filters['actor'] === 'all' ? 'Semua pengguna' : $filters['actor'] }}</span>
             <span><b>Rentang:</b> {{ $rangeLabels[$filters['range']] ?? $filters['range'] }}</span>
             <span><b>Total entri:</b> {{ $col->count() }}</span>
         </div>
@@ -98,7 +98,7 @@
                 <tr>
                     <th class="col-time">Waktu</th>
                     <th class="col-tag">Tag</th>
-                    <th class="col-actor">Anggota</th>
+                    <th class="col-actor">Pengguna</th>
                     <th>Deskripsi</th>
                 </tr>
             </thead>
