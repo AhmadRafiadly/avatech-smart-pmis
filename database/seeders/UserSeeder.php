@@ -10,7 +10,11 @@ class UserSeeder extends Seeder
 {
     /**
      * Seed Avatech team members with their MVP role assignment.
-     * Idempotent via updateOrCreate (by email) + syncRoles.
+     *
+     * Password handling: only set when the row is first created. Re-running
+     * the seeder will keep names/role/verification in sync without ever
+     * overwriting an existing user's password — so this is safe to run in
+     * any environment without trampling a real credential.
      */
     public function run(): void
     {
@@ -24,7 +28,7 @@ class UserSeeder extends Seeder
         ];
 
         foreach ($users as $data) {
-            $user = User::updateOrCreate(
+            $user = User::firstOrCreate(
                 ['email' => $data['email']],
                 [
                     'name'              => $data['name'],
@@ -32,6 +36,22 @@ class UserSeeder extends Seeder
                     'email_verified_at' => now(),
                 ],
             );
+
+            // Keep name + verification in sync without touching password.
+            if (! $user->wasRecentlyCreated) {
+                $dirty = false;
+                if ($user->name !== $data['name']) {
+                    $user->name = $data['name'];
+                    $dirty = true;
+                }
+                if ($user->email_verified_at === null) {
+                    $user->email_verified_at = now();
+                    $dirty = true;
+                }
+                if ($dirty) {
+                    $user->save();
+                }
+            }
 
             $user->syncRoles([$data['role']]);
         }

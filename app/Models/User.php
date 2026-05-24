@@ -8,9 +8,11 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Notifications\Notifiable;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Spatie\Permission\Traits\HasRoles;
 
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, HasRoles, Notifiable;
@@ -66,5 +68,20 @@ class User extends Authenticatable
     public function teamAssignments(): HasMany
     {
         return $this->hasMany(TeamAssignment::class);
+    }
+
+    public function canAccessPanel(Panel $panel): bool
+    {
+        /*
+         * Always allow the panel's logout endpoint so a non-admin user who
+         * accidentally hits /admin/logout still gets signed out cleanly
+         * instead of seeing a 403. Every other panel route stays gated
+         * to admin / super_admin / developer.
+         */
+        if (request()?->is('admin/logout')) {
+            return true;
+        }
+
+        return $this->hasAnyRole(['admin', 'super_admin', 'developer']);
     }
 }

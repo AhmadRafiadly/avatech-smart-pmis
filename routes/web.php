@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuditController;
+use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\ExecutiveController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ProjectController;
@@ -12,9 +13,30 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::redirect('/login', '/admin/login')->name('login');
+/*
+ * Normal Smart-PMIS login (CEO/PM + operational roles). Admin-tier users
+ * (admin / super_admin / developer) still use /admin/login (Filament panel).
+ * The route name 'login' is preserved so Laravel's auth middleware and any
+ * `route('login')` references keep working.
+ */
+Route::get('/login', [LoginController::class, 'show'])->name('login');
+Route::post('/login', [LoginController::class, 'store'])->name('login.store');
 
 Route::middleware('auth')->group(function () {
+    /*
+     * Normal Smart-PMIS logout — used by CEO/PM and operational users
+     * whose roles are blocked from /admin (Filament panel). Keep this
+     * separate from filament.admin.auth.logout so non-admin sessions
+     * never hit the panel's role gate and get 403.
+     */
+    Route::post('/logout', function (\Illuminate\Http\Request $request) {
+        auth()->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect('/login');
+    })->name('logout');
+
     Route::get('/executive', [ExecutiveController::class, 'index'])->name('executive.index');
     Route::view('/dashboard', 'placeholders.coming-soon', ['title' => 'Dashboard'])->name('dashboard.index');
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');

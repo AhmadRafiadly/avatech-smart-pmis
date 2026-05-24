@@ -145,6 +145,7 @@
     $searchIndex = [];
 
     /* Skip CEO/PM — they have no team-page modal block (team list shows delivery only). */
+    if (false) {
     foreach (\App\Models\User::with('roles')->get() as $u) {
         $roleName = $u->roles->first()?->name;
         if (! $roleName || $roleName === 'ceo_pm') continue;
@@ -204,6 +205,55 @@
             'sub'      => 'Audit · ' . $a['module'] . ' · ' . $a['date'] . ' ' . $a['time'],
             'haystack' => Illuminate\Support\Str::lower($a['tag'] . ' ' . $a['actor'] . ' ' . $a['module']),
             'href'     => url('/audit'),
+        ];
+    }
+
+    }
+
+    $searchIndex = [];
+
+    foreach (\App\Models\User::with('roles')->whereNull('archived_at')->orderBy('name')->get() as $u) {
+        $roleName = $u->roles->first()?->name;
+        if (! $roleName || $roleName === 'ceo_pm') continue;
+        $searchIndex[] = [
+            'type'     => 'team',
+            'label'    => $u->name,
+            'sub'      => 'Team - ' . ($u->position ?: $roleName),
+            'haystack' => Illuminate\Support\Str::lower($u->name . ' ' . $u->email . ' ' . $roleName . ' ' . ($u->position ?? '') . ' ' . ($u->department ?? '')),
+            'href'     => route('team.index') . '?open=member:' . $u->id,
+        ];
+    }
+
+    foreach (\App\Models\Project::with('client')->whereNull('archived_at')->orderByDesc('updated_at')->limit(80)->get() as $p) {
+        $searchIndex[] = [
+            'type'     => 'project',
+            'label'    => $p->name,
+            'sub'      => 'Project - ' . $p->code . ' - ' . ($p->client?->name ?? 'Tanpa klien'),
+            'haystack' => Illuminate\Support\Str::lower($p->name . ' ' . $p->code . ' ' . ($p->client?->name ?? '') . ' ' . ($p->phase ?? '') . ' ' . ($p->status ?? '') . ' ' . ($p->description ?? '')),
+            'href'     => route('projects.show', $p),
+        ];
+    }
+
+    foreach (\App\Models\Client::whereNull('archived_at')->orderByDesc('updated_at')->limit(80)->get() as $c) {
+        $searchIndex[] = [
+            'type'     => 'client',
+            'label'    => $c->name,
+            'sub'      => 'Client - ' . ($c->industry ?: 'Tanpa industri') . ' - PIC ' . ($c->pic_name ?: '-'),
+            'haystack' => Illuminate\Support\Str::lower($c->name . ' ' . $c->code . ' ' . ($c->industry ?? '') . ' ' . ($c->location ?? '') . ' ' . ($c->pic_name ?? '') . ' ' . ($c->email ?? '') . ' ' . ($c->phone ?? '')),
+            'href'     => route('clients.index') . '?open=client:' . $c->id,
+        ];
+    }
+
+    foreach (\App\Models\AuditLog::with('user')->orderByDesc('created_at')->orderByDesc('id')->limit(60)->get() as $a) {
+        $auditChip = \App\Http\Controllers\AuditController::categoryForModule($a->module, $a->action);
+        $auditTag = \App\Http\Controllers\AuditController::tagForLog($a->module, $a->action, $a->auditable_type, $a->description);
+        $auditActor = $a->user?->name ?? 'Sistem';
+        $searchIndex[] = [
+            'type'     => 'audit',
+            'label'    => $auditTag . ' - ' . $auditActor,
+            'sub'      => 'Audit - ' . $a->module . ' - ' . ($a->created_at?->diffForHumans() ?? 'baru saja'),
+            'haystack' => Illuminate\Support\Str::lower($auditTag . ' ' . $auditActor . ' ' . $a->module . ' ' . $a->action . ' ' . strip_tags((string) $a->description)),
+            'href'     => $auditChip === 'all' ? route('audit.index') : route('audit.index', ['chip' => $auditChip]),
         ];
     }
 
@@ -296,7 +346,10 @@
                 {{ $initials }}
             </div>
 
-            <form method="POST" action="{{ route('filament.admin.auth.logout') }}" class="inline ml-1">
+            {{-- Normal app logout (not the Filament panel logout) so CEO/PM
+                 and operational roles—who are blocked from /admin—can sign out
+                 without hitting the panel's 403. --}}
+            <form method="POST" action="{{ route('logout') }}" class="inline ml-1">
                 @csrf
                 <button
                     type="submit"
@@ -734,10 +787,10 @@
                 const searchEmptyQ  = document.querySelector('[data-search-empty-q]');
                 if (searchInput) {
                     const TYPE_META = {
-                        team:     { label: 'TEAM',     icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', pillCls: 'bg-violet-50 text-violet-700' },
-                        project:  { label: 'PROJECT',  icon: 'M4 7h16M4 12h16M4 17h10',                                              pillCls: 'bg-blue-50 text-blue-700' },
-                        client:   { label: 'CLIENT',   icon: 'M4 21V8l8-5 8 5v13M9 21V12h6v9',                                       pillCls: 'bg-emerald-50 text-emerald-700' },
-                        audit:    { label: 'AUDIT',    icon: 'M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z',                        pillCls: 'bg-amber-50 text-amber-700' },
+                        team:     { label: 'Team',     icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', pillCls: 'bg-violet-50 text-violet-700' },
+                        project:  { label: 'Project',  icon: 'M4 7h16M4 12h16M4 17h10',                                              pillCls: 'bg-blue-50 text-blue-700' },
+                        client:   { label: 'Client',   icon: 'M4 21V8l8-5 8 5v13M9 21V12h6v9',                                       pillCls: 'bg-emerald-50 text-emerald-700' },
+                        audit:    { label: 'Audit',    icon: 'M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z',                        pillCls: 'bg-amber-50 text-amber-700' },
                         settings: { label: 'SETTINGS', icon: 'M10.3 3.6a1.7 1.7 0 013.4 0l.2 1a8 8 0 012.5 1.5l1-.4a1.7 1.7 0 012.1 2.3l-.5.9a8 8 0 010 3l.5.9a1.7 1.7 0 01-2.1 2.3l-1-.4a8 8 0 01-2.5 1.5l-.2 1a1.7 1.7 0 01-3.4 0l-.2-1a8 8 0 01-2.5-1.5l-1 .4a1.7 1.7 0 01-2.1-2.3l.5-.9a8 8 0 010-3l-.5-.9a1.7 1.7 0 012.1-2.3l1 .4a8 8 0 012.5-1.5l.2-1z', pillCls: 'bg-slate-100 text-slate-600' },
                     };
                     const TYPE_ORDER = ['team', 'project', 'client', 'audit', 'settings'];
