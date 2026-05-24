@@ -1,96 +1,54 @@
 @php
-    $events = [
-        ['id' => 1,  'date' => 'Hari Ini', 'time' => '09:42', 'actor' => 'Joshua Raphael',         'initials' => 'JR', 'tag' => 'LOGIN',              'filter' => 'login',    'module' => 'Auth',              'text' => '<strong>Joshua Raphael</strong> login ke Executive Monitor'],
-        ['id' => 2,  'date' => 'Hari Ini', 'time' => '09:15', 'actor' => 'AI Sekretaris',          'initials' => 'AI', 'tag' => 'RISK ALERT',         'filter' => 'risk',     'module' => 'Executive Monitor', 'text' => 'AI Sekretaris men-generate risk alert untuk <strong>Gamma API Gateway</strong> (QA backlog meningkat)'],
-        ['id' => 3,  'date' => 'Hari Ini', 'time' => '08:50', 'actor' => 'AI Sekretaris',          'initials' => 'AI', 'tag' => 'WBS GENERATED',      'filter' => 'ai',       'module' => 'Project Master',    'text' => 'AI menghasilkan <strong>6 modul</strong> untuk proyek Alpha CRM'],
-        ['id' => 4,  'date' => 'Hari Ini', 'time' => '08:30', 'actor' => 'Joshua Raphael',         'initials' => 'JR', 'tag' => 'LAPORAN EKSPOR',     'filter' => 'laporan',  'module' => 'Executive Monitor', 'text' => 'Ekspor laporan <strong>Project Health</strong> (CSV, 8 proyek aktif)'],
-
-        ['id' => 5,  'date' => 'Kemarin',  'time' => '16:42', 'actor' => 'Adly',                    'initials' => 'AR', 'tag' => 'KLIEN BARU',         'filter' => 'klien',    'module' => 'Client Directory',  'text' => 'Adly menambahkan klien baru: <strong>PT Toko Cerdas Retail</strong>'],
-        ['id' => 6,  'date' => 'Kemarin',  'time' => '15:30', 'actor' => 'AI Sekretaris',          'initials' => 'AI', 'tag' => 'WA OUTBOUND',        'filter' => 'ai',       'module' => 'AI Planning',       'text' => 'AI Sekretaris drafting WhatsApp follow-up ke <strong>PT Maju Jaya</strong> (tone formal)'],
-        ['id' => 7,  'date' => 'Kemarin',  'time' => '14:10', 'actor' => 'Irwan Kurniawan',        'initials' => 'IK', 'tag' => 'PROYEK DIPERBARUI',  'filter' => 'proyek',   'module' => 'Project Master',    'text' => 'Irwan memperbarui status <strong>Gamma API Gateway</strong> menjadi Critical'],
-        ['id' => 8,  'date' => 'Kemarin',  'time' => '11:20', 'actor' => 'Joshua Raphael',         'initials' => 'JR', 'tag' => 'SETTINGS DIBUKA',    'filter' => 'settings', 'module' => 'Settings',          'text' => 'Joshua membuka halaman <strong>Settings</strong>'],
-        ['id' => 9,  'date' => 'Kemarin',  'time' => '10:05', 'actor' => 'Yuda Prayoga',           'initials' => 'YP', 'tag' => 'AKSES DITINJAU',     'filter' => 'akses',    'module' => 'Team Management',   'text' => 'Yuda meninjau role assignment untuk <strong>Ferry Achmad</strong>'],
-
-        ['id' => 10, 'date' => '18 Mei',   'time' => '17:30', 'actor' => 'AI Sekretaris',          'initials' => 'AI', 'tag' => 'WBS GENERATED',      'filter' => 'ai',       'module' => 'Project Master',    'text' => 'AI menghasilkan <strong>5 modul</strong> untuk Beta Portal'],
-        ['id' => 11, 'date' => '18 Mei',   'time' => '14:55', 'actor' => 'Ferry Achmad',           'initials' => 'FA', 'tag' => 'PROYEK DIPERBARUI',  'filter' => 'proyek',   'module' => 'Project Master',    'text' => 'Ferry memperbarui progress <strong>Delta Logistics</strong> ke 38%'],
-        ['id' => 12, 'date' => '18 Mei',   'time' => '09:10', 'actor' => 'Adly',                    'initials' => 'AR', 'tag' => 'LOGIN',              'filter' => 'login',    'module' => 'Auth',              'text' => '<strong>Ahmad Rafiadly Arlisyah</strong> login ke Project Master'],
-
-        ['id' => 13, 'date' => '17 Mei',   'time' => '16:00', 'actor' => 'Joshua Raphael',         'initials' => 'JR', 'tag' => 'AKSES DITINJAU',     'filter' => 'akses',    'module' => 'Team Management',   'text' => 'Joshua menyetujui perubahan akses <strong>Yuda Prayoga</strong> ke Project Master'],
-        ['id' => 14, 'date' => '17 Mei',   'time' => '11:32', 'actor' => 'Adly',                    'initials' => 'AR', 'tag' => 'KLIEN BARU',         'filter' => 'klien',    'module' => 'Client Directory',  'text' => 'Adly menambahkan klien baru: <strong>CV Nirwana Ventures</strong>'],
-        ['id' => 15, 'date' => '17 Mei',   'time' => '09:48', 'actor' => 'Genta',                   'initials' => 'GT', 'tag' => 'SETTINGS DIBUKA',    'filter' => 'settings', 'module' => 'Settings',          'text' => 'Genta membuka halaman <strong>Settings</strong>'],
-
-        ['id' => 16, 'date' => '16 Mei',   'time' => '18:20', 'actor' => 'AI Sekretaris',          'initials' => 'AI', 'tag' => 'MOM FIXED',          'filter' => 'ai',       'module' => 'AI Planning',       'text' => 'AI MoM Fixer merapikan MoM rapat <strong>16 Mei 2026</strong> (typo & action items)'],
-        ['id' => 17, 'date' => '16 Mei',   'time' => '17:55', 'actor' => 'Joshua Raphael',         'initials' => 'JR', 'tag' => 'LOGOUT',             'filter' => 'login',    'module' => 'Auth',              'text' => '<strong>Joshua Raphael</strong> logout dari Smart-PMIS'],
-    ];
+    $events ??= [];
+    $actorOptions ??= [];
+    $todayCount ??= 0;
 
     $filters = [
         ['id' => 'all',      'label' => 'Semua'],
-        ['id' => 'login',    'label' => 'Login'],
         ['id' => 'proyek',   'label' => 'Proyek'],
         ['id' => 'klien',    'label' => 'Klien'],
-        ['id' => 'akses',    'label' => 'Akses'],
-        ['id' => 'ai',       'label' => 'AI Activity'],
-        ['id' => 'laporan',  'label' => 'Laporan'],
+        ['id' => 'tim',      'label' => 'Tim'],
         ['id' => 'settings', 'label' => 'Settings'],
-        ['id' => 'risk',     'label' => 'Risk'],
+        ['id' => 'login',    'label' => 'Login'],
     ];
 
     $col = collect($events);
 
     $filterCounts = [
-        'all'      => count($events),
-        'login'    => $col->where('filter', 'login')->count(),
+        'all'      => $col->count(),
         'proyek'   => $col->where('filter', 'proyek')->count(),
         'klien'    => $col->where('filter', 'klien')->count(),
-        'akses'    => $col->where('filter', 'akses')->count(),
-        'ai'       => $col->where('filter', 'ai')->count(),
-        'laporan'  => $col->where('filter', 'laporan')->count(),
+        'tim'      => $col->where('filter', 'tim')->count(),
         'settings' => $col->where('filter', 'settings')->count(),
-        'risk'     => $col->where('filter', 'risk')->count(),
+        'login'    => $col->where('filter', 'login')->count(),
     ];
 
-    $dataChanged = $filterCounts['proyek'] + $filterCounts['klien'] + $filterCounts['akses'];
+    $dataChanged = $filterCounts['proyek'] + $filterCounts['klien'] + $filterCounts['tim'];
 
     $stats = [
-        ['label' => 'Total Entri',     'value' => count($events),         'note' => '30 hari terakhir',  'color' => '#7C3AED'],
-        ['label' => 'AI Activity',     'value' => $filterCounts['ai'],    'note' => 'saran & generasi AI', 'color' => '#A855F7'],
-        ['label' => 'User Logins',     'value' => $filterCounts['login'], 'note' => 'termasuk logout',   'color' => '#3B82F6'],
-        ['label' => 'Data Changed',    'value' => $dataChanged,            'note' => 'Proyek + Klien + Akses', 'color' => '#10B981'],
-        ['label' => 'Alert Triggered', 'value' => $filterCounts['risk'],  'note' => 'Risk Detection AI', 'color' => '#EF4444'],
+        ['label' => 'Total Entri',  'value' => $filterCounts['all'],     'note' => $todayCount . ' aktivitas hari ini', 'color' => '#7C3AED'],
+        ['label' => 'Proyek',       'value' => $filterCounts['proyek'],  'note' => 'create/update/archive',              'color' => '#A855F7'],
+        ['label' => 'Klien',        'value' => $filterCounts['klien'],   'note' => 'create/update/archive',              'color' => '#10B981'],
+        ['label' => 'Tim',          'value' => $filterCounts['tim'],     'note' => 'anggota + penugasan',                'color' => '#EC4899'],
+        ['label' => 'Settings',     'value' => $filterCounts['settings'],'note' => 'preferensi & integrasi',             'color' => '#F97316'],
     ];
 
-    $daysForDate = [
-        'Hari Ini' => 0,
-        'Kemarin'  => 1,
-        '18 Mei'   => 3,
-        '17 Mei'   => 4,
-        '16 Mei'   => 5,
+    $tagPaletteByFilter = [
+        'proyek'   => ['bg' => '#EDE9FE', 'color' => '#5B21B6'],
+        'klien'    => ['bg' => '#DCFCE7', 'color' => '#166534'],
+        'tim'      => ['bg' => '#FAE8FF', 'color' => '#86198F'],
+        'settings' => ['bg' => '#FED7AA', 'color' => '#9A3412'],
+        'login'    => ['bg' => '#F1F5F9', 'color' => '#334155'],
+        'all'      => ['bg' => '#F3E8FF', 'color' => '#6B21A8'],
     ];
 
-    $tagStyle = [
-        'LOGIN'             => ['bg' => '#F1F5F9', 'color' => '#334155'],
-        'LOGOUT'            => ['bg' => '#F1F5F9', 'color' => '#334155'],
-        'PROYEK DIPERBARUI' => ['bg' => '#EDE9FE', 'color' => '#5B21B6'],
-        'KLIEN BARU'        => ['bg' => '#DCFCE7', 'color' => '#166534'],
-        'AKSES DITINJAU'    => ['bg' => '#FAE8FF', 'color' => '#86198F'],
-        'WBS GENERATED'     => ['bg' => '#FCE7F3', 'color' => '#9D174D'],
-        'WA OUTBOUND'       => ['bg' => '#FCE7F3', 'color' => '#9D174D'],
-        'MOM FIXED'         => ['bg' => '#FCE7F3', 'color' => '#9D174D'],
-        'LAPORAN EKSPOR'    => ['bg' => '#DBEAFE', 'color' => '#1E40AF'],
-        'SETTINGS DIBUKA'   => ['bg' => '#FED7AA', 'color' => '#9A3412'],
-        'RISK ALERT'        => ['bg' => '#FEE2E2', 'color' => '#991B1B'],
-    ];
+    $actorColorPalette = ['#9333EA', '#8B5CF6', '#EC4899', '#10B981', '#3B82F6', '#F97316', '#7C3AED', '#0EA5E9', '#F59E0B'];
+    $actorColorMap = [];
+    foreach ($col->pluck('actor')->unique()->values() as $idx => $actorName) {
+        $actorColorMap[$actorName] = $actorColorPalette[$idx % count($actorColorPalette)];
+    }
 
-    $actorColor = [
-        'JR' => '#9333EA',
-        'AR' => '#8B5CF6',
-        'YP' => '#EC4899',
-        'IK' => '#10B981',
-        'FA' => '#3B82F6',
-        'GT' => '#F97316',
-        'AI' => '#7C3AED',
-    ];
-
+    /* Preserve original DB order when grouping by date label. */
     $groups = $col->groupBy('date');
 @endphp
 
@@ -161,13 +119,9 @@
             <div class="relative">
                 <select data-audit-actor class="appearance-none h-10 pl-4 pr-9 rounded-xl border border-violet-100 bg-white text-[13px] text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
                     <option value="all">Semua Anggota</option>
-                    <option value="Joshua Raphael">Joshua Raphael</option>
-                    <option value="Adly">Ahmad Rafiadly Arlisyah</option>
-                    <option value="Yuda Prayoga">Yuda Prayoga</option>
-                    <option value="Irwan Kurniawan">Irwan Kurniawan</option>
-                    <option value="Ferry Achmad">Ferry Achmad</option>
-                    <option value="Genta">Genta</option>
-                    <option value="AI Sekretaris">AI Sekretaris</option>
+                    @foreach ($actorOptions as $actorName)
+                        <option value="{{ $actorName }}">{{ $actorName }}</option>
+                    @endforeach
                 </select>
                 <x-heroicon-o-chevron-down class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
@@ -184,8 +138,9 @@
     </section>
 
     <section class="space-y-8" data-audit-list>
-        @foreach ($groups as $date => $items)
-            <div data-group data-group-days="{{ $daysForDate[$date] ?? 99 }}">
+        @forelse ($groups as $date => $items)
+            @php $groupDays = (int) ($items->first()['days'] ?? 99); @endphp
+            <div data-group data-group-days="{{ $groupDays }}">
                 <div class="flex items-center gap-3 mb-3">
                     <div class="text-[11px] font-bold tracking-[0.15em] uppercase text-violet-500">{{ $date }}</div>
                     <div class="h-px flex-1 bg-violet-100"></div>
@@ -194,18 +149,19 @@
 
                 <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] overflow-hidden">
                     @foreach ($items as $a)
+                        @php $palette = $tagPaletteByFilter[$a['filter']] ?? $tagPaletteByFilter['all']; @endphp
                         <div
                             data-entry="{{ $a['filter'] }}"
                             data-actor="{{ $a['actor'] }}"
-                            data-days="{{ $daysForDate[$date] ?? 99 }}"
+                            data-days="{{ $a['days'] ?? 99 }}"
                             class="flex items-start gap-4 px-6 py-4 border-b border-violet-50 last:border-0 hover:bg-violet-50/40 transition"
                         >
-                            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[11.5px] text-white flex-shrink-0" style="background: {{ $actorColor[$a['initials']] ?? '#7C3AED' }};">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[11.5px] text-white flex-shrink-0" style="background: {{ $actorColorMap[$a['actor']] ?? '#7C3AED' }};">
                                 {{ $a['initials'] }}
                             </div>
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 flex-wrap mb-1.5">
-                                    <span class="inline-flex items-center text-[10.5px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-md" style="background: {{ $tagStyle[$a['tag']]['bg'] }}; color: {{ $tagStyle[$a['tag']]['color'] }};">
+                                    <span class="inline-flex items-center text-[10.5px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-md" style="background: {{ $palette['bg'] }}; color: {{ $palette['color'] }};">
                                         {{ $a['tag'] }}
                                     </span>
                                     <span class="text-[11.5px] text-slate-400">&middot;</span>
@@ -219,7 +175,15 @@
                     @endforeach
                 </div>
             </div>
-        @endforeach
+        @empty
+            <div class="bg-white rounded-2xl border border-dashed border-violet-200 p-12 text-center">
+                <div class="w-14 h-14 mx-auto rounded-2xl bg-violet-50 text-violet-400 flex items-center justify-center mb-3">
+                    <x-heroicon-o-inbox class="w-6 h-6" />
+                </div>
+                <h3 class="text-[15px] font-semibold text-[#1E1B4B]">Belum ada aktivitas</h3>
+                <p class="text-[13px] text-slate-500 mt-1">Aksi pada Proyek, Klien, Tim, atau Settings akan tampil di sini.</p>
+            </div>
+        @endforelse
 
         <div data-empty class="hidden bg-white rounded-2xl border border-dashed border-violet-200 p-12 text-center">
             <div class="w-14 h-14 mx-auto rounded-2xl bg-violet-50 text-violet-400 flex items-center justify-center mb-3">
@@ -231,7 +195,10 @@
     </section>
 
     <script>
-        window.__auditData = @json($events);
+        window.__auditRoutes = {
+            export: @json(route('audit.export')),
+            report: @json(route('audit.report')),
+        };
     </script>
 
     <script>
@@ -305,40 +272,28 @@
                 rangeSel?.addEventListener('change', applyFilter);
                 applyFilter();
 
-                /* === Exports === */
-                const stripTags = (html) => String(html || '').replace(/<[^>]+>/g, '');
+                /* === Exports — real server routes, honoring current filters === */
+                const buildExportUrl = (base) => {
+                    const params = new URLSearchParams();
+                    if (activeChip && activeChip !== 'all') params.set('chip', activeChip);
+                    const a = actorSel ? actorSel.value : 'all';
+                    if (a && a !== 'all' && a !== '') params.set('actor', a);
+                    const r = rangeSel ? rangeSel.value : '30';
+                    if (r) params.set('range', r);
+                    const qs = params.toString();
+                    return qs ? base + '?' + qs : base;
+                };
+
                 document.querySelector('[data-export-audit-csv]')?.addEventListener('click', () => {
-                    const csvCell = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-                    const rows = [['ID','Date','Time','Actor','Tag','Module','Text']];
-                    (window.__auditData || []).forEach(e => {
-                        rows.push([e.id, e.date, e.time, e.actor, e.tag, e.module, stripTags(e.text)]);
-                    });
-                    const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-                    window.downloadFile && window.downloadFile('audit-' + new Date().toISOString().slice(0,10) + '.csv', csv, 'text/csv;charset=utf-8');
-                    window.toast && window.toast('CSV audit diunduh (' + (rows.length - 1) + ' entri).');
+                    const url = buildExportUrl(window.__auditRoutes?.export || '');
+                    if (! url) return;
+                    window.location.href = url;
                 });
 
                 document.querySelector('[data-export-audit-report]')?.addEventListener('click', () => {
-                    const lines = [
-                        'AVATECH SMART-PMIS — LAPORAN AUDIT',
-                        'Diekspor: ' + new Date().toLocaleString('id-ID'),
-                        ''.padEnd(60, '='),
-                        '',
-                    ];
-                    const data = window.__auditData || [];
-                    const byDate = {};
-                    data.forEach(e => { (byDate[e.date] = byDate[e.date] || []).push(e); });
-                    Object.keys(byDate).forEach(date => {
-                        lines.push('[' + date.toUpperCase() + ']  (' + byDate[date].length + ' entri)');
-                        byDate[date].forEach(e => {
-                            lines.push('  ' + e.time + '  ' + e.tag.padEnd(20) + '  ' + e.actor.padEnd(28) + '  ' + stripTags(e.text));
-                        });
-                        lines.push('');
-                    });
-                    lines.push(''.padEnd(60, '='));
-                    lines.push('Total: ' + data.length + ' entri');
-                    window.downloadFile && window.downloadFile('laporan-audit-' + new Date().toISOString().slice(0,10) + '.txt', lines.join('\n'), 'text/plain;charset=utf-8');
-                    window.toast && window.toast('Laporan audit diunduh.');
+                    const url = buildExportUrl(window.__auditRoutes?.report || '');
+                    if (! url) return;
+                    window.open(url, '_blank', 'noopener');
                 });
             };
 

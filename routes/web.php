@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuditController;
 use App\Http\Controllers\ExecutiveController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ProjectController;
@@ -33,7 +34,9 @@ Route::middleware('auth')->group(function () {
     Route::patch('/team/members/{member}/archive', [TeamController::class, 'archive'])->name('team.members.archive');
     Route::patch('/team/members/{member}/restore', [TeamController::class, 'restore'])->name('team.members.restore');
     Route::post('/team/members/{member}/assignments', [TeamController::class, 'storeAssignment'])->name('team.assignments.store');
-    Route::view('/audit',     'audit.index', ['title' => 'Audit Trail'])->name('audit.index');
+    Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
+    Route::get('/audit/export.csv', [AuditController::class, 'exportCsv'])->name('audit.export');
+    Route::get('/audit/report', [AuditController::class, 'report'])->name('audit.report');
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
     Route::put('/settings/preferences', [SettingsController::class, 'updatePreferences'])->name('settings.preferences.update');
     Route::post('/settings/integrations/{provider}/toggle', [SettingsController::class, 'toggleIntegration'])->name('settings.integrations.toggle');

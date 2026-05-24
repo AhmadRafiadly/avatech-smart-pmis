@@ -16,96 +16,63 @@
     $pageTitle = $title ?? config('app.name', 'Smart-PMIS');
 
     $auditFilters = [
-        ['id' => 'all',        'label' => 'Semua'],
-        ['id' => 'mom-fix',    'label' => 'MoM Fix'],
-        ['id' => 'wbs-gen',    'label' => 'WBS Gen'],
-        ['id' => 'tc-gen',     'label' => 'TC Gen'],
-        ['id' => 'approved',   'label' => 'Approved'],
-        ['id' => 'revisi',     'label' => 'Revisi'],
-        ['id' => 'desain',     'label' => 'Desain'],
-        ['id' => 'task-moved', 'label' => 'Task Moved'],
+        ['id' => 'all',      'label' => 'Semua'],
+        ['id' => 'proyek',   'label' => 'Proyek'],
+        ['id' => 'klien',    'label' => 'Klien'],
+        ['id' => 'tim',      'label' => 'Tim'],
+        ['id' => 'settings', 'label' => 'Settings'],
     ];
 
-    $auditEntries = [
-        [
-            'category' => 'task-moved', 'category_label' => 'TASK PINDAH', 'category_class' => 'bg-blue-50 text-blue-700',
-            'initials' => 'YP', 'avatar_class' => 'bg-blue-100 text-blue-800',
-            'text' => 'Task <span class="font-semibold">\'Integrasikan task ke board Kanban\'</span> dipindah dari Todo ke Doing',
-            'time' => '3 hari lalu', 'user' => 'Yuda Prayoga',
-        ],
-        [
-            'category' => 'task-moved', 'category_label' => 'TASK PINDAH', 'category_class' => 'bg-blue-50 text-blue-700',
-            'initials' => 'YP', 'avatar_class' => 'bg-blue-100 text-blue-800',
-            'text' => 'Task <span class="font-semibold">\'Implementasi login berbasis role\'</span> dipindah dari Todo ke Doing',
-            'time' => '4 hari lalu', 'user' => 'Yuda Prayoga',
-        ],
-        [
-            'category' => 'task-moved', 'category_label' => 'TASK PINDAH', 'category_class' => 'bg-blue-50 text-blue-700',
-            'initials' => 'YP', 'avatar_class' => 'bg-blue-100 text-blue-800',
-            'text' => 'Task <span class="font-semibold">\'Implementasi login berbasis role\'</span> dipindah dari Doing ke Todo',
-            'time' => '4 hari lalu', 'user' => 'Yuda Prayoga',
-        ],
-        [
-            'category' => 'wbs-gen', 'category_label' => 'WBS DIGENERATE', 'category_class' => 'bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200/50',
-            'initials' => 'AR', 'avatar_class' => 'bg-violet-100 text-violet-700',
-            'text' => 'AI menghasilkan 3 modul untuk proyek <span class="font-semibold">Alpha CRM</span>',
-            'time' => '4 hari lalu', 'user' => 'Ahmad Rafiadly A.',
-        ],
-        [
-            'category' => 'wbs-gen', 'category_label' => 'WBS DIGENERATE', 'category_class' => 'bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200/50',
-            'initials' => 'AR', 'avatar_class' => 'bg-violet-100 text-violet-700',
-            'text' => 'AI menghasilkan 5 modul untuk proyek <span class="font-semibold">Beta Portal</span>',
-            'time' => '4 hari lalu', 'user' => 'Ahmad Rafiadly A.',
-        ],
-        [
-            'category' => 'mom-fix', 'category_label' => 'MOM DIPERBAIKI', 'category_class' => 'bg-orange-50 text-orange-700',
-            'initials' => 'AR', 'avatar_class' => 'bg-orange-100 text-orange-800',
-            'text' => 'AI MoM Fixer: meeting 06 May 2026 — typo &amp; action items dirapikan',
-            'time' => '4 hari lalu', 'user' => 'Ahmad Rafiadly A.',
-        ],
-        [
-            'category' => 'mom-created', 'category_label' => 'MOM DIBUAT', 'category_class' => 'bg-purple-50 text-purple-700',
-            'initials' => 'AR', 'avatar_class' => 'bg-purple-100 text-purple-800',
-            'text' => 'MoM ditambahkan untuk tanggal <span class="font-semibold">06 May 2026</span>',
-            'time' => '4 hari lalu', 'user' => 'Ahmad Rafiadly A.',
-        ],
-        [
-            'category' => 'tc-gen', 'category_label' => 'TC DIGENERATE', 'category_class' => 'bg-emerald-50 text-emerald-700',
-            'initials' => 'AR', 'avatar_class' => 'bg-violet-100 text-violet-700',
-            'text' => 'AI menghasilkan 12 test case untuk modul <span class="font-semibold">Authentication</span>',
-            'time' => '5 hari lalu', 'user' => 'Ahmad Rafiadly A.',
-        ],
-        [
-            'category' => 'approved', 'category_label' => 'DISETUJUI', 'category_class' => 'bg-emerald-50 text-emerald-700 border border-emerald-200/50',
-            'initials' => 'AR', 'avatar_class' => 'bg-emerald-100 text-emerald-800',
-            'text' => 'WBS <span class="font-semibold">Alpha CRM</span> disetujui (28 task siap dikerjakan)',
-            'time' => '5 hari lalu', 'user' => 'Ahmad Rafiadly A.',
-        ],
-        [
-            'category' => 'revisi', 'category_label' => 'PERLU REVISI', 'category_class' => 'bg-rose-50 text-rose-700',
-            'initials' => 'AR', 'avatar_class' => 'bg-rose-100 text-rose-800',
-            'text' => 'Test case <span class="font-semibold">TC-0012</span> ditandai perlu revisi pada modul Dashboard',
-            'time' => '6 hari lalu', 'user' => 'Ahmad Rafiadly A.',
-        ],
-        [
-            'category' => 'desain', 'category_label' => 'DESAIN BARU', 'category_class' => 'bg-pink-50 text-pink-700',
-            'initials' => 'YP', 'avatar_class' => 'bg-pink-100 text-pink-800',
-            'text' => 'Upload mockup baru untuk Dashboard <span class="font-semibold">Beta Portal</span> (3 frame)',
-            'time' => '6 hari lalu', 'user' => 'Yuda Prayoga',
-        ],
-        [
-            'category' => 'mom-fix', 'category_label' => 'MOM DIPERBAIKI', 'category_class' => 'bg-orange-50 text-orange-700',
-            'initials' => 'AR', 'avatar_class' => 'bg-orange-100 text-orange-800',
-            'text' => 'AI MoM Fixer: meeting 30 Apr 2026 — 4 action items distrukturkan ulang',
-            'time' => '1 minggu lalu', 'user' => 'Ahmad Rafiadly A.',
-        ],
-        [
-            'category' => 'task-moved', 'category_label' => 'TASK PINDAH', 'category_class' => 'bg-blue-50 text-blue-700',
-            'initials' => 'FA', 'avatar_class' => 'bg-amber-100 text-amber-800',
-            'text' => 'Task <span class="font-semibold">\'Refactor module Delta Logistics\'</span> dipindah ke Done',
-            'time' => '1 minggu lalu', 'user' => 'Ferry Achmad',
-        ],
+    $auditCategoryPalette = [
+        'proyek'   => ['pill' => 'bg-violet-50 text-violet-700',   'avatar' => 'bg-violet-100 text-violet-700'],
+        'klien'    => ['pill' => 'bg-emerald-50 text-emerald-700', 'avatar' => 'bg-emerald-100 text-emerald-800'],
+        'tim'      => ['pill' => 'bg-pink-50 text-pink-700',       'avatar' => 'bg-pink-100 text-pink-800'],
+        'settings' => ['pill' => 'bg-orange-50 text-orange-700',   'avatar' => 'bg-orange-100 text-orange-800'],
+        'login'    => ['pill' => 'bg-slate-100 text-slate-700',    'avatar' => 'bg-slate-200 text-slate-700'],
+        'all'      => ['pill' => 'bg-violet-50 text-violet-700',   'avatar' => 'bg-violet-100 text-violet-700'],
     ];
+
+    $auditEntries = [];
+    $auditTodayCount = 0;
+    try {
+        $recentLogs = \App\Models\AuditLog::with('user')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get();
+
+        $auditTodayCount = \App\Models\AuditLog::where('created_at', '>=', \Illuminate\Support\Carbon::now()->startOfDay())->count();
+
+        foreach ($recentLogs as $log) {
+            $filterKey = \App\Http\Controllers\AuditController::categoryForModule($log->module, $log->action);
+            $tag = \App\Http\Controllers\AuditController::tagForLog($log->module, $log->action);
+            $actorName = $log->user?->name ?? 'Sistem';
+            $parts = array_values(array_filter(preg_split('/\s+/', trim($actorName)) ?: []));
+            if ($parts === []) {
+                $initialsLabel = '?';
+            } elseif (count($parts) === 1) {
+                $initialsLabel = mb_strtoupper(mb_substr($parts[0], 0, 2));
+            } else {
+                $initialsLabel = mb_strtoupper(mb_substr($parts[0], 0, 1) . mb_substr($parts[1], 0, 1));
+            }
+            $palette = $auditCategoryPalette[$filterKey] ?? $auditCategoryPalette['all'];
+
+            $auditEntries[] = [
+                'category'        => $filterKey,
+                'category_label'  => $tag,
+                'category_class'  => $palette['pill'],
+                'initials'        => $initialsLabel,
+                'avatar_class'    => $palette['avatar'],
+                'text'            => $log->description ?: e($actorName) . ' melakukan ' . e($log->action),
+                'time'            => $log->created_at?->diffForHumans() ?? 'baru saja',
+                'user'            => $actorName,
+            ];
+        }
+    } catch (\Throwable $e) {
+        /* Audit table may not exist yet during initial deploy — fail soft. */
+        $auditEntries = [];
+        $auditTodayCount = 0;
+    }
 
     $auditTotal = count($auditEntries);
 
@@ -422,7 +389,7 @@
                     <div class="min-w-0">
                         <h2 id="audit-modal-title" class="text-[20px] font-bold text-[#1E1B4B] leading-tight">Audit Trail</h2>
                         <p class="text-[12px] text-slate-500 mt-1">
-                            <span data-audit-subtitle-count>{{ $auditTotal }}</span> entri ditampilkan &middot; 0 aktivitas hari ini
+                            <span data-audit-subtitle-count>{{ $auditTotal }}</span> entri ditampilkan &middot; {{ $auditTodayCount }} aktivitas hari ini
                         </p>
                     </div>
                 </div>
@@ -445,10 +412,22 @@
             </div>
 
             {{-- Scrollable feed --}}
-            <div data-audit-feed class="flex-1 overflow-y-auto px-6 py-2 bg-white relative">
-                <div class="absolute left-[3.25rem] top-4 bottom-4 w-px hidden sm:block pointer-events-none bg-violet-100"></div>
+            <div data-audit-feed class="flex-1 overflow-y-auto px-6 py-2 bg-white">
+                {{-- Timeline column wrapper. The connector lives INSIDE this scrolling content
+                     so the line travels with the entries instead of staying pinned to the viewport.
+                     Avatar geometry: feed has px-6, entries have `-mx-6 px-6`, so each avatar starts
+                     at this wrapper's left edge. Avatar = w-10 (40px), so center is 20px → 1.25rem.
+                     Entry uses py-4 (16px) + items-start, so first/last avatar centers sit 36px
+                     (= 2.25rem = top-9 / bottom-9) from the wrapper's top/bottom. --}}
                 <div class="relative">
-                    @foreach ($auditEntries as $i => $e)
+                    @if ($auditTotal > 0)
+                        <div
+                            class="absolute top-9 bottom-9 w-px bg-violet-100 pointer-events-none hidden sm:block"
+                            style="left: calc(1.25rem - 0.5px);"
+                            aria-hidden="true"
+                        ></div>
+                    @endif
+                    @forelse ($auditEntries as $i => $e)
                         <div
                             data-audit-entry
                             data-audit-category="{{ $e['category'] }}"
@@ -467,7 +446,15 @@
                         @if ($i < $auditTotal - 1)
                             <div class="border-b border-violet-50 ml-14"></div>
                         @endif
-                    @endforeach
+                    @empty
+                        <div class="py-12 text-center">
+                            <div class="w-12 h-12 mx-auto rounded-2xl bg-violet-50 text-violet-400 flex items-center justify-center mb-3">
+                                <x-heroicon-o-inbox class="w-5 h-5" />
+                            </div>
+                            <p class="text-[13px] font-semibold text-[#1E1B4B]">Belum ada aktivitas</p>
+                            <p class="text-[12px] text-slate-500 mt-1">Aksi pada Proyek, Klien, Tim, atau Settings akan muncul di sini.</p>
+                        </div>
+                    @endforelse
                 </div>
             </div>
 

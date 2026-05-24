@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Project;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -58,6 +59,8 @@ class ClientController extends Controller
             'last_touch_label' => 'baru saja',
         ]);
 
+        AuditLogger::logCreated($client, 'Client Directory', 'Menambah klien <strong>' . e($client->name) . '</strong>');
+
         return redirect()
             ->route('clients.index', ['open' => 'client:' . $client->id])
             ->with('status', 'Klien "' . $client->name . '" berhasil ditambahkan.');
@@ -66,6 +69,8 @@ class ClientController extends Controller
     public function update(Request $request, Client $client)
     {
         $validated = $this->validateClient($request, $client);
+
+        $original = $client->getOriginal();
 
         $client->update([
             'code' => mb_strtoupper($validated['code']),
@@ -77,6 +82,8 @@ class ClientController extends Controller
             'email' => $validated['email'],
             'phone' => $validated['phone'],
         ]);
+
+        AuditLogger::logUpdated($client, 'Client Directory', 'Memperbarui klien <strong>' . e($client->name) . '</strong>', $original);
 
         return redirect()
             ->route('clients.index', [
@@ -90,6 +97,7 @@ class ClientController extends Controller
     {
         if (! $client->archived_at) {
             $client->forceFill(['archived_at' => now()])->save();
+            AuditLogger::logArchived($client, 'Client Directory', 'Mengarsipkan klien <strong>' . e($client->name) . '</strong>');
         }
 
         return redirect()
@@ -101,6 +109,7 @@ class ClientController extends Controller
     {
         if ($client->archived_at) {
             $client->forceFill(['archived_at' => null])->save();
+            AuditLogger::logRestored($client, 'Client Directory', 'Memulihkan klien <strong>' . e($client->name) . '</strong>');
         }
 
         return redirect()

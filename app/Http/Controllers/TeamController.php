@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Models\TeamAssignment;
 use App\Models\TeamWorkload;
 use App\Models\User;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -78,6 +79,8 @@ class TeamController extends Controller
             ['load_pct' => 0, 'active_tasks' => 0, 'is_sim' => false]
         );
 
+        AuditLogger::logCreated($user, 'Team Management', 'Menambah anggota <strong>' . e($user->name) . '</strong>');
+
         return redirect()
             ->route('team.index', ['open' => 'member:' . $user->id])
             ->with('status', 'Anggota "' . $user->name . '" berhasil ditambahkan.');
@@ -87,6 +90,8 @@ class TeamController extends Controller
     {
         $this->ensureOperationalMember($member);
         $validated = $this->validateMember($request, $member);
+
+        $original = $member->getOriginal();
 
         $member->update([
             'name' => $validated['name'],
@@ -98,6 +103,8 @@ class TeamController extends Controller
         ]);
 
         $member->syncRoles([self::UI_ROLES[$validated['role']]['rbac']]);
+
+        AuditLogger::logUpdated($member, 'Team Management', 'Memperbarui anggota <strong>' . e($member->name) . '</strong>', $original);
 
         return redirect()
             ->route('team.index', [
@@ -113,6 +120,7 @@ class TeamController extends Controller
 
         if (! $member->archived_at) {
             $member->forceFill(['archived_at' => now()])->save();
+            AuditLogger::logArchived($member, 'Team Management', 'Mengarsipkan anggota <strong>' . e($member->name) . '</strong>');
         }
 
         return redirect()
@@ -126,6 +134,7 @@ class TeamController extends Controller
 
         if ($member->archived_at) {
             $member->forceFill(['archived_at' => null])->save();
+            AuditLogger::logRestored($member, 'Team Management', 'Memulihkan anggota <strong>' . e($member->name) . '</strong>');
         }
 
         return redirect()
@@ -156,7 +165,7 @@ class TeamController extends Controller
             'estimated_hours.max' => 'Estimasi jam terlalu besar.',
         ]);
 
-        TeamAssignment::create([
+        $assignment = TeamAssignment::create([
             'user_id' => $member->id,
             'project_id' => $validated['project_id'],
             'title' => $validated['title'],
@@ -166,6 +175,17 @@ class TeamController extends Controller
             'due_date' => $validated['due_date'] ?? null,
             'notes' => $validated['notes'] ?? null,
         ]);
+
+        $projectName = Project::whereKey($validated['project_id'])->value('name') ?? 'project';
+
+        AuditLogger::log(
+            'assignment_created',
+            'Team Management',
+            'Menambah penugasan <strong>' . e($assignment->title) . '</strong> untuk <strong>' . e($member->name) . '</strong> di proyek <strong>' . e($projectName) . '</strong>',
+            $assignment,
+            null,
+            $assignment->getAttributes(),
+        );
 
         return redirect()
             ->route('team.index', ['open' => 'member:' . $member->id])

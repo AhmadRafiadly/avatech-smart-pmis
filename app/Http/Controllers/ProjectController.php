@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Project;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -96,6 +97,8 @@ class ProjectController extends Controller
             'is_featured'      => false,
         ]);
 
+        AuditLogger::logCreated($project, 'Project Master', 'Membuat proyek <strong>' . e($project->name) . '</strong>');
+
         return redirect()
             ->route('projects.show', $project)
             ->with('status', 'Proyek "' . $project->name . '" berhasil dibuat.');
@@ -105,6 +108,8 @@ class ProjectController extends Controller
     {
         $validated = $this->validateProject($request, $project);
 
+        $original = $project->getOriginal();
+
         $project->update([
             'code'        => mb_strtoupper($validated['code']),
             'name'        => $validated['name'],
@@ -112,6 +117,8 @@ class ProjectController extends Controller
             'description' => $validated['description'] ?? null,
             'due_at'      => $validated['due_at'] ?? null,
         ]);
+
+        AuditLogger::logUpdated($project, 'Project Master', 'Memperbarui proyek <strong>' . e($project->name) . '</strong>', $original);
 
         return redirect()
             ->back()
@@ -122,6 +129,7 @@ class ProjectController extends Controller
     {
         if (! $project->archived_at) {
             $project->forceFill(['archived_at' => now()])->save();
+            AuditLogger::logArchived($project, 'Project Master', 'Mengarsipkan proyek <strong>' . e($project->name) . '</strong>');
         }
 
         return redirect()
@@ -133,6 +141,7 @@ class ProjectController extends Controller
     {
         if ($project->archived_at) {
             $project->forceFill(['archived_at' => null])->save();
+            AuditLogger::logRestored($project, 'Project Master', 'Memulihkan proyek <strong>' . e($project->name) . '</strong>');
         }
 
         return redirect()

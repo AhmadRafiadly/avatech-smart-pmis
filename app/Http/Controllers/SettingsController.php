@@ -8,6 +8,7 @@ use App\Models\UserNotificationPreference;
 use App\Models\UserRecoveryCode;
 use App\Models\UserSecurityPreference;
 use App\Models\WorkspaceSetting;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -82,6 +83,8 @@ class SettingsController extends Controller
 
         $user = $request->user();
 
+        $workspaceBefore = WorkspaceSetting::find(1)?->only(['workspace_name', 'subdomain', 'interface_language', 'timezone']);
+
         DB::transaction(function () use ($validated, $request, $user) {
             WorkspaceSetting::updateOrCreate(
                 ['id' => 1],
@@ -117,6 +120,20 @@ class SettingsController extends Controller
             }
         });
 
+        AuditLogger::log(
+            'preferences_updated',
+            'Settings',
+            'Memperbarui preferensi workspace, notifikasi, dan keamanan',
+            WorkspaceSetting::find(1),
+            $workspaceBefore,
+            [
+                'workspace_name'     => $validated['workspace_name'],
+                'subdomain'          => $validated['subdomain'],
+                'interface_language' => $validated['interface_language'],
+                'timezone'           => $validated['timezone'],
+            ],
+        );
+
         return redirect()
             ->route('settings.index', ['tab' => $request->input('active_tab', 'general')])
             ->with('status', 'Pengaturan tersimpan di database.');
@@ -139,6 +156,15 @@ class SettingsController extends Controller
             'connected_at'    => $next ? now() : $state->connected_at,
             'disconnected_at' => $next ? null : now(),
         ])->save();
+
+        AuditLogger::log(
+            $next ? 'integration_connected' : 'integration_disconnected',
+            'Settings',
+            ($next ? 'Menghubungkan' : 'Memutus') . ' integrasi <strong>' . e($definition['name']) . '</strong>',
+            $state,
+            ['connected' => $current],
+            ['connected' => $next],
+        );
 
         return redirect()
             ->route('settings.index', ['tab' => 'integrations'])
@@ -187,6 +213,13 @@ class SettingsController extends Controller
         $user->forceFill([
             'password' => Hash::make($validated['new_password']),
         ])->save();
+
+        AuditLogger::log(
+            'password_updated',
+            'Settings',
+            'Mengubah password akun',
+            $user,
+        );
 
         if ($request->expectsJson()) {
             return response()->json([
