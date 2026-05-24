@@ -26,6 +26,16 @@ class ExecutiveController extends Controller
 
     public function index(Request $request)
     {
+        /*
+         * Executive Monitor is CEO/PM-only. Operational users who land here
+         * (typed URL, stale bookmark) get redirected to their dashboard
+         * so they never see executive overview data.
+         */
+        $role = $request->user()?->roles()->first()?->name;
+        if ($role && $role !== 'ceo_pm' && ! in_array($role, ['admin', 'super_admin', 'developer'], true)) {
+            return redirect()->route('dashboard.index');
+        }
+
         $selectedMonth = $this->resolveMonth((string) $request->query('month', ''));
         $monthStart = $selectedMonth->copy()->startOfMonth();
         $monthEnd = $selectedMonth->copy()->endOfMonth();

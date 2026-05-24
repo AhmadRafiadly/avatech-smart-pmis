@@ -35,14 +35,40 @@
 
     $auditEntries = [];
     $auditTodayCount = 0;
-    try {
-        $recentLogs = \App\Models\AuditLog::with('user')
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit(20)
-            ->get();
 
-        $auditTodayCount = \App\Models\AuditLog::where('created_at', '>=', \Illuminate\Support\Carbon::now()->startOfDay())->count();
+    /*
+     * Topbar audit/activity button is visible to every signed-in user, but the
+     * scope of what they see differs:
+     *  - admin-tier + CEO/PM → global "Audit Trail"
+     *  - operational         → self-scoped "Activity Log"
+     */
+    $auditViewerAllowed   = (bool) $user;
+    $isFullAuditViewer    = in_array($role, ['ceo_pm', 'admin', 'super_admin', 'developer'], true);
+    $isOperationalViewer  = $auditViewerAllowed && ! $isFullAuditViewer;
+    $auditButtonLabel     = $isOperationalViewer ? 'Activity Log' : 'Audit Trail';
+    $auditModalTitle      = $isOperationalViewer ? 'Activity Log'  : 'Audit Trail';
+    $auditModalSubtitle   = $isOperationalViewer ? 'Aktivitas terbaru dari akun Anda' : null;
+
+    try {
+        if ($auditViewerAllowed) {
+            $recentLogsQuery = \App\Models\AuditLog::with('user')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id');
+
+            if ($isOperationalViewer) {
+                $recentLogsQuery->where('user_id', $user->id);
+            }
+
+            $recentLogs = $recentLogsQuery->limit(20)->get();
+
+            $todayQuery = \App\Models\AuditLog::where('created_at', '>=', \Illuminate\Support\Carbon::now()->startOfDay());
+            if ($isOperationalViewer) {
+                $todayQuery->where('user_id', $user->id);
+            }
+            $auditTodayCount = $todayQuery->count();
+        } else {
+            $recentLogs = collect();
+        }
 
         foreach ($recentLogs as $log) {
             $filterKey = \App\Http\Controllers\AuditController::categoryForModule($log->module, $log->action);
@@ -77,74 +103,80 @@
 
     $auditTotal = count($auditEntries);
 
-    // Featured project IDs from seeders (stable): AC=1, BP=2, GA=3
-    $notifProjectShow = fn (int $id, string $tab = 'overview') => url('/projects/' . $id) . '#' . $tab;
-
-    $notifications = [
-        [
-            'category' => 'ai-output', 'category_label' => 'AI Output', 'category_class' => 'bg-violet-50 text-violet-700',
-            'icon' => 'sparkles', 'icon_class' => 'bg-violet-100 text-violet-700',
-            'title' => 'AI WBS Generator selesai',
-            'message' => 'WBS Alpha CRM siap ditinjau — 28 task tersusun.',
-            'time' => '5 menit lalu', 'unread' => true,
-            'href' => $notifProjectShow(1, 'aiplanning'),
-        ],
-        [
-            'category' => 'project-critical', 'category_label' => 'Proyek Critical', 'category_class' => 'bg-rose-50 text-rose-700',
-            'icon' => 'exclamation-triangle', 'icon_class' => 'bg-rose-100 text-rose-700',
-            'title' => 'Gamma API Gateway berstatus Critical',
-            'message' => 'Risk Detection AI menandai blocker pada modul Authentication.',
-            'time' => '1 jam lalu', 'unread' => true,
-            'href' => $notifProjectShow(3, 'overview'),
-        ],
-        [
-            'category' => 'approval', 'category_label' => 'Approval Diminta', 'category_class' => 'bg-amber-50 text-amber-700',
-            'icon' => 'shield-check', 'icon_class' => 'bg-amber-100 text-amber-700',
-            'title' => 'Approval WBS Beta Portal',
-            'message' => 'Ahmad Rafiadly meminta persetujuan Anda untuk 18 task baru.',
-            'time' => '2 jam lalu', 'unread' => true,
-            'href' => $notifProjectShow(2, 'aiplanning'),
-        ],
-        [
-            'category' => 'client-reply', 'category_label' => 'Klien Reply', 'category_class' => 'bg-emerald-50 text-emerald-700',
-            'icon' => 'chat-bubble-oval-left', 'icon_class' => 'bg-emerald-100 text-emerald-700',
-            'title' => 'PT Maju Jaya membalas WhatsApp',
-            'message' => '"Proposal sudah dilihat, kita schedule meeting Kamis ya."',
-            'time' => '3 jam lalu', 'unread' => false,
-            'href' => route('clients.index'),
-        ],
-        [
-            'category' => 'workload', 'category_label' => 'Workload Alert', 'category_class' => 'bg-orange-50 text-orange-700',
-            'icon' => 'bolt', 'icon_class' => 'bg-orange-100 text-orange-700',
-            'title' => 'Yuda Prayoga mendekati overload',
-            'message' => 'Load 90% kapasitas — disarankan re-assign 1 task ke Ferry.',
-            'time' => '5 jam lalu', 'unread' => false,
-            'href' => route('team.index'),
-        ],
-        [
-            'category' => 'system-security', 'category_label' => 'Sistem & Keamanan', 'category_class' => 'bg-blue-50 text-blue-700',
-            'icon' => 'shield-exclamation', 'icon_class' => 'bg-blue-100 text-blue-700',
-            'title' => 'Login baru terdeteksi',
-            'message' => 'Sesi Firefox · Windows 11 dari Bandung, ID.',
-            'time' => 'kemarin', 'unread' => false,
-            'href' => route('settings.index') . '#security',
-        ],
-        [
-            'category' => 'ai-output', 'category_label' => 'AI Output', 'category_class' => 'bg-violet-50 text-violet-700',
-            'icon' => 'sparkles', 'icon_class' => 'bg-violet-100 text-violet-700',
-            'title' => 'AI MoM Fixer rapikan rekap',
-            'message' => 'MoM 06 May 2026 — action items distrukturkan ulang.',
-            'time' => 'kemarin', 'unread' => false,
-            'href' => route('projects.index'),
-        ],
+    /* ============== Notifications (DB-backed, role-aware) ==============
+     * No dedicated notifications table — we derive notifications from
+     * audit_logs. CEO/PM + admin-tier see the latest global events,
+     * operational users only see events authored by themselves.
+     * "Unread" = created within the last 24 hours. (Best-effort signal
+     * without introducing a read-state table.) */
+    $notifPaletteByModule = [
+        'Project Master'   => ['cat_class' => 'bg-violet-50 text-violet-700',  'icon' => 'rectangle-stack',    'icon_class' => 'bg-violet-100 text-violet-700',  'label' => 'Proyek'],
+        'Client Directory' => ['cat_class' => 'bg-emerald-50 text-emerald-700','icon' => 'building-office',    'icon_class' => 'bg-emerald-100 text-emerald-700', 'label' => 'Klien'],
+        'Team Management'  => ['cat_class' => 'bg-pink-50 text-pink-700',      'icon' => 'users',              'icon_class' => 'bg-pink-100 text-pink-700',      'label' => 'Tim'],
+        'Settings'         => ['cat_class' => 'bg-orange-50 text-orange-700',  'icon' => 'cog-6-tooth',        'icon_class' => 'bg-orange-100 text-orange-700',  'label' => 'Settings'],
+        'Auth'             => ['cat_class' => 'bg-slate-100 text-slate-700',   'icon' => 'shield-check',       'icon_class' => 'bg-slate-100 text-slate-700',    'label' => 'Akun'],
     ];
+
+    $notifications = [];
+    try {
+        if ($auditViewerAllowed) {
+            $notifQuery = \App\Models\AuditLog::with('user')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id');
+
+            if ($isOperationalViewer) {
+                $notifQuery->where('user_id', $user->id);
+            }
+
+            $notifLogs = $notifQuery->limit(8)->get();
+
+            $unreadThreshold = \Illuminate\Support\Carbon::now()->subDay();
+
+            foreach ($notifLogs as $log) {
+                $palette = $notifPaletteByModule[$log->module] ?? [
+                    'cat_class' => 'bg-slate-100 text-slate-700',
+                    'icon' => 'bell',
+                    'icon_class' => 'bg-slate-100 text-slate-700',
+                    'label' => $log->module,
+                ];
+                $tag = \App\Http\Controllers\AuditController::tagForLog($log->module, $log->action, $log->auditable_type, $log->description);
+                $actorName = $log->user?->name ?? 'Sistem';
+
+                /* Default deep-link by module — safe for both roles. */
+                $href = match (true) {
+                    $log->module === 'Project Master' && $log->auditable_id => url('/projects/' . $log->auditable_id),
+                    $log->module === 'Team Management' && $isOperationalViewer => route('dashboard.index'),
+                    $log->module === 'Team Management' => route('team.index'),
+                    $log->module === 'Client Directory' && $isFullAuditViewer => route('clients.index'),
+                    $log->module === 'Settings' && $isFullAuditViewer => route('settings.index'),
+                    default => route('audit.index'),
+                };
+
+                $notifications[] = [
+                    'category'       => strtolower($palette['label']),
+                    'category_label' => $tag,
+                    'category_class' => $palette['cat_class'],
+                    'icon'           => $palette['icon'],
+                    'icon_class'     => $palette['icon_class'],
+                    'title'          => $isOperationalViewer
+                        ? (strip_tags((string) $log->description) ?: $tag)
+                        : ($actorName . ' · ' . $tag),
+                    'message'        => $isOperationalViewer
+                        ? ($palette['label'] . ' · ' . $log->module)
+                        : (strip_tags((string) $log->description) ?: $palette['label']),
+                    'time'           => $log->created_at?->diffForHumans() ?? 'baru saja',
+                    'unread'         => $log->created_at && $log->created_at->greaterThan($unreadThreshold),
+                    'href'           => $href,
+                ];
+            }
+        }
+    } catch (\Throwable $e) {
+        $notifications = [];
+    }
 
     $notifUnreadCount = collect($notifications)->where('unread', true)->count();
 
-    /* ============== Global search index (cross-page suggestions) ============== */
-    $searchIndex = [];
-
-    /* Skip CEO/PM — they have no team-page modal block (team list shows delivery only). */
+    /* Legacy hardcoded search index block — kept inside `if (false)` to neuter it. */
     if (false) {
     foreach (\App\Models\User::with('roles')->get() as $u) {
         $roleName = $u->roles->first()?->name;
@@ -210,61 +242,112 @@
 
     }
 
-    $searchIndex = [];
+    /* ============== Search index (role-aware) ==============
+     * CEO/PM + admin-tier  → global index (team, projects, clients, audit, settings).
+     * Operational          → only their assigned projects, own tasks, own audit logs.
+     * No unassigned project, no other team members, no clients,
+     * no global audit, no settings entries leak into operational DOM. */
+    $searchIndex      = [];
+    $searchPlaceholder = $isOperationalViewer
+        ? 'Cari proyek atau task Anda...'
+        : 'Cari proyek, klien, anggota, audit, settings...';
 
-    foreach (\App\Models\User::with('roles')->whereNull('archived_at')->orderBy('name')->get() as $u) {
-        $roleName = $u->roles->first()?->name;
-        if (! $roleName || $roleName === 'ceo_pm') continue;
-        $searchIndex[] = [
-            'type'     => 'team',
-            'label'    => $u->name,
-            'sub'      => 'Team - ' . ($u->position ?: $roleName),
-            'haystack' => Illuminate\Support\Str::lower($u->name . ' ' . $u->email . ' ' . $roleName . ' ' . ($u->position ?? '') . ' ' . ($u->department ?? '')),
-            'href'     => route('team.index') . '?open=member:' . $u->id,
-        ];
-    }
+    try {
+        if ($isOperationalViewer) {
+            $assignedProjectIds = \App\Models\TeamAssignment::query()
+                ->where('user_id', $user->id)
+                ->pluck('project_id')
+                ->unique();
 
-    foreach (\App\Models\Project::with('client')->whereNull('archived_at')->orderByDesc('updated_at')->limit(80)->get() as $p) {
-        $searchIndex[] = [
-            'type'     => 'project',
-            'label'    => $p->name,
-            'sub'      => 'Project - ' . $p->code . ' - ' . ($p->client?->name ?? 'Tanpa klien'),
-            'haystack' => Illuminate\Support\Str::lower($p->name . ' ' . $p->code . ' ' . ($p->client?->name ?? '') . ' ' . ($p->phase ?? '') . ' ' . ($p->status ?? '') . ' ' . ($p->description ?? '')),
-            'href'     => route('projects.show', $p),
-        ];
-    }
+            foreach (\App\Models\Project::with('client')->whereIn('id', $assignedProjectIds)->whereNull('archived_at')->orderByDesc('updated_at')->get() as $p) {
+                $searchIndex[] = [
+                    'type'     => 'project',
+                    'label'    => $p->name,
+                    'sub'      => 'Project - ' . $p->code . ' - ' . ($p->client?->name ?? 'Tanpa klien'),
+                    'haystack' => Illuminate\Support\Str::lower($p->name . ' ' . $p->code . ' ' . ($p->client?->name ?? '') . ' ' . ($p->phase ?? '') . ' ' . ($p->status ?? '')),
+                    'href'     => route('projects.show', $p),
+                ];
+            }
 
-    foreach (\App\Models\Client::whereNull('archived_at')->orderByDesc('updated_at')->limit(80)->get() as $c) {
-        $searchIndex[] = [
-            'type'     => 'client',
-            'label'    => $c->name,
-            'sub'      => 'Client - ' . ($c->industry ?: 'Tanpa industri') . ' - PIC ' . ($c->pic_name ?: '-'),
-            'haystack' => Illuminate\Support\Str::lower($c->name . ' ' . $c->code . ' ' . ($c->industry ?? '') . ' ' . ($c->location ?? '') . ' ' . ($c->pic_name ?? '') . ' ' . ($c->email ?? '') . ' ' . ($c->phone ?? '')),
-            'href'     => route('clients.index') . '?open=client:' . $c->id,
-        ];
-    }
+            foreach (\App\Models\ProjectTask::with('project:id,name,code')->where('assigned_to', $user->id)->orderByDesc('updated_at')->limit(60)->get() as $t) {
+                $searchIndex[] = [
+                    'type'     => 'task',
+                    'label'    => $t->title,
+                    'sub'      => 'Task - ' . ($t->project?->code ?? '-') . ' - ' . ucfirst(str_replace('_', ' ', (string) $t->status)),
+                    'haystack' => Illuminate\Support\Str::lower($t->title . ' ' . ($t->project?->name ?? '') . ' ' . ($t->project?->code ?? '') . ' ' . ($t->status ?? '') . ' ' . ($t->priority ?? '')),
+                    'href'     => $t->project ? route('projects.show', $t->project) . '#workspace' : route('projects.index'),
+                ];
+            }
 
-    foreach (\App\Models\AuditLog::with('user')->orderByDesc('created_at')->orderByDesc('id')->limit(60)->get() as $a) {
-        $auditChip = \App\Http\Controllers\AuditController::categoryForModule($a->module, $a->action);
-        $auditTag = \App\Http\Controllers\AuditController::tagForLog($a->module, $a->action, $a->auditable_type, $a->description);
-        $auditActor = $a->user?->name ?? 'Sistem';
-        $searchIndex[] = [
-            'type'     => 'audit',
-            'label'    => $auditTag . ' - ' . $auditActor,
-            'sub'      => 'Audit - ' . $a->module . ' - ' . ($a->created_at?->diffForHumans() ?? 'baru saja'),
-            'haystack' => Illuminate\Support\Str::lower($auditTag . ' ' . $auditActor . ' ' . $a->module . ' ' . $a->action . ' ' . strip_tags((string) $a->description)),
-            'href'     => $auditChip === 'all' ? route('audit.index') : route('audit.index', ['chip' => $auditChip]),
-        ];
-    }
+            foreach (\App\Models\AuditLog::where('user_id', $user->id)->orderByDesc('created_at')->orderByDesc('id')->limit(40)->get() as $a) {
+                $auditTag = \App\Http\Controllers\AuditController::tagForLog($a->module, $a->action, $a->auditable_type, $a->description);
+                $searchIndex[] = [
+                    'type'     => 'activity',
+                    'label'    => $auditTag,
+                    'sub'      => 'Activity - ' . $a->module . ' - ' . ($a->created_at?->diffForHumans() ?? 'baru saja'),
+                    'haystack' => Illuminate\Support\Str::lower($auditTag . ' ' . $a->module . ' ' . $a->action . ' ' . strip_tags((string) $a->description)),
+                    'href'     => route('audit.index'),
+                ];
+            }
+        } elseif ($auditViewerAllowed) {
+            // CEO/PM + admin-tier global index — same fields as before.
+            foreach (\App\Models\User::with('roles')->whereNull('archived_at')->orderBy('name')->get() as $u) {
+                $roleName = $u->roles->first()?->name;
+                if (! $roleName || $roleName === 'ceo_pm') continue;
+                $searchIndex[] = [
+                    'type'     => 'team',
+                    'label'    => $u->name,
+                    'sub'      => 'Team - ' . ($u->position ?: $roleName),
+                    'haystack' => Illuminate\Support\Str::lower($u->name . ' ' . $u->email . ' ' . $roleName . ' ' . ($u->position ?? '') . ' ' . ($u->department ?? '')),
+                    'href'     => route('team.index') . '?open=member:' . $u->id,
+                ];
+            }
 
-    foreach ([['general', 'Umum'], ['ai', 'Sekretaris AI'], ['notif', 'Notifikasi'], ['integrations', 'Integrasi'], ['security', 'Keamanan']] as [$tid, $tlabel]) {
-        $searchIndex[] = [
-            'type'     => 'settings',
-            'label'    => 'Settings: ' . $tlabel,
-            'sub'      => 'Pengaturan',
-            'haystack' => Illuminate\Support\Str::lower('settings pengaturan ' . $tlabel . ' ' . $tid),
-            'href'     => url('/settings') . '#' . $tid,
-        ];
+            foreach (\App\Models\Project::with('client')->whereNull('archived_at')->orderByDesc('updated_at')->limit(80)->get() as $p) {
+                $searchIndex[] = [
+                    'type'     => 'project',
+                    'label'    => $p->name,
+                    'sub'      => 'Project - ' . $p->code . ' - ' . ($p->client?->name ?? 'Tanpa klien'),
+                    'haystack' => Illuminate\Support\Str::lower($p->name . ' ' . $p->code . ' ' . ($p->client?->name ?? '') . ' ' . ($p->phase ?? '') . ' ' . ($p->status ?? '') . ' ' . ($p->description ?? '')),
+                    'href'     => route('projects.show', $p),
+                ];
+            }
+
+            foreach (\App\Models\Client::whereNull('archived_at')->orderByDesc('updated_at')->limit(80)->get() as $c) {
+                $searchIndex[] = [
+                    'type'     => 'client',
+                    'label'    => $c->name,
+                    'sub'      => 'Client - ' . ($c->industry ?: 'Tanpa industri') . ' - PIC ' . ($c->pic_name ?: '-'),
+                    'haystack' => Illuminate\Support\Str::lower($c->name . ' ' . $c->code . ' ' . ($c->industry ?? '') . ' ' . ($c->location ?? '') . ' ' . ($c->pic_name ?? '') . ' ' . ($c->email ?? '') . ' ' . ($c->phone ?? '')),
+                    'href'     => route('clients.index') . '?open=client:' . $c->id,
+                ];
+            }
+
+            foreach (\App\Models\AuditLog::with('user')->orderByDesc('created_at')->orderByDesc('id')->limit(60)->get() as $a) {
+                $auditChip = \App\Http\Controllers\AuditController::categoryForModule($a->module, $a->action);
+                $auditTag = \App\Http\Controllers\AuditController::tagForLog($a->module, $a->action, $a->auditable_type, $a->description);
+                $auditActor = $a->user?->name ?? 'Sistem';
+                $searchIndex[] = [
+                    'type'     => 'audit',
+                    'label'    => $auditTag . ' - ' . $auditActor,
+                    'sub'      => 'Audit - ' . $a->module . ' - ' . ($a->created_at?->diffForHumans() ?? 'baru saja'),
+                    'haystack' => Illuminate\Support\Str::lower($auditTag . ' ' . $auditActor . ' ' . $a->module . ' ' . $a->action . ' ' . strip_tags((string) $a->description)),
+                    'href'     => $auditChip === 'all' ? route('audit.index') : route('audit.index', ['chip' => $auditChip]),
+                ];
+            }
+
+            foreach ([['general', 'Umum'], ['ai', 'Sekretaris AI'], ['notif', 'Notifikasi'], ['integrations', 'Integrasi'], ['security', 'Keamanan']] as [$tid, $tlabel]) {
+                $searchIndex[] = [
+                    'type'     => 'settings',
+                    'label'    => 'Settings: ' . $tlabel,
+                    'sub'      => 'Pengaturan',
+                    'haystack' => Illuminate\Support\Str::lower('settings pengaturan ' . $tlabel . ' ' . $tid),
+                    'href'     => url('/settings') . '#' . $tid,
+                ];
+            }
+        }
+    } catch (\Throwable $e) {
+        $searchIndex = [];
     }
 @endphp
 
@@ -288,7 +371,7 @@
             <input
                 type="text"
                 data-global-search
-                placeholder="Cari proyek, klien, anggota, audit, settings..."
+                placeholder="{{ $searchPlaceholder }}"
                 class="w-full h-9 pl-9 pr-3 rounded-full bg-background border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
                 role="combobox"
                 aria-expanded="false"
@@ -305,17 +388,21 @@
     </div>
 
     @if ($user)
+        {{-- Activity / Audit topbar button. Operational users see "Activity
+             Log" (self-scoped); CEO/PM + admin-tier see "Audit Trail" (global). --}}
         <div class="flex items-center gap-2 flex-shrink-0">
-            <button
-                type="button"
-                data-audit-trigger
-                title="Audit Trail"
-                aria-label="Audit Trail"
-                class="inline-flex items-center gap-2 h-9 px-3 rounded-full border border-violet-100 bg-white hover:bg-violet-50 hover:border-violet-300 text-slate-600 hover:text-violet-700 transition cursor-pointer"
-            >
-                <x-heroicon-o-clock class="w-4 h-4 flex-shrink-0" />
-                <span class="hidden md:inline text-[12.5px] font-semibold">Audit Trail</span>
-            </button>
+            @if ($auditViewerAllowed)
+                <button
+                    type="button"
+                    data-audit-trigger
+                    title="{{ $auditButtonLabel }}"
+                    aria-label="{{ $auditButtonLabel }}"
+                    class="inline-flex items-center gap-2 h-9 px-3 rounded-full border border-violet-100 bg-white hover:bg-violet-50 hover:border-violet-300 text-slate-600 hover:text-violet-700 transition cursor-pointer"
+                >
+                    <x-heroicon-o-clock class="w-4 h-4 flex-shrink-0" />
+                    <span class="hidden md:inline text-[12.5px] font-semibold">{{ $auditButtonLabel }}</span>
+                </button>
+            @endif
             <button
                 type="button"
                 data-notif-trigger
@@ -429,6 +516,7 @@
     </style>
 
     {{-- =============== AUDIT TRAIL MODAL =============== --}}
+    @if ($auditViewerAllowed)
     <div data-audit-modal class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="audit-modal-title">
         <div data-audit-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
 
@@ -441,9 +529,13 @@
                         <x-heroicon-o-clipboard-document-list class="w-6 h-6 text-violet-700" />
                     </div>
                     <div class="min-w-0">
-                        <h2 id="audit-modal-title" class="text-[20px] font-bold text-[#1E1B4B] leading-tight">Audit Trail</h2>
+                        <h2 id="audit-modal-title" class="text-[20px] font-bold text-[#1E1B4B] leading-tight">{{ $auditModalTitle }}</h2>
                         <p class="text-[12px] text-slate-500 mt-1">
-                            <span data-audit-subtitle-count>{{ $auditTotal }}</span> entri ditampilkan &middot; {{ $auditTodayCount }} aktivitas hari ini
+                            @if ($auditModalSubtitle)
+                                {{ $auditModalSubtitle }} &middot; <span data-audit-subtitle-count>{{ $auditTotal }}</span> entri
+                            @else
+                                <span data-audit-subtitle-count>{{ $auditTotal }}</span> entri ditampilkan &middot; {{ $auditTodayCount }} aktivitas hari ini
+                            @endif
                         </p>
                     </div>
                 </div>
@@ -523,6 +615,7 @@
             </footer>
         </div>
     </div>
+    @endif
 
     {{-- Toast host (shared across pages via topbar) --}}
     <div data-toast-host aria-live="polite" aria-atomic="true"></div>
@@ -564,7 +657,7 @@
 
             {{-- List --}}
             <div data-notif-list class="max-h-[440px] overflow-y-auto">
-                @foreach ($notifications as $n)
+                @forelse ($notifications as $n)
                     <a
                         href="{{ $n['href'] }}"
                         data-notif-item
@@ -584,7 +677,15 @@
                         </div>
                         <span class="notif-dot w-2 h-2 rounded-full bg-violet-500 flex-shrink-0 mt-2"></span>
                     </a>
-                @endforeach
+                @empty
+                    <div class="px-5 py-10 text-center">
+                        <div class="w-12 h-12 mx-auto rounded-2xl bg-violet-50 text-violet-400 flex items-center justify-center mb-3">
+                            <x-heroicon-o-bell class="w-5 h-5" />
+                        </div>
+                        <p class="text-[13px] font-semibold text-[#1E1B4B]">Belum ada notifikasi</p>
+                        <p class="text-[12px] text-slate-500 mt-1">Aksi pada Proyek, Klien, Tim, atau Settings akan muncul di sini.</p>
+                    </div>
+                @endforelse
             </div>
 
             {{-- Footer --}}
@@ -597,13 +698,23 @@
                     <x-heroicon-o-check class="w-3.5 h-3.5" />
                     Tandai semua dibaca
                 </button>
-                <a
-                    href="{{ route('settings.index') }}#notif"
-                    class="text-[12px] font-semibold text-violet-700 hover:text-violet-900 transition inline-flex items-center gap-1"
-                >
-                    Lihat pengaturan
-                    <x-heroicon-o-chevron-right class="w-3.5 h-3.5" />
-                </a>
+                @if ($isFullAuditViewer)
+                    <a
+                        href="{{ route('settings.index') }}#notif"
+                        class="text-[12px] font-semibold text-violet-700 hover:text-violet-900 transition inline-flex items-center gap-1"
+                    >
+                        Lihat pengaturan
+                        <x-heroicon-o-chevron-right class="w-3.5 h-3.5" />
+                    </a>
+                @else
+                    <a
+                        href="{{ route('audit.index') }}"
+                        class="text-[12px] font-semibold text-violet-700 hover:text-violet-900 transition inline-flex items-center gap-1"
+                    >
+                        Riwayat lengkap
+                        <x-heroicon-o-chevron-right class="w-3.5 h-3.5" />
+                    </a>
+                @endif
             </div>
         </div>
     </div>

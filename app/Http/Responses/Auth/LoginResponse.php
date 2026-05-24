@@ -30,7 +30,7 @@ class LoginResponse implements Contract
         $url = match (true) {
             in_array($role, ['admin', 'super_admin', 'developer'], true) => url('/admin'),
             $role === 'ceo_pm' => route('executive.index'),
-            default            => route('team.index'),
+            default            => route('dashboard.index'),
         };
 
         return redirect()->to($url);

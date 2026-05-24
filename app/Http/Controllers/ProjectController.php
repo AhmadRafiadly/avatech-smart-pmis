@@ -67,6 +67,14 @@ class ProjectController extends Controller
 
     public function index(Request $request)
     {
+        $user = $request->user();
+        $role = $user?->roles()->first()?->name;
+
+        // Operational users see the role-aware Projects page (assigned-only).
+        if (in_array($role, self::OPERATIONAL_ROLES, true)) {
+            return $this->operationalIndex($user, $role);
+        }
+
         $archiveScope = $request->query('archive', 'active');
         if (! in_array($archiveScope, ['active', 'archived', 'all'], true)) {
             $archiveScope = 'active';
@@ -86,6 +94,57 @@ class ProjectController extends Controller
             'projects' => $projects,
             'clients'  => Client::orderBy('name')->get(['id', 'name']),
             'archiveScope' => $archiveScope,
+        ]);
+    }
+
+    /**
+     * Operational variant of the projects list. Filters to projects the
+     * current user is actually assigned to via team_assignments, hides
+     * create/archive controls, and surfaces a role-specific primary action.
+     */
+    private function operationalIndex(\App\Models\User $user, string $role)
+    {
+        $assignedProjectIds = \App\Models\TeamAssignment::query()
+            ->where('user_id', $user->id)
+            ->pluck('project_id')
+            ->unique()
+            ->values();
+
+        $projects = Project::with('client')
+            ->whereIn('id', $assignedProjectIds)
+            ->whereNull('archived_at')
+            ->withCount([
+                'tasks',
+                'tasks as tasks_done_count' => fn ($q) => $q->whereIn('status', ['done', 'completed']),
+                'tasks as tasks_mine_count' => fn ($q) => $q->where('assigned_to', $user->id),
+            ])
+            ->orderByDesc('updated_at')
+            ->get();
+
+        $actionPresets = match ($role) {
+            'sa_qa' => [
+                'label'  => 'Review QC',
+                'icon'   => 'beaker',
+                'anchor' => '#qc',
+            ],
+            'uiux_designer', 'ui_ux' => [
+                'label'  => 'Upload Design',
+                'icon'   => 'photo',
+                'anchor' => '#workspace',
+            ],
+            default => [ /* fullstack_dev */
+                'label'  => 'Buka Kanban',
+                'icon'   => 'squares-2x2',
+                'anchor' => '#workspace',
+            ],
+        };
+
+        return view('projects.operational-index', [
+            'title'         => 'Projects',
+            'projects'      => $projects,
+            'actionPresets' => $actionPresets,
+            'role'          => $role,
+            'currentUser'   => $user,
         ]);
     }
 
@@ -176,6 +235,10 @@ class ProjectController extends Controller
 
     public function show(Project $project)
     {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
         $project->load([
             'client',
             'lead',
@@ -222,6 +285,9 @@ class ProjectController extends Controller
     public function storeModule(Request $request, Project $project)
     {
         $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
 
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
@@ -253,6 +319,9 @@ class ProjectController extends Controller
     public function storeTask(Request $request, Project $project)
     {
         $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
         $assigneeIds = $this->operationalUsers()->pluck('id')->all();
 
         $validated = $request->validate([
@@ -298,6 +367,9 @@ class ProjectController extends Controller
     public function updateTaskStatus(Request $request, Project $project, ProjectTask $task)
     {
         $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
         abort_unless($task->project_id === $project->id, 404);
 
         $validated = $request->validate([
@@ -344,6 +416,38 @@ class ProjectController extends Controller
     private function ensureCanEditProjectDetail(): void
     {
         abort_if(auth()->user()?->roles?->first()?->name === 'ceo_pm', 403);
+    }
+
+    /**
+     * Operational users (sa_qa / ui_ux / fullstack_dev) may only touch
+     * projects they're actually assigned to via team_assignments. CEO/PM
+     * and admin-tier are always allowed. Anyone else (no role, archived
+     * user) gets a redirect back to /projects so they can't probe IDs.
+     */
+    private function ensureOperationalCanAccessProject(Project $project)
+    {
+        $user = auth()->user();
+        if (! $user) {
+            return redirect()->route('login');
+        }
+
+        $role = $user->roles()->first()?->name;
+        if (! in_array($role, self::OPERATIONAL_ROLES, true)) {
+            return null; // CEO/PM + admin tier pass through.
+        }
+
+        $assigned = \App\Models\TeamAssignment::query()
+            ->where('user_id', $user->id)
+            ->where('project_id', $project->id)
+            ->exists();
+
+        if (! $assigned) {
+            return redirect()
+                ->route('projects.index')
+                ->with('status', 'Proyek tersebut tidak ditugaskan kepada Anda.');
+        }
+
+        return null;
     }
 
     private function projectModuleRows(Project $project): array

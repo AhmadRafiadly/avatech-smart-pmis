@@ -40,15 +40,18 @@ class AuditController extends Controller
 
         $events = $logs->map(fn (AuditLog $log) => $this->mapEntry($log))->all();
         $filters = $this->selectedFilters($request);
+        $isOperationalView = $this->isOperationalViewer();
 
         return view('audit.index', [
-            'title'        => 'Audit Trail',
-            'events'       => $events,
-            'actorOptions' => $this->actorOptions(),
-            'todayCount'   => $this->todayCount(),
-            'activeChip'   => $filters['chip'],
-            'selectedActor'=> $filters['actor'],
-            'selectedRange'=> $filters['range'],
+            // Browser tab title — operational view reads as "Activity Log".
+            'title'             => $isOperationalView ? 'Activity Log' : 'Audit Trail',
+            'isOperationalView' => $isOperationalView,
+            'events'            => $events,
+            'actorOptions'      => $this->actorOptions(),
+            'todayCount'        => $this->todayCount(),
+            'activeChip'        => $filters['chip'],
+            'selectedActor'     => $filters['actor'],
+            'selectedRange'     => $filters['range'],
         ]);
     }
 
@@ -58,8 +61,27 @@ class AuditController extends Controller
      * audit activity yet. Mirrors Team Management's default scope by hiding
      * archived users.
      */
+    /**
+     * Roles that are allowed to see the full company-wide audit feed.
+     * Operational roles get a self-only view.
+     */
+    private const FULL_AUDIT_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
+
+    private function isOperationalViewer(): bool
+    {
+        $role = auth()->user()?->roles()->first()?->name;
+
+        return $role && ! in_array($role, self::FULL_AUDIT_ROLES, true);
+    }
+
     private function actorOptions(): array
     {
+        // Operational viewers can only filter to themselves — they should
+        // never see other users in the actor dropdown.
+        if ($this->isOperationalViewer()) {
+            return array_filter([auth()->user()?->name]);
+        }
+
         return User::query()
             ->whereNull('archived_at')
             ->orderBy('name')
@@ -176,6 +198,11 @@ class AuditController extends Controller
             ->orderByDesc('created_at')
             ->orderByDesc('id');
 
+        // Hard scope for operational roles — they only ever see their own logs.
+        if ($this->isOperationalViewer()) {
+            $query->where('user_id', auth()->id());
+        }
+
         $chip = $this->normalizeChip((string) $request->query('chip', 'all'));
         if ($applyChip && $chip !== 'all') {
             $query->where('module', self::CHIP_MODULE_MAP[$chip]);
@@ -218,7 +245,11 @@ class AuditController extends Controller
     private function todayCount(): int
     {
         try {
-            return AuditLog::where('created_at', '>=', Carbon::now()->startOfDay())->count();
+            $query = AuditLog::where('created_at', '>=', Carbon::now()->startOfDay());
+            if ($this->isOperationalViewer()) {
+                $query->where('user_id', auth()->id());
+            }
+            return $query->count();
         } catch (\Throwable $e) {
             return 0;
         }

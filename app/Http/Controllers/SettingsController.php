@@ -18,6 +18,23 @@ use Illuminate\Validation\Rules\Password;
 
 class SettingsController extends Controller
 {
+    /**
+     * Roles allowed to use Settings (workspace + system).
+     * Operational roles get bounced to /dashboard until a dedicated
+     * personal-account settings page exists.
+     */
+    private const SETTINGS_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
+
+    private function guardOrRedirect(Request $request)
+    {
+        $role = $request->user()?->roles()->first()?->name;
+        if ($role && ! in_array($role, self::SETTINGS_ROLES, true)) {
+            return redirect()->route('dashboard.index');
+        }
+
+        return null;
+    }
+
     private const NOTIFICATION_ROWS = [
         ['key' => 'ai-output-siap',    'label' => 'AI Output Siap',    'desc' => 'WBS, TC, MoM, Reminder draft',       'defaults' => ['app' => true, 'email' => true,  'wa' => false]],
         ['key' => 'proyek-critical',   'label' => 'Proyek Critical',   'desc' => 'Status berubah ke Critical Blocker', 'defaults' => ['app' => true, 'email' => true,  'wa' => true]],
@@ -47,6 +64,10 @@ class SettingsController extends Controller
 
     public function index(Request $request)
     {
+        if ($redirect = $this->guardOrRedirect($request)) {
+            return $redirect;
+        }
+
         $user = $request->user();
         $workspace = WorkspaceSetting::firstOrCreate(
             ['id' => 1],
@@ -72,6 +93,10 @@ class SettingsController extends Controller
 
     public function updatePreferences(Request $request)
     {
+        if ($redirect = $this->guardOrRedirect($request)) {
+            return $redirect;
+        }
+
         $validated = $request->validate([
             'workspace_name'     => ['required', 'string', 'max:120'],
             'subdomain'          => ['required', 'string', 'max:40', 'regex:/^[a-z0-9-]+$/'],
@@ -141,6 +166,10 @@ class SettingsController extends Controller
 
     public function toggleIntegration(Request $request, string $provider)
     {
+        if ($redirect = $this->guardOrRedirect($request)) {
+            return $redirect;
+        }
+
         $definition = collect(self::INTEGRATIONS)->firstWhere('key', $provider);
         abort_unless($definition, 404);
 
@@ -173,6 +202,10 @@ class SettingsController extends Controller
 
     public function updatePassword(Request $request)
     {
+        if ($redirect = $this->guardOrRedirect($request)) {
+            return $redirect;
+        }
+
         $validator = Validator::make($request->all(), [
             'current_password' => ['required', 'string'],
             'new_password'     => ['required', 'string', Password::min(8)],
@@ -234,6 +267,10 @@ class SettingsController extends Controller
 
     public function regenerateRecoveryCodes(Request $request)
     {
+        if ($redirect = $this->guardOrRedirect($request)) {
+            return $redirect;
+        }
+
         $user = $request->user();
         $plainCodes = collect(range(1, 10))->map(fn () => $this->makeRecoveryCode())->all();
 
@@ -255,6 +292,10 @@ class SettingsController extends Controller
 
     public function destroySession(Request $request, string $session)
     {
+        if ($redirect = $this->guardOrRedirect($request)) {
+            return $redirect;
+        }
+
         if (config('session.driver') !== 'database') {
             return redirect()
                 ->route('settings.index', ['tab' => 'security'])
@@ -279,6 +320,10 @@ class SettingsController extends Controller
 
     public function requestAccountDeletion(Request $request)
     {
+        if ($redirect = $this->guardOrRedirect($request)) {
+            return $redirect;
+        }
+
         AccountDeletionRequest::updateOrCreate(
             [
                 'user_id' => $request->user()->id,

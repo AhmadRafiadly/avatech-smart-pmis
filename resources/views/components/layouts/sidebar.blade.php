@@ -165,27 +165,35 @@
         $settingsHas    = \Illuminate\Support\Facades\Route::has('settings.index');
         $settingsUrl    = $settingsHas ? route('settings.index') : '#';
         $settingsActive = $settingsHas && request()->routeIs('settings.index');
+        /*
+         * Settings today is workspace/system settings (CEO/PM scope).
+         * Operational roles get no Settings entry until a personal-account
+         * settings page exists — they would only see admin controls otherwise.
+         */
+        $showSettings = in_array($role, ['ceo_pm', 'admin', 'super_admin', 'developer'], true);
     @endphp
     <div class="flex-shrink-0 pb-8 flex flex-col gap-2">
         <div data-sidebar-divider class="h-px bg-border/50 mx-4 mb-2"></div>
-        <a
-            href="{{ $settingsUrl }}"
-            title="Settings"
-            data-sidebar-item
-            @if ($settingsActive) data-sidebar-active @endif
-            @class([
-                'group flex items-center gap-4 text-sm transition-all duration-200',
-                'px-4 py-5 rounded-2xl bg-gradient-to-r from-[#4f378a] to-[#c084fc] text-white font-semibold shadow-[0_12px_24px_-8px_rgb(124_58_237/0.35)]' => $settingsActive,
-                'px-4 py-5 rounded-2xl text-foreground/80 font-medium hover:bg-violet-50/60 hover:text-primary' => ! $settingsActive,
-            ])
-        >
-            <x-heroicon-o-cog-6-tooth
-                :class="$settingsActive
-                    ? 'w-[22px] h-[22px] flex-shrink-0 text-white [stroke-width:1.25]'
-                    : 'w-[22px] h-[22px] flex-shrink-0 text-muted-foreground/70 group-hover:text-primary [stroke-width:1.25] transition-colors'"
-            />
-            <span data-sidebar-text>Settings</span>
-        </a>
+        @if ($showSettings)
+            <a
+                href="{{ $settingsUrl }}"
+                title="Settings"
+                data-sidebar-item
+                @if ($settingsActive) data-sidebar-active @endif
+                @class([
+                    'group flex items-center gap-4 text-sm transition-all duration-200',
+                    'px-4 py-5 rounded-2xl bg-gradient-to-r from-[#4f378a] to-[#c084fc] text-white font-semibold shadow-[0_12px_24px_-8px_rgb(124_58_237/0.35)]' => $settingsActive,
+                    'px-4 py-5 rounded-2xl text-foreground/80 font-medium hover:bg-violet-50/60 hover:text-primary' => ! $settingsActive,
+                ])
+            >
+                <x-heroicon-o-cog-6-tooth
+                    :class="$settingsActive
+                        ? 'w-[22px] h-[22px] flex-shrink-0 text-white [stroke-width:1.25]'
+                        : 'w-[22px] h-[22px] flex-shrink-0 text-muted-foreground/70 group-hover:text-primary [stroke-width:1.25] transition-colors'"
+                />
+                <span data-sidebar-text>Settings</span>
+            </a>
+        @endif
         <button
             type="button"
             data-sidebar-collapse-toggle

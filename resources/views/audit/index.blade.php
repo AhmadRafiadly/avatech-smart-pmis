@@ -58,26 +58,38 @@
 
 <x-layouts.authenticated :title="$title">
 
+    @php $isOperationalView ??= false; @endphp
     <section class="flex items-end justify-between mb-8 gap-6 flex-wrap">
         <div>
             <h1 class="text-[44px] leading-[1.05] font-bold tracking-tight text-[#1E1B4B]">
-                Audit
-                <span class="bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#A855F7]">Trail</span>
+                @if ($isOperationalView)
+                    Activity
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#A855F7]">Log</span>
+                @else
+                    Audit
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#A855F7]">Trail</span>
+                @endif
             </h1>
             <p class="mt-3 text-[15px] text-slate-500 max-w-2xl">
-                Riwayat lengkap semua aktivitas di Smart-PMIS &mdash; siapa melakukan apa, kapan, dan dari modul mana.
+                @if ($isOperationalView)
+                    Riwayat aktivitas Anda di Smart-PMIS.
+                @else
+                    Riwayat lengkap semua aktivitas di Smart-PMIS &mdash; siapa melakukan apa, kapan, dan dari modul mana.
+                @endif
             </p>
         </div>
-        <div class="flex items-center gap-2 flex-wrap">
-            <button type="button" data-export-audit-csv class="inline-flex items-center gap-2 h-11 px-4 rounded-xl border border-violet-100 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer">
-                <x-heroicon-o-arrow-down-tray class="w-4 h-4" />
-                Export CSV
-            </button>
-            <button type="button" data-export-audit-report class="inline-flex items-center gap-2 h-12 px-5 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[14px] shadow-[0_4px_14px_rgba(124,58,237,0.35)] hover:shadow-[0_6px_20px_rgba(124,58,237,0.45)] hover:-translate-y-0.5 transition-all cursor-pointer">
-                <x-heroicon-o-document-text class="w-5 h-5" />
-                Laporan Audit
-            </button>
-        </div>
+        @unless ($isOperationalView)
+            <div class="flex items-center gap-2 flex-wrap">
+                <button type="button" data-export-audit-csv class="inline-flex items-center gap-2 h-11 px-4 rounded-xl border border-violet-100 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer">
+                    <x-heroicon-o-arrow-down-tray class="w-4 h-4" />
+                    Export CSV
+                </button>
+                <button type="button" data-export-audit-report class="inline-flex items-center gap-2 h-12 px-5 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[14px] shadow-[0_4px_14px_rgba(124,58,237,0.35)] hover:shadow-[0_6px_20px_rgba(124,58,237,0.45)] hover:-translate-y-0.5 transition-all cursor-pointer">
+                    <x-heroicon-o-document-text class="w-5 h-5" />
+                    Laporan Audit
+                </button>
+            </div>
+        @endunless
     </section>
 
     <section class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
@@ -120,15 +132,17 @@
         </div>
 
         <div class="ml-auto flex items-center gap-3 flex-wrap">
-            <div class="relative">
-                <select data-audit-actor class="appearance-none h-10 pl-4 pr-9 rounded-xl border border-violet-100 bg-white text-[13px] text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                    <option value="all" @selected($selectedActor === 'all')>Semua Pengguna</option>
-                    @foreach ($actorOptions as $actorName)
-                        <option value="{{ $actorName }}" @selected($selectedActor === $actorName)>{{ $actorName }}</option>
-                    @endforeach
-                </select>
-                <x-heroicon-o-chevron-down class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+            @unless ($isOperationalView)
+                <div class="relative">
+                    <select data-audit-actor class="appearance-none h-10 pl-4 pr-9 rounded-xl border border-violet-100 bg-white text-[13px] text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
+                        <option value="all" @selected($selectedActor === 'all')>Semua Pengguna</option>
+                        @foreach ($actorOptions as $actorName)
+                            <option value="{{ $actorName }}" @selected($selectedActor === $actorName)>{{ $actorName }}</option>
+                        @endforeach
+                    </select>
+                    <x-heroicon-o-chevron-down class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+            @endunless
             <div class="relative">
                 <select data-audit-range class="appearance-none h-10 pl-4 pr-9 rounded-xl border border-violet-100 bg-white text-[13px] text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
                     <option value="7" @selected($selectedRange === '7')>7 hari terakhir</option>

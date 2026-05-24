@@ -18,6 +18,7 @@ return [
             ['label' => 'MAIN', 'items' => [
                 ['label' => 'Dashboard',         'route' => 'dashboard.index', 'icon' => 'home'],
                 ['label' => 'Projects',          'route' => 'projects.index',  'icon' => 'rectangle-stack'],
+                ['label' => 'Activity Log',      'route' => 'audit.index',     'icon' => 'clock'],
             ]],
         ],
     ],

@@ -64,7 +64,7 @@ class LoginController extends Controller
         $target = match (true) {
             $role === 'ceo_pm' => route('executive.index'),
             in_array($role, ['admin', 'super_admin', 'developer'], true) => url('/admin'),
-            default => route('team.index'),
+            default => route('dashboard.index'),
         };
 
         return redirect()->intended($target);

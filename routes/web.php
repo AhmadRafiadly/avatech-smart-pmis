@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuditController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExecutiveController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ProjectController;
@@ -38,7 +39,7 @@ Route::middleware('auth')->group(function () {
     })->name('logout');
 
     Route::get('/executive', [ExecutiveController::class, 'index'])->name('executive.index');
-    Route::view('/dashboard', 'placeholders.coming-soon', ['title' => 'Dashboard'])->name('dashboard.index');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
