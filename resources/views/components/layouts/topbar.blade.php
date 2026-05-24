@@ -21,15 +21,16 @@
         ['id' => 'klien',    'label' => 'Klien'],
         ['id' => 'tim',      'label' => 'Tim'],
         ['id' => 'settings', 'label' => 'Settings'],
+        ['id' => 'login',    'label' => 'Login'],
     ];
 
     $auditCategoryPalette = [
-        'proyek'   => ['pill' => 'bg-violet-50 text-violet-700',   'avatar' => 'bg-violet-100 text-violet-700'],
-        'klien'    => ['pill' => 'bg-emerald-50 text-emerald-700', 'avatar' => 'bg-emerald-100 text-emerald-800'],
-        'tim'      => ['pill' => 'bg-pink-50 text-pink-700',       'avatar' => 'bg-pink-100 text-pink-800'],
-        'settings' => ['pill' => 'bg-orange-50 text-orange-700',   'avatar' => 'bg-orange-100 text-orange-800'],
-        'login'    => ['pill' => 'bg-slate-100 text-slate-700',    'avatar' => 'bg-slate-200 text-slate-700'],
-        'all'      => ['pill' => 'bg-violet-50 text-violet-700',   'avatar' => 'bg-violet-100 text-violet-700'],
+        'proyek'   => ['pill' => 'bg-violet-100 text-violet-800',  'avatar' => 'bg-violet-100 text-violet-800'],
+        'klien'    => ['pill' => 'bg-green-100 text-green-800',    'avatar' => 'bg-green-100 text-green-800'],
+        'tim'      => ['pill' => 'bg-fuchsia-50 text-fuchsia-800', 'avatar' => 'bg-fuchsia-50 text-fuchsia-800'],
+        'settings' => ['pill' => 'bg-orange-200 text-orange-800',  'avatar' => 'bg-orange-200 text-orange-800'],
+        'login'    => ['pill' => 'bg-slate-100 text-slate-700',    'avatar' => 'bg-slate-100 text-slate-700'],
+        'all'      => ['pill' => 'bg-violet-100 text-violet-800',  'avatar' => 'bg-violet-100 text-violet-800'],
     ];
 
     $auditEntries = [];

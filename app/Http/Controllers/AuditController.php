@@ -33,15 +33,19 @@ class AuditController extends Controller
 
     public function index(Request $request)
     {
-        $logs = $this->buildQuery($request)->limit(500)->get();
+        $logs = $this->buildQuery($request, applyChip: false)->limit(500)->get();
 
         $events = $logs->map(fn (AuditLog $log) => $this->mapEntry($log))->all();
+        $filters = $this->selectedFilters($request);
 
         return view('audit.index', [
             'title'        => 'Audit Trail',
             'events'       => $events,
             'actorOptions' => $this->actorOptions(),
             'todayCount'   => $this->todayCount(),
+            'activeChip'   => $filters['chip'],
+            'selectedActor'=> $filters['actor'],
+            'selectedRange'=> $filters['range'],
         ]);
     }
 
@@ -105,9 +109,9 @@ class AuditController extends Controller
             'events'      => $events,
             'generatedAt' => Carbon::now(),
             'filters'     => [
-                'chip'  => $request->query('chip', 'all'),
+                'chip'  => $this->normalizeChip((string) $request->query('chip', 'all')),
                 'actor' => $request->query('actor', 'all'),
-                'range' => $request->query('range', '30'),
+                'range' => $request->query('range', 'all'),
             ],
         ]);
     }
@@ -163,14 +167,14 @@ class AuditController extends Controller
         return $modulePrefix . ' ' . $actionSuffix;
     }
 
-    private function buildQuery(Request $request)
+    private function buildQuery(Request $request, bool $applyChip = true)
     {
         $query = AuditLog::with('user')
             ->orderByDesc('created_at')
             ->orderByDesc('id');
 
-        $chip = (string) $request->query('chip', 'all');
-        if ($chip !== '' && $chip !== 'all' && isset(self::CHIP_MODULE_MAP[$chip])) {
+        $chip = $this->normalizeChip((string) $request->query('chip', 'all'));
+        if ($applyChip && $chip !== 'all') {
             $query->where('module', self::CHIP_MODULE_MAP[$chip]);
         }
 
@@ -188,6 +192,24 @@ class AuditController extends Controller
         }
 
         return $query;
+    }
+
+    private function selectedFilters(Request $request): array
+    {
+        return [
+            'chip' => $this->normalizeChip((string) $request->query('chip', 'all')),
+            'actor' => trim((string) $request->query('actor', 'all')) ?: 'all',
+            'range' => trim((string) $request->query('range', 'all')) ?: 'all',
+        ];
+    }
+
+    private function normalizeChip(string $chip): string
+    {
+        $chip = trim($chip);
+
+        return $chip !== '' && isset(self::CHIP_MODULE_MAP[$chip])
+            ? $chip
+            : 'all';
     }
 
     private function todayCount(): int

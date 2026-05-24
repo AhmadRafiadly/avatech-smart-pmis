@@ -2,6 +2,9 @@
     $events ??= [];
     $actorOptions ??= [];
     $todayCount ??= 0;
+    $activeChip ??= 'all';
+    $selectedActor ??= 'all';
+    $selectedRange ??= 'all';
 
     $filters = [
         ['id' => 'all',      'label' => 'Semua'],
@@ -24,9 +27,10 @@
     ];
 
     $dataChanged = $filterCounts['proyek'] + $filterCounts['klien'] + $filterCounts['tim'];
+    $visibleCount = $activeChip === 'all' ? $filterCounts['all'] : ($filterCounts[$activeChip] ?? $filterCounts['all']);
 
     $stats = [
-        ['label' => 'Total Entri',  'value' => $filterCounts['all'],     'note' => $todayCount . ' aktivitas hari ini', 'color' => '#7C3AED'],
+        ['label' => 'Total Entri',  'value' => $visibleCount,            'note' => $activeChip === 'all' ? $todayCount . ' aktivitas hari ini' : 'sesuai chip aktif', 'color' => '#7C3AED'],
         ['label' => 'Proyek',       'value' => $filterCounts['proyek'],  'note' => 'create/update/archive',              'color' => '#A855F7'],
         ['label' => 'Klien',        'value' => $filterCounts['klien'],   'note' => 'create/update/archive',              'color' => '#10B981'],
         ['label' => 'Tim',          'value' => $filterCounts['tim'],     'note' => 'anggota + penugasan',                'color' => '#EC4899'],
@@ -78,13 +82,13 @@
 
     <section class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         @foreach ($stats as $s)
-            <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5">
+            <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5" @if ($s['label'] === 'Total Entri') data-visible-total-card @endif>
                 <div class="flex items-center gap-2 mb-2">
                     <span class="w-2 h-2 rounded-full" style="background: {{ $s['color'] }};"></span>
                     <span class="text-[11px] font-bold tracking-wider uppercase text-slate-500">{{ $s['label'] }}</span>
                 </div>
-                <div class="text-[28px] font-bold text-[#1E1B4B] tabular-nums">{{ $s['value'] }}</div>
-                <div class="text-[11.5px] text-slate-400 mt-0.5">{{ $s['note'] }}</div>
+                <div class="text-[28px] font-bold text-[#1E1B4B] tabular-nums" @if ($s['label'] === 'Total Entri') data-visible-total-value @endif>{{ $s['value'] }}</div>
+                <div class="text-[11.5px] text-slate-400 mt-0.5" @if ($s['label'] === 'Total Entri') data-visible-total-note @endif>{{ $s['note'] }}</div>
             </div>
         @endforeach
     </section>
@@ -92,14 +96,14 @@
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5 mb-6 flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2 flex-wrap">
             @foreach ($filters as $idx => $f)
-                @php $isFirst = $idx === 0; @endphp
+                @php $isActive = $f['id'] === $activeChip; @endphp
                 <button
                     type="button"
                     data-filter="{{ $f['id'] }}"
                     @class([
                         'js-filter-chip text-[12.5px] font-semibold px-3.5 py-1.5 rounded-full transition border inline-flex items-center gap-1.5 cursor-pointer',
-                        'bg-[#1E1B4B] text-white border-[#1E1B4B] shadow-sm' => $isFirst,
-                        'bg-white text-slate-600 border-violet-100 hover:border-violet-300 hover:text-violet-700' => ! $isFirst,
+                        'bg-[#1E1B4B] text-white border-[#1E1B4B] shadow-sm' => $isActive,
+                        'bg-white text-slate-600 border-violet-100 hover:border-violet-300 hover:text-violet-700' => ! $isActive,
                     ])
                 >
                     <span>{{ $f['label'] }}</span>
@@ -107,8 +111,8 @@
                         data-count-badge
                         @class([
                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
-                            'bg-white/15 text-white' => $isFirst,
-                            'bg-violet-100 text-violet-700' => ! $isFirst,
+                            'bg-white/15 text-white' => $isActive,
+                            'bg-violet-100 text-violet-700' => ! $isActive,
                         ])
                     >{{ $filterCounts[$f['id']] }}</span>
                 </button>
@@ -118,19 +122,19 @@
         <div class="ml-auto flex items-center gap-3 flex-wrap">
             <div class="relative">
                 <select data-audit-actor class="appearance-none h-10 pl-4 pr-9 rounded-xl border border-violet-100 bg-white text-[13px] text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                    <option value="all">Semua Pengguna</option>
+                    <option value="all" @selected($selectedActor === 'all')>Semua Pengguna</option>
                     @foreach ($actorOptions as $actorName)
-                        <option value="{{ $actorName }}">{{ $actorName }}</option>
+                        <option value="{{ $actorName }}" @selected($selectedActor === $actorName)>{{ $actorName }}</option>
                     @endforeach
                 </select>
                 <x-heroicon-o-chevron-down class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
             <div class="relative">
                 <select data-audit-range class="appearance-none h-10 pl-4 pr-9 rounded-xl border border-violet-100 bg-white text-[13px] text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                    <option value="7">7 hari terakhir</option>
-                    <option value="30" selected>30 hari terakhir</option>
-                    <option value="90">90 hari terakhir</option>
-                    <option value="all">Semua waktu</option>
+                    <option value="7" @selected($selectedRange === '7')>7 hari terakhir</option>
+                    <option value="30" @selected($selectedRange === '30')>30 hari terakhir</option>
+                    <option value="90" @selected($selectedRange === '90')>90 hari terakhir</option>
+                    <option value="all" @selected($selectedRange === 'all')>Semua waktu</option>
                 </select>
                 <x-heroicon-o-chevron-down class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
@@ -210,7 +214,9 @@
 
                 const actorSel  = document.querySelector('[data-audit-actor]');
                 const rangeSel  = document.querySelector('[data-audit-range]');
-                let activeChip  = 'all';
+                const totalValue = document.querySelector('[data-visible-total-value]');
+                const totalNote = document.querySelector('[data-visible-total-note]');
+                let activeChip  = @json($activeChip);
 
                 const applyFilter = () => {
                     chips.forEach(c => {
@@ -263,13 +269,43 @@
                     });
 
                     if (empty) empty.classList.toggle('hidden', totalVisible > 0);
+                    if (totalValue) totalValue.textContent = totalVisible;
+                    if (totalNote) totalNote.textContent = activeChip === 'all' ? 'semua chip aktif' : 'sesuai chip aktif';
+                };
+
+                const syncQueryString = () => {
+                    const params = new URLSearchParams(window.location.search);
+                    if (activeChip && activeChip !== 'all') params.set('chip', activeChip);
+                    else params.delete('chip');
+
+                    const actor = actorSel ? actorSel.value : 'all';
+                    if (actor && actor !== 'all') params.set('actor', actor);
+                    else params.delete('actor');
+
+                    const range = rangeSel ? rangeSel.value : 'all';
+                    if (range && range !== 'all') params.set('range', range);
+                    else params.delete('range');
+
+                    const qs = params.toString();
+                    const next = window.location.pathname + (qs ? '?' + qs : '');
+                    window.history.replaceState({}, '', next);
                 };
 
                 chips.forEach(c => {
-                    c.addEventListener('click', () => { activeChip = c.dataset.filter; applyFilter(); });
+                    c.addEventListener('click', () => {
+                        activeChip = c.dataset.filter;
+                        applyFilter();
+                        syncQueryString();
+                    });
                 });
-                actorSel?.addEventListener('change', applyFilter);
-                rangeSel?.addEventListener('change', applyFilter);
+                actorSel?.addEventListener('change', () => {
+                    applyFilter();
+                    syncQueryString();
+                });
+                rangeSel?.addEventListener('change', () => {
+                    applyFilter();
+                    syncQueryString();
+                });
                 applyFilter();
 
                 /* === Exports — real server routes, honoring current filters === */
@@ -278,8 +314,8 @@
                     if (activeChip && activeChip !== 'all') params.set('chip', activeChip);
                     const a = actorSel ? actorSel.value : 'all';
                     if (a && a !== 'all' && a !== '') params.set('actor', a);
-                    const r = rangeSel ? rangeSel.value : '30';
-                    if (r) params.set('range', r);
+                    const r = rangeSel ? rangeSel.value : 'all';
+                    if (r && r !== 'all') params.set('range', r);
                     const qs = params.toString();
                     return qs ? base + '?' + qs : base;
                 };

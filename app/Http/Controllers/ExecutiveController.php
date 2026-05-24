@@ -2,128 +2,280 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Project;
-use App\Models\TeamWorkload;
+use App\Models\TeamAssignment;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class ExecutiveController extends Controller
 {
     private const ID_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
 
     private const STATUS_LABEL = [
-        'on-track'  => 'On Track',
+        'on-track' => 'On Track',
         'attention' => 'Needs Attention',
-        'critical'  => 'Critical',
+        'critical' => 'Critical',
     ];
 
-    public function index()
+    private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
+
+    private const CLOSED_ASSIGNMENT_STATUSES = ['done', 'completed', 'cancelled', 'canceled', 'archived'];
+
+    public function index(Request $request)
     {
-        $totalProjects = Project::count();
-        $aiCount       = Project::where('ai_wbs_generated', true)->count();
-        $aiPct         = $totalProjects > 0 ? (int) round($aiCount / $totalProjects * 100) : 0;
-        $avgLoad       = (int) round(TeamWorkload::avg('load_pct') ?? 0);
-        $totalClients  = Client::count();
+        $selectedMonth = $this->resolveMonth((string) $request->query('month', ''));
+        $monthStart = $selectedMonth->copy()->startOfMonth();
+        $monthEnd = $selectedMonth->copy()->endOfMonth();
 
-        $metrics = [
-            ['key' => 'projects', 'icon' => 'folder',          'label' => 'Total Projects',     'value' => (string) $totalProjects, 'foot' => '+12 this quarter',           'foot_icon' => 'arrow-trending-up',  'foot_color' => 'text-emerald-600 font-medium', 'progress' => null],
-            ['key' => 'ai',       'icon' => 'cpu-chip',        'label' => 'AI Task Automation', 'value' => $aiPct . '%',            'foot' => 'WBS berhasil di-generate AI', 'foot_icon' => 'bolt',                'foot_color' => 'text-violet-600 font-medium',  'progress' => null],
-            ['key' => 'workload', 'icon' => 'users',           'label' => 'Team Workload',      'value' => $avgLoad . '%',          'foot' => $this->loadFootLabel($avgLoad),'foot_icon' => null,                  'foot_color' => null,                            'progress' => $avgLoad],
-            ['key' => 'clients',  'icon' => 'building-office', 'label' => 'Active Clients',     'value' => (string) $totalClients,  'foot' => '3 renewals upcoming',        'foot_icon' => 'information-circle',  'foot_color' => 'text-slate-500',               'progress' => null],
-        ];
+        $activeProjectsQuery = Project::query()->whereNull('archived_at');
+        $totalProjects = (clone $activeProjectsQuery)->count();
+        $archivedProjects = Project::whereNotNull('archived_at')->count();
+        $aiCount = (clone $activeProjectsQuery)->where('ai_wbs_generated', true)->count();
+        $aiPct = $totalProjects > 0 ? (int) round($aiCount / $totalProjects * 100) : 0;
 
-        $featured = Project::with(['client', 'lead'])
-            ->where('is_featured', true)
-            ->orderBy('id')
+        $totalClients = Client::whereNull('archived_at')->count();
+        $archivedClients = Client::whereNotNull('archived_at')->count();
+
+        $teamMembers = User::with([
+                'roles',
+                'teamAssignments' => fn ($query) => $this->scopeAssignmentMonth($query, $monthStart, $monthEnd)
+                    ->with('project'),
+            ])
+            ->whereNull('archived_at')
+            ->whereDoesntHave('roles', fn ($query) => $query->where('name', 'ceo_pm'))
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', self::OPERATIONAL_ROLES))
+            ->orderBy('name')
             ->get();
 
-        $projects = $featured->map(function (Project $p) {
-            $leadName     = $p->lead?->name;
-            $leadInitials = $this->initials($leadName ?? '?');
+        $teamLoad = $teamMembers
+            ->map(fn (User $user) => $this->teamLoadRow($user))
+            ->sortByDesc('load')
+            ->values()
+            ->all();
 
-            return [
-                'id'            => $p->id,
-                'code'          => $p->code,
-                'color'         => $p->color,
-                'name'          => $p->name,
-                'client'        => $p->client?->name ?? '—',
-                'lead'          => $leadName ? $this->firstName($leadName) : '—',
-                'lead_initials' => $leadInitials,
-                'phase'         => $p->phase,
-                'due'           => $this->formatDueId($p->due_at),
-                'progress'      => (int) $p->progress,
-                'status'        => $p->status,
-                'status_label'  => self::STATUS_LABEL[$p->status] ?? $p->status,
-            ];
-        })->all();
+        $avgLoad = count($teamLoad) > 0
+            ? (int) round(collect($teamLoad)->avg('load'))
+            : 0;
 
-        $statusCounts = Project::selectRaw('status, COUNT(*) as c')
+        $metrics = [
+            ['key' => 'projects', 'icon' => 'folder', 'label' => 'Active Projects', 'value' => (string) $totalProjects, 'foot' => $archivedProjects . ' archived excluded', 'foot_icon' => 'archive-box', 'foot_color' => 'text-slate-500', 'progress' => null],
+            ['key' => 'wbs', 'icon' => 'clipboard-document-check', 'label' => 'WBS Coverage', 'value' => $aiPct . '%', 'foot' => $aiCount . '/' . $totalProjects . ' active projects marked WBS-ready', 'foot_icon' => 'clipboard-document-list', 'foot_color' => 'text-violet-600 font-medium', 'progress' => null],
+            ['key' => 'workload', 'icon' => 'users', 'label' => 'Team Workload', 'value' => $avgLoad . '%', 'foot' => $this->loadFootLabel($avgLoad, $teamMembers->count()), 'foot_icon' => null, 'foot_color' => null, 'progress' => min(100, $avgLoad)],
+            ['key' => 'clients', 'icon' => 'building-office', 'label' => 'Active Clients', 'value' => (string) $totalClients, 'foot' => $archivedClients . ' archived excluded', 'foot_icon' => 'information-circle', 'foot_color' => 'text-slate-500', 'progress' => null],
+        ];
+
+        $projects = Project::with(['client', 'lead'])
+            ->whereNull('archived_at')
+            ->orderByDesc('is_featured')
+            ->orderBy('id')
+            ->get()
+            ->map(function (Project $project) {
+                $leadName = $project->lead?->name;
+
+                return [
+                    'id' => $project->id,
+                    'code' => $project->code,
+                    'color' => $project->color,
+                    'name' => $project->name,
+                    'client' => $project->client?->name ?? '-',
+                    'lead' => $leadName ? $this->firstName($leadName) : '-',
+                    'lead_initials' => $this->initials($leadName ?? '?'),
+                    'phase' => $project->phase,
+                    'due' => $this->formatDueId($project->due_at),
+                    'progress' => (int) $project->progress,
+                    'status' => $project->status,
+                    'status_label' => self::STATUS_LABEL[$project->status] ?? $project->status,
+                ];
+            })
+            ->all();
+
+        $statusCounts = Project::whereNull('archived_at')
+            ->selectRaw('status, COUNT(*) as c')
             ->groupBy('status')
             ->pluck('c', 'status');
 
         $projectStats = [
-            'onTrack'   => (int) ($statusCounts['on-track']  ?? 0),
+            'onTrack' => (int) ($statusCounts['on-track'] ?? 0),
             'attention' => (int) ($statusCounts['attention'] ?? 0),
-            'critical'  => (int) ($statusCounts['critical']  ?? 0),
+            'critical' => (int) ($statusCounts['critical'] ?? 0),
         ];
-
-        $roleLabel = [
-            'fullstack_dev' => 'Fullstack Developer',
-            'uiux_designer' => 'UI/UX Senior',
-            'sa_qa'         => 'SA / QA',
-            'ceo_pm'        => 'CEO / PM',
-        ];
-
-        $teamLoadRows = TeamWorkload::with(['user.roles'])
-            ->orderByDesc('load_pct')
-            ->get();
-
-        $teamLoad = $teamLoadRows->map(function (TeamWorkload $tw) use ($roleLabel) {
-            $user     = $tw->user;
-            $roleSlug = $user?->roles?->first()?->name;
-
-            return [
-                'name'     => $user?->name ?? '—',
-                'initials' => $this->initials($user?->name ?? '?'),
-                'role'     => $roleLabel[$roleSlug] ?? ($roleSlug ?? '—'),
-                'load'     => (int) $tw->load_pct,
-                'tasks'    => (int) $tw->active_tasks,
-                'sim'      => (bool) $tw->is_sim,
-            ];
-        })->all();
 
         $poolDefs = [
             ['label' => 'Fullstack Pool', 'role' => 'fullstack_dev'],
-            ['label' => 'UI/UX Senior',   'role' => 'uiux_designer'],
-            ['label' => 'SA / QA',        'role' => 'sa_qa'],
+            ['label' => 'UI/UX Senior', 'role' => 'uiux_designer'],
+            ['label' => 'SA / QA', 'role' => 'sa_qa'],
         ];
 
-        $pools = collect($poolDefs)->map(function ($def) use ($teamLoadRows) {
-            $rows  = $teamLoadRows->filter(fn (TeamWorkload $tw) => $tw->user?->roles?->first()?->name === $def['role']);
+        $pools = collect($poolDefs)->map(function (array $pool) use ($teamLoad) {
+            $rows = collect($teamLoad)->filter(fn (array $row) => $row['role_slug'] === $pool['role']);
             $count = $rows->count();
-            $avg   = $count > 0 ? (int) round($rows->avg('load_pct')) : 0;
 
             return [
-                'label' => $def['label'],
-                'avg'   => $avg,
+                'label' => $pool['label'],
+                'avg' => $count > 0 ? (int) round($rows->avg('load')) : 0,
                 'count' => $count,
             ];
         })->all();
 
+        $recentActivities = AuditLog::with('user')
+            ->whereBetween('created_at', [$monthStart, $monthEnd])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(3)
+            ->get()
+            ->map(fn (AuditLog $log) => $this->activityCard($log))
+            ->all();
+
         return view('executive.index', [
-            'title'        => 'Executive Monitor',
-            'metrics'      => $metrics,
-            'projects'     => $projects,
+            'title' => 'Executive Monitor',
+            'metrics' => $metrics,
+            'projects' => $projects,
             'projectStats' => $projectStats,
-            'teamLoad'     => $teamLoad,
-            'pools'        => $pools,
+            'teamLoad' => $teamLoad,
+            'pools' => $pools,
+            'recentActivities' => $recentActivities,
+            'overloadAlert' => collect($teamLoad)->first(fn (array $row) => $row['load'] >= 85),
+            'monthOptions' => $this->monthOptions($selectedMonth),
+            'selectedMonth' => $selectedMonth->format('Y-m'),
+            'selectedMonthLabel' => $this->formatMonthYearId($selectedMonth),
         ]);
     }
 
-    private function loadFootLabel(int $load): string
+    private function scopeAssignmentMonth($query, Carbon $monthStart, Carbon $monthEnd)
     {
-        if ($load > 85)  return 'Critical capacity';
-        if ($load >= 70) return 'Near capacity';
+        return $query
+            ->whereNotIn('status', self::CLOSED_ASSIGNMENT_STATUSES)
+            ->where(function ($query) use ($monthStart, $monthEnd) {
+                $query
+                    ->whereBetween('due_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
+                    ->orWhere(function ($query) use ($monthStart, $monthEnd) {
+                        $query
+                            ->whereNull('due_date')
+                            ->whereBetween('created_at', [$monthStart, $monthEnd]);
+                    });
+            });
+    }
+
+    private function teamLoadRow(User $user): array
+    {
+        $roleSlug = $user->roles->pluck('name')->first(fn ($role) => in_array($role, self::OPERATIONAL_ROLES, true));
+        $poolSlug = $roleSlug === 'ui_ux' ? 'uiux_designer' : $roleSlug;
+        $assignments = $user->teamAssignments;
+        $hours = (int) $assignments->sum(fn (TeamAssignment $assignment) => (int) ($assignment->estimated_hours ?? 0));
+        $capacity = 40;
+        $load = $capacity > 0 ? (int) round($hours / $capacity * 100) : 0;
+
+        return [
+            'name' => $user->name,
+            'initials' => $this->initials($user->name),
+            'role' => $this->roleLabel($roleSlug),
+            'role_slug' => $poolSlug,
+            'load' => $load,
+            'bar_load' => min(100, $load),
+            'hours' => $hours,
+            'capacity' => $capacity,
+            'tasks' => $assignments->count(),
+        ];
+    }
+
+    private function activityCard(AuditLog $log): array
+    {
+        $style = $this->moduleStyle($log->module);
+        $actor = $log->user?->name ?? 'Sistem';
+        $description = trim(strip_tags((string) $log->description));
+
+        return [
+            'badge' => AuditController::tagForLog($log->module, $log->action, $log->auditable_type, $log->description),
+            'icon' => $style['icon'],
+            'color' => $style['color'],
+            'badge_bg' => $style['badge_bg'],
+            'title' => $log->module . ' oleh ' . $actor,
+            'body' => $description !== '' ? html_entity_decode($description) : $actor . ' melakukan ' . str_replace('_', ' ', $log->action) . ' di ' . $log->module . '.',
+            'action' => 'Lihat Audit',
+            'time' => $log->created_at?->diffForHumans() ?? 'baru saja',
+            'href' => $this->auditHref($log->module),
+        ];
+    }
+
+    private function auditHref(string $module): string
+    {
+        $chip = AuditController::categoryForModule($module);
+
+        return $chip === 'all'
+            ? route('audit.index')
+            : route('audit.index', ['chip' => $chip]);
+    }
+
+    private function moduleStyle(string $module): array
+    {
+        return match ($module) {
+            'Project Master' => ['icon' => 'folder', 'color' => '#5B21B6', 'badge_bg' => '#EDE9FE'],
+            'Client Directory' => ['icon' => 'building-office', 'color' => '#166534', 'badge_bg' => '#DCFCE7'],
+            'Team Management' => ['icon' => 'users', 'color' => '#86198F', 'badge_bg' => '#FAE8FF'],
+            'Settings' => ['icon' => 'cog-6-tooth', 'color' => '#9A3412', 'badge_bg' => '#FED7AA'],
+            'Auth' => ['icon' => 'shield-check', 'color' => '#334155', 'badge_bg' => '#F1F5F9'],
+            default => ['icon' => 'clipboard-document-list', 'color' => '#64748B', 'badge_bg' => '#F1F5F9'],
+        };
+    }
+
+    private function loadFootLabel(int $load, int $memberCount): string
+    {
+        if ($memberCount === 0) {
+            return 'Belum ada anggota operasional aktif';
+        }
+
+        if ($load >= 85) return 'Overloaded capacity';
+        if ($load >= 60) return 'Near capacity';
         return 'Optimal capacity';
+    }
+
+    private function roleLabel(?string $roleSlug): string
+    {
+        return match ($roleSlug) {
+            'fullstack_dev' => 'Fullstack Developer',
+            'uiux_designer', 'ui_ux' => 'UI/UX Senior',
+            'sa_qa' => 'SA / QA',
+            default => 'Operational Member',
+        };
+    }
+
+    private function resolveMonth(string $value): Carbon
+    {
+        if (preg_match('/^\d{4}-\d{2}$/', $value) === 1) {
+            try {
+                return Carbon::createFromFormat('Y-m-d', $value . '-01')->startOfMonth();
+            } catch (\Throwable) {
+                // Use the current month when the query parameter is malformed.
+            }
+        }
+
+        return Carbon::now()->startOfMonth();
+    }
+
+    private function monthOptions(Carbon $selectedMonth): array
+    {
+        return collect(range(0, 2))
+            ->map(fn (int $offset) => Carbon::now()->startOfMonth()->subMonths($offset))
+            ->push($selectedMonth)
+            ->unique(fn (Carbon $month) => $month->format('Y-m'))
+            ->sortByDesc(fn (Carbon $month) => $month->format('Y-m'))
+            ->values()
+            ->map(fn (Carbon $month) => [
+                'value' => $month->format('Y-m'),
+                'label' => $this->formatMonthYearId($month),
+                'url' => route('executive.index', ['month' => $month->format('Y-m')]),
+            ])
+            ->all();
+    }
+
+    private function formatMonthYearId(Carbon $date): string
+    {
+        $month = self::ID_MONTHS[((int) $date->format('n')) - 1] ?? $date->format('M');
+
+        return $month . ' ' . $date->format('Y');
     }
 
     private function firstName(string $fullName): string
@@ -144,10 +296,10 @@ class ExecutiveController extends Controller
         return mb_strtoupper(mb_substr($parts[0], 0, 1) . mb_substr($parts[1], 0, 1));
     }
 
-    private function formatDueId(?\Illuminate\Support\Carbon $date): string
+    private function formatDueId(?Carbon $date): string
     {
         if (! $date) {
-            return '—';
+            return '-';
         }
         $month = self::ID_MONTHS[((int) $date->format('n')) - 1] ?? $date->format('M');
         return $date->format('d') . ' ' . $month;
