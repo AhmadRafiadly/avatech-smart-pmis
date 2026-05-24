@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Project extends Model
 {
@@ -29,5 +30,15 @@ class Project extends Model
     public function lead(): BelongsTo
     {
         return $this->belongsTo(User::class, 'lead_user_id');
+    }
+
+    public function modules(): HasMany
+    {
+        return $this->hasMany(ProjectModule::class);
+    }
+
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(ProjectTask::class);
     }
 }

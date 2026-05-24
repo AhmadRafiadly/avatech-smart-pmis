@@ -29,6 +29,9 @@ class AuditController extends Controller
         'integration_connected'    => 'INTEGRASI TERHUBUNG',
         'integration_disconnected' => 'INTEGRASI DIPUTUS',
         'assignment_created'       => 'PENUGASAN BARU',
+        'wbs_module_created'       => 'MODUL WBS BARU',
+        'task_created'             => 'TASK BARU',
+        'task_status_changed'      => 'STATUS TASK DIUBAH',
     ];
 
     public function index(Request $request)

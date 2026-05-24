@@ -96,7 +96,7 @@
     $qcSummary = ['lulus' => 7, 'gagal' => 1, 'pending' => 2];
 
     if (! $useReferenceProjectData) {
-        $tabs = [
+        $tabs = $dbTabs ?? [
             ['id' => 'overview',   'label' => 'Overview',         'count' => 0],
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => 0],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => 0],
@@ -127,25 +127,25 @@
             ];
         })->all();
 
-        $metrics = [
+        $metrics = $dbMetrics ?? [
             ['code' => 'MOD',  'value' => '0/0', 'label' => 'Modul Disetujui',    'color' => '#3B82F6', 'progress' => 0, 'sub' => 'Belum ada modul'],
             ['code' => 'TASK', 'value' => '0/0', 'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => 0, 'sub' => 'Belum ada task'],
             ['code' => 'MOM',  'value' => '0/0', 'label' => 'MoM AI Rapi',        'color' => '#10B981', 'progress' => 0, 'sub' => 'Belum ada MoM'],
             ['code' => 'QC',   'value' => '0%',  'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0, 'sub' => 'Pass Rate'],
         ];
 
-        $statusCards = [
+        $statusCards = $dbStatusCards ?? [
             ['count' => 0, 'label' => 'Disetujui',       'bg' => '#ECFDF5', 'border' => '#A7F3D0', 'value' => '#047857', 'caption' => '#059669'],
             ['count' => 0, 'label' => 'Menunggu Dev',    'bg' => '#EFF6FF', 'border' => '#BFDBFE', 'value' => '#1D4ED8', 'caption' => '#2563EB'],
             ['count' => 0, 'label' => 'Menunggu Design', 'bg' => '#FFFBEB', 'border' => '#FDE68A', 'value' => '#B45309', 'caption' => '#D97706'],
             ['count' => 0, 'label' => 'Perlu Revisi',    'bg' => '#FFF1F2', 'border' => '#FECDD3', 'value' => '#BE123C', 'caption' => '#E11D48'],
         ];
 
-        $modules = [];
+        $modules = $dbModules ?? [];
         $activities = [
             ['dot' => '#7C3AED', 'time' => $createdAt, 'title' => 'Project dibuat', 'text' => 'Project baru dibuat dan menunggu perencanaan awal.'],
         ];
-        $kanban = [
+        $kanban = $dbKanban ?? [
             ['id' => 'todo',    'label' => 'Todo',    'color' => '#475569', 'bg' => '#F1F5F9', 'tasks' => []],
             ['id' => 'doing',   'label' => 'Doing',   'color' => '#2563EB', 'bg' => '#DBEAFE', 'tasks' => []],
             ['id' => 'testing', 'label' => 'Testing', 'color' => '#D97706', 'bg' => '#FEF3C7', 'tasks' => []],
@@ -153,8 +153,8 @@
         ];
         $moms = [];
         $testCases = [];
-        $workspaceTaskTotal = 0;
-        $workspaceTaskDone = 0;
+        $workspaceTaskTotal = $dbTaskTotal ?? 0;
+        $workspaceTaskDone = $dbTaskDone ?? 0;
         $qcSummary = ['lulus' => 0, 'gagal' => 0, 'pending' => 0];
     }
 
@@ -401,6 +401,46 @@
                     <span class="text-[13px] font-semibold text-slate-400">{{ count($modules) }} total modul</span>
                 </div>
 
+                @if ($canEdit && ! $useReferenceProjectData)
+                    <form method="POST" action="{{ route('projects.modules.store', $project) }}" class="mb-6 rounded-xl border border-violet-100 bg-violet-50/30 p-4">
+                        @csrf
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Judul Modul</label>
+                                <input name="title" value="{{ old('title') }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Contoh: Modul Autentikasi" />
+                                @error('title')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Status</label>
+                                    <select name="status" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                        @foreach ($moduleStatusOptions as $value => $label)
+                                            <option value="{{ $value }}" @selected(old('status', 'pending_design') === $value)>{{ $label }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('status')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                                </div>
+                                <div>
+                                    <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Estimasi Jam</label>
+                                    <input name="estimate_hours" type="number" min="0" max="999" value="{{ old('estimate_hours', 0) }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                    @error('estimate_hours')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                                </div>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Deskripsi</label>
+                                <textarea name="description" rows="2" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Opsional">{{ old('description') }}</textarea>
+                                @error('description')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                            </div>
+                        </div>
+                        <div class="mt-3 flex justify-end">
+                            <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
+                                <x-heroicon-o-plus class="w-4 h-4" />
+                                Tambah Modul
+                            </button>
+                        </div>
+                    </form>
+                @endif
+
                 @php
                     $segColors = ['#10B981', '#3B82F6', '#F59E0B', '#F43F5E'];
                     $totalCount = collect($statusCards)->sum('count');
@@ -525,11 +565,90 @@
                     <x-heroicon-o-chevron-down class="w-4 h-4 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
             </div>
-            <span class="text-[11px] font-bold tracking-wider uppercase px-3 py-1.5 rounded-full bg-violet-100 text-violet-700 inline-flex items-center gap-1.5">
-                <x-heroicon-o-eye class="w-3.5 h-3.5" />
-                Hanya Lihat
-            </span>
+            @if (! $canEdit)
+                <span class="text-[11px] font-bold tracking-wider uppercase px-3 py-1.5 rounded-full bg-violet-100 text-violet-700 inline-flex items-center gap-1.5">
+                    <x-heroicon-o-eye class="w-3.5 h-3.5" />
+                    Hanya Lihat
+                </span>
+            @elseif (! $useReferenceProjectData)
+                <span class="text-[11px] font-bold tracking-wider uppercase px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 inline-flex items-center gap-1.5">
+                    <x-heroicon-o-circle-stack class="w-3.5 h-3.5" />
+                    DB-backed
+                </span>
+            @endif
         </div>
+
+        @if ($canEdit && ! $useReferenceProjectData)
+            <form method="POST" action="{{ route('projects.tasks.store', $project) }}" class="mb-6 rounded-xl border border-violet-100 bg-violet-50/30 p-4">
+                @csrf
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <div class="md:col-span-2">
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Judul Task</label>
+                        <input name="title" value="{{ old('title') }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Contoh: Implementasi halaman login" />
+                        @error('title')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Modul</label>
+                        <select name="project_module_id" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            <option value="">Tanpa Modul</option>
+                            @foreach ($modules as $mod)
+                                <option value="{{ $mod['id'] }}" @selected((string) old('project_module_id') === (string) $mod['id'])>{{ $mod['name'] }}</option>
+                            @endforeach
+                        </select>
+                        @error('project_module_id')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Assignee</label>
+                        <select name="assigned_to" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            <option value="">Belum Ditugaskan</option>
+                            @foreach ($assigneeOptions as $member)
+                                <option value="{{ $member->id }}" @selected((string) old('assigned_to') === (string) $member->id)>{{ $member->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('assigned_to')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Status</label>
+                        <select name="status" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            @foreach ($taskStatusOptions as $value => $label)
+                                <option value="{{ $value }}" @selected(old('status', 'planned') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error('status')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Prioritas</label>
+                        <select name="priority" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            @foreach ($taskPriorityOptions as $value => $label)
+                                <option value="{{ $value }}" @selected(old('priority', 'medium') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error('priority')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Due Date</label>
+                        <input name="due_date" type="date" value="{{ old('due_date') }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        @error('due_date')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Estimasi Jam</label>
+                        <input name="estimate_hours" type="number" min="0" max="999" value="{{ old('estimate_hours', 0) }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        @error('estimate_hours')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="md:col-span-2 xl:col-span-4">
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Deskripsi</label>
+                        <textarea name="description" rows="2" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Opsional">{{ old('description') }}</textarea>
+                        @error('description')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+                <div class="mt-3 flex justify-end">
+                    <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
+                        <x-heroicon-o-plus class="w-4 h-4" />
+                        Tambah Task
+                    </button>
+                </div>
+            </form>
+        @endif
 
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             @foreach ($kanban as $col)
@@ -553,7 +672,27 @@
                                     ])>{{ $task['priority'] }}</span>
                                 </div>
                                 <p class="text-[13px] font-semibold text-[#1E1B4B] leading-snug mb-2">{{ $task['title'] }}</p>
-                                <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-slate-100 text-slate-500">{{ $task['assignee'] }}</span>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-slate-100 text-slate-500">{{ $task['assignee'] }}</span>
+                                    @if (! empty($task['hours']))
+                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-violet-50 text-violet-600">{{ $task['hours'] }}h</span>
+                                    @endif
+                                    @if (! empty($task['due']))
+                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">{{ $task['due'] }}</span>
+                                    @endif
+                                </div>
+                                @if ($canEdit && ! $useReferenceProjectData && ! empty($task['id']))
+                                    <form method="POST" action="{{ route('projects.tasks.status', [$project, $task['id']]) }}" class="mt-3 flex items-center gap-2">
+                                        @csrf
+                                        @method('PATCH')
+                                        <select name="status" class="min-w-0 flex-1 h-8 rounded-lg border border-violet-100 bg-white px-2 text-[12px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                            @foreach ($taskStatusOptions as $value => $label)
+                                                <option value="{{ $value }}" @selected($task['status'] === $value)>{{ $label }}</option>
+                                            @endforeach
+                                        </select>
+                                        <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan</button>
+                                    </form>
+                                @endif
                             </div>
                         @empty
                             <div data-col-empty class="text-[12.5px] text-slate-400 text-center py-8">Tidak ada task</div>
