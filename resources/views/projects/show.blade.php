@@ -832,20 +832,55 @@
             </div>
 
             <div class="p-7 pt-0">
+                @php
+                    $aiReady    ??= false;
+                    $aiProvider ??= 'AI';
+                    $momCount    = count($moms);
+                    /* Three-state gate. The button stays non-actionable in all
+                     * states (no generation yet); only copy + tooltip change. */
+                    if ($momCount === 0) {
+                        $wbsBtnState = [
+                            'label'   => 'Tambahkan MoM terlebih dahulu',
+                            'tooltip' => 'Generator butuh setidaknya 1 MoM tersimpan sebagai sumber.',
+                            'tone'    => 'muted',
+                        ];
+                    } elseif (! $aiReady) {
+                        $wbsBtnState = [
+                            'label'   => 'AI belum dikonfigurasi',
+                            'tooltip' => $aiProvider . ' API key belum di-set di env (GEMINI_API_KEY).',
+                            'tone'    => 'muted',
+                        ];
+                    } else {
+                        $wbsBtnState = [
+                            'label'   => 'Siap generate WBS',
+                            'tooltip' => $aiProvider . ' siap; aksi generate akan diaktifkan pada fase berikutnya.',
+                            'tone'    => 'ready',
+                        ];
+                    }
+                @endphp
                 <div class="p-5 rounded-2xl border border-dashed border-violet-300 bg-violet-50/40 flex flex-col gap-3">
                     <p class="text-[12px] text-slate-500 leading-relaxed text-center font-medium">
-                        Otomatis buat struktur Modul &amp; Task (WBS) dari MoM yang sudah rapi.
+                        Generate draft WBS dari MoM tersimpan. Hasil tetap bisa diedit manual.
                     </p>
                     <button
                         type="button"
                         disabled
                         aria-disabled="true"
-                        title="Integrasi AI belum aktif"
-                        class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition bg-slate-100 text-slate-400 cursor-not-allowed"
+                        title="{{ $wbsBtnState['tooltip'] }}"
+                        @class([
+                            'w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition cursor-not-allowed',
+                            'bg-slate-100 text-slate-400' => $wbsBtnState['tone'] === 'muted',
+                            'bg-gradient-to-r from-violet-500/80 to-pink-500/80 text-white shadow-lg shadow-violet-500/20' => $wbsBtnState['tone'] === 'ready',
+                        ])
                     >
                         <x-heroicon-o-sparkles class="w-4 h-4" />
-                        AI WBS Generator — segera tersedia
+                        {{ $wbsBtnState['label'] }}
                     </button>
+                    @if ($wbsBtnState['tone'] === 'ready')
+                        <p class="text-[11px] text-violet-600 italic text-center leading-relaxed">
+                            Aksi generate masih disabled — implementasi {{ $aiProvider }} dirilis di fase berikutnya.
+                        </p>
+                    @endif
                 </div>
             </div>
         </div>

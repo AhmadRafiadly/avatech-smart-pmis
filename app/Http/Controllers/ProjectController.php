@@ -8,6 +8,7 @@ use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectTask;
 use App\Models\User;
+use App\Services\AiPlanner;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -281,6 +282,8 @@ class ProjectController extends Controller
             'dbTaskTotal'  => $project->tasks->count(),
             'dbTaskDone'   => $project->tasks->where('status', 'done')->count(),
             'dbMoms'       => $this->projectMomRows($project),
+            'aiReady'      => AiPlanner::isConfigured(),
+            'aiProvider'   => AiPlanner::providerLabel(),
             'moduleStatusOptions' => self::MODULE_STATUS_LABELS,
             'taskStatusOptions' => self::TASK_STATUS_LABELS,
             'taskPriorityOptions' => self::TASK_PRIORITY_LABELS,
