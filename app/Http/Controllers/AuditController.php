@@ -33,6 +33,7 @@ class AuditController extends Controller
         'task_created'             => 'TASK BARU',
         'task_status_changed'      => 'STATUS TASK DIUBAH',
         'mom_created'              => 'MOM BARU',
+        'ai_wbs_generated'         => 'WBS AI DIBUAT',
     ];
 
     public function index(Request $request)

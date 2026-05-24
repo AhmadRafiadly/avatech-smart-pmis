@@ -49,6 +49,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{project}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
     Route::patch('/projects/{project}/tasks/{task}/status', [ProjectController::class, 'updateTaskStatus'])->name('projects.tasks.status');
     Route::post('/projects/{project}/moms', [ProjectController::class, 'storeMom'])->name('projects.moms.store');
+    Route::post('/projects/{project}/ai-wbs/generate', [ProjectController::class, 'generateWbsFromMom'])->name('projects.ai-wbs.generate');
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
     Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
     Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');

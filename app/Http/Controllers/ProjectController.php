@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\AiPlanner;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
@@ -434,6 +435,140 @@ class ProjectController extends Controller
         return redirect()
             ->to(route('projects.show', $project) . '#aiplanning')
             ->with('status', 'MoM untuk ' . $mom->meeting_date->format('d M Y') . ' berhasil disimpan.');
+    }
+
+    public function generateWbsFromMom(Request $request, Project $project)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $backUrl = route('projects.show', $project) . '#aiplanning';
+
+        $latestMom = $project->moms()
+            ->orderByDesc('meeting_date')
+            ->orderByDesc('id')
+            ->first();
+        if (! $latestMom) {
+            return redirect()->to($backUrl)
+                ->with('status', 'Tambahkan MoM terlebih dahulu sebelum generate WBS.');
+        }
+
+        if (! AiPlanner::isConfigured()) {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.');
+        }
+
+        $project->loadMissing('client');
+        $existingModuleTitles = $project->modules()->pluck('title')->all();
+
+        $context = [
+            'project_name'        => $project->name,
+            'project_code'        => $project->code,
+            'project_description' => trim(implode("\n", array_filter([
+                (string) ($project->description ?: ''),
+                'Klien: ' . ($project->client?->name ?: '-'),
+                'Modul yang sudah ada: ' . (! empty($existingModuleTitles) ? implode(', ', $existingModuleTitles) : '-'),
+            ]))),
+            'mom_date'    => optional($latestMom->meeting_date)->format('Y-m-d'),
+            'mom_summary' => (string) ($latestMom->summary ?: ''),
+            'mom_notes'   => (string) $latestMom->notes,
+        ];
+
+        $result = AiPlanner::generateWbsDraft($context);
+
+        if (! ($result['ok'] ?? false)) {
+            return redirect()->to($backUrl)
+                ->with('status', 'Generator AI gagal: ' . ($result['error'] ?? 'tidak diketahui.'));
+        }
+
+        $existingModuleByLower = [];
+        foreach ($project->modules()->get(['id', 'title']) as $existing) {
+            $existingModuleByLower[mb_strtolower($existing->title)] = $existing->id;
+        }
+        $maxModuleSort = (int) $project->modules()->max('sort_order');
+        $maxTaskSort   = (int) $project->tasks()->max('sort_order');
+
+        $createdModules = 0;
+        $createdTasks   = 0;
+
+        try {
+            DB::transaction(function () use (
+                $project,
+                $result,
+                &$existingModuleByLower,
+                &$maxModuleSort,
+                &$maxTaskSort,
+                &$createdModules,
+                &$createdTasks,
+            ) {
+                $drafts = $result['data']['modules'] ?? [];
+                foreach ($drafts as $modDraft) {
+                    $titleLower = mb_strtolower((string) ($modDraft['title'] ?? ''));
+                    if ($titleLower === '' || isset($existingModuleByLower[$titleLower])) {
+                        continue;
+                    }
+
+                    $maxModuleSort++;
+                    $module = $project->modules()->create([
+                        'title'          => $modDraft['title'],
+                        'description'    => $modDraft['description'] ?? null,
+                        'status'         => $modDraft['status'] ?? AiPlanner::DEFAULT_MODULE_STATUS,
+                        'estimate_hours' => (int) ($modDraft['estimate_hours'] ?? 0),
+                        'sort_order'     => $maxModuleSort,
+                    ]);
+                    $createdModules++;
+                    $existingModuleByLower[$titleLower] = $module->id;
+
+                    $existingTaskByLower = [];
+                    foreach (($modDraft['tasks'] ?? []) as $taskDraft) {
+                        $tTitleLower = mb_strtolower((string) ($taskDraft['title'] ?? ''));
+                        if ($tTitleLower === '' || isset($existingTaskByLower[$tTitleLower])) {
+                            continue;
+                        }
+                        $maxTaskSort++;
+                        $project->tasks()->create([
+                            'project_module_id' => $module->id,
+                            'assigned_to'       => null,
+                            'title'             => $taskDraft['title'],
+                            'description'       => $taskDraft['description'] ?? null,
+                            'status'            => $taskDraft['status'] ?? AiPlanner::DEFAULT_TASK_STATUS,
+                            'priority'          => $taskDraft['priority'] ?? AiPlanner::DEFAULT_TASK_PRIORITY,
+                            'estimate_hours'    => (int) ($taskDraft['estimate_hours'] ?? 0),
+                            'sort_order'        => $maxTaskSort,
+                        ]);
+                        $createdTasks++;
+                        $existingTaskByLower[$tTitleLower] = true;
+                    }
+                }
+            });
+        } catch (\Throwable $e) {
+            report($e);
+            return redirect()->to($backUrl)
+                ->with('status', 'Generator AI gagal menyimpan draft: ' . $e->getMessage());
+        }
+
+        if ($createdModules === 0 && $createdTasks === 0) {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI selesai, tapi semua modul/draft sudah ada — tidak ada item baru.');
+        }
+
+        AuditLogger::log(
+            'ai_wbs_generated',
+            'Project Master',
+            'Generate WBS AI: <strong>' . $createdModules . '</strong> modul + <strong>' . $createdTasks . '</strong> task pada proyek <strong>' . e($project->name) . '</strong>',
+            $project,
+            null,
+            [
+                'modules_created' => $createdModules,
+                'tasks_created'   => $createdTasks,
+                'source_mom_id'   => $latestMom->id,
+            ],
+        );
+
+        return redirect()->to($backUrl)
+            ->with('status', 'AI WBS Generator selesai: ' . $createdModules . ' modul, ' . $createdTasks . ' task.');
     }
 
     private function validateProject(Request $request, ?Project $project = null): array

@@ -836,8 +836,9 @@
                     $aiReady    ??= false;
                     $aiProvider ??= 'AI';
                     $momCount    = count($moms);
-                    /* Three-state gate. The button stays non-actionable in all
-                     * states (no generation yet); only copy + tooltip change. */
+                    /* Three-state gate. Ready state now wires a real POST to
+                     * projects.ai-wbs.generate; the muted states stay
+                     * non-actionable with a clear reason. */
                     if ($momCount === 0) {
                         $wbsBtnState = [
                             'label'   => 'Tambahkan MoM terlebih dahulu',
@@ -852,8 +853,8 @@
                         ];
                     } else {
                         $wbsBtnState = [
-                            'label'   => 'Siap generate WBS',
-                            'tooltip' => $aiProvider . ' siap; aksi generate akan diaktifkan pada fase berikutnya.',
+                            'label'   => 'Generate WBS dari MoM',
+                            'tooltip' => 'Buat draft modul + task dari MoM terbaru menggunakan ' . $aiProvider . '.',
                             'tone'    => 'ready',
                         ];
                     }
@@ -862,24 +863,33 @@
                     <p class="text-[12px] text-slate-500 leading-relaxed text-center font-medium">
                         Generate draft WBS dari MoM tersimpan. Hasil tetap bisa diedit manual.
                     </p>
-                    <button
-                        type="button"
-                        disabled
-                        aria-disabled="true"
-                        title="{{ $wbsBtnState['tooltip'] }}"
-                        @class([
-                            'w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition cursor-not-allowed',
-                            'bg-slate-100 text-slate-400' => $wbsBtnState['tone'] === 'muted',
-                            'bg-gradient-to-r from-violet-500/80 to-pink-500/80 text-white shadow-lg shadow-violet-500/20' => $wbsBtnState['tone'] === 'ready',
-                        ])
-                    >
-                        <x-heroicon-o-sparkles class="w-4 h-4" />
-                        {{ $wbsBtnState['label'] }}
-                    </button>
-                    @if ($wbsBtnState['tone'] === 'ready')
+
+                    @if ($wbsBtnState['tone'] === 'ready' && $canEdit && ! $useReferenceProjectData)
+                        <form method="POST" action="{{ route('projects.ai-wbs.generate', $project) }}" class="w-full" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                            @csrf
+                            <button
+                                type="submit"
+                                title="{{ $wbsBtnState['tooltip'] }}"
+                                class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition bg-gradient-to-r from-violet-500 to-pink-500 text-white shadow-lg shadow-violet-500/20 hover:scale-[1.02] cursor-pointer disabled:opacity-70 disabled:cursor-wait"
+                            >
+                                <x-heroicon-o-sparkles class="w-4 h-4" />
+                                {{ $wbsBtnState['label'] }}
+                            </button>
+                        </form>
                         <p class="text-[11px] text-violet-600 italic text-center leading-relaxed">
-                            Aksi generate masih disabled — implementasi {{ $aiProvider }} dirilis di fase berikutnya.
+                            Sumber: MoM terbaru proyek ini. Modul/task dengan judul yang sudah ada akan dilewati.
                         </p>
+                    @else
+                        <button
+                            type="button"
+                            disabled
+                            aria-disabled="true"
+                            title="{{ $wbsBtnState['tooltip'] }}"
+                            class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition cursor-not-allowed bg-slate-100 text-slate-400"
+                        >
+                            <x-heroicon-o-sparkles class="w-4 h-4" />
+                            {{ $wbsBtnState['label'] }}
+                        </button>
                     @endif
                 </div>
             </div>
