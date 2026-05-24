@@ -151,7 +151,7 @@
             ['id' => 'testing', 'label' => 'Testing', 'color' => '#D97706', 'bg' => '#FEF3C7', 'tasks' => []],
             ['id' => 'done',    'label' => 'Done',    'color' => '#059669', 'bg' => '#D1FAE5', 'tasks' => []],
         ];
-        $moms = [];
+        $moms = $dbMoms ?? [];
         $testCases = [];
         $workspaceTaskTotal = $dbTaskTotal ?? 0;
         $workspaceTaskDone = $dbTaskDone ?? 0;
@@ -717,37 +717,58 @@
                     <span class="px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold">{{ count($moms) }} TOTAL</span>
                 </div>
 
-                @if ($canEdit)
-                    <div class="space-y-3 pt-1">
+                @if ($canEdit && ! $useReferenceProjectData)
+                    <form method="POST" action="{{ route('projects.moms.store', $project) }}" class="space-y-3 pt-1">
+                        @csrf
                         <div>
                             <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Tanggal Rapat</label>
-                            <input type="date" data-mom-date class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                            <input type="date" name="meeting_date" required value="{{ old('meeting_date') }}" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                            @error('meeting_date') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
                         </div>
                         <div>
                             <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Notulensi Mentah</label>
-                            <textarea data-mom-body rows="4" placeholder="Ketik atau tempelkan seluruh catatan rapat di sini..." class="w-full rounded-xl border border-violet-100 px-4 py-3 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y"></textarea>
+                            <textarea name="notes" rows="4" required placeholder="Ketik atau tempelkan seluruh catatan rapat di sini..." class="w-full rounded-xl border border-violet-100 px-4 py-3 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('notes') }}</textarea>
+                            @error('notes') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Ringkasan <span class="text-slate-400 normal-case tracking-normal">(opsional)</span></label>
+                            <textarea name="summary" rows="2" placeholder="Ringkasan singkat dari MoM, action items, dsb. (opsional)" class="w-full rounded-xl border border-violet-100 px-4 py-3 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('summary') }}</textarea>
+                            @error('summary') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
                         </div>
                         <div class="flex justify-end">
-                            <button type="button" data-mom-save class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
+                            <button type="submit" class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
                                 <x-heroicon-o-bookmark-square class="w-4 h-4" />
                                 Simpan MoM
                             </button>
                         </div>
-                    </div>
+                    </form>
                 @endif
 
                 <div data-mom-list class="space-y-4 pt-1">
                     @forelse ($moms as $mom)
-                        <div class="p-5 rounded-xl border border-violet-100 bg-violet-50/20 hover:border-violet-300 transition group cursor-pointer">
-                            <div class="flex justify-between items-start mb-2">
-                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{{ $mom['date'] }}</span>
-                                <span class="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-extrabold rounded-full inline-flex items-center gap-1">
-                                    <x-heroicon-o-sparkles class="w-3 h-3" />
-                                    {{ $mom['tag'] }}
+                        @php
+                            $momIsDb     = is_array($mom) && array_key_exists('meeting_date', $mom);
+                            $momDateText = $momIsDb ? ($mom['date_label'] ?? '-') : ($mom['date'] ?? '-');
+                            $momTag      = $momIsDb ? mb_strtoupper($mom['status'] ?? 'draft') : ($mom['tag'] ?? 'DRAFT');
+                            $momTitle    = $momIsDb
+                                ? 'MoM ' . $momDateText . ($mom['creator'] ? ' · ' . $mom['creator'] : '')
+                                : ($mom['title'] ?? 'MoM');
+                            $momBody     = $momIsDb ? ($mom['notes'] ?? '') : ($mom['body'] ?? '');
+                            $momSummary  = $momIsDb ? ($mom['summary'] ?? null) : null;
+                        @endphp
+                        <div class="p-5 rounded-xl border border-violet-100 bg-violet-50/20 hover:border-violet-300 transition group">
+                            <div class="flex justify-between items-start mb-2 gap-3">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{{ $momDateText }}</span>
+                                <span class="px-2 py-0.5 bg-violet-50 text-violet-700 text-[9px] font-extrabold rounded-full inline-flex items-center gap-1 flex-shrink-0">
+                                    <x-heroicon-o-bookmark-square class="w-3 h-3" />
+                                    {{ $momTag }}
                                 </span>
                             </div>
-                            <h4 class="font-bold text-[#1E1B4B] text-[14px] group-hover:text-violet-700 transition mb-1">{{ $mom['title'] }}</h4>
-                            <p class="text-[12px] text-slate-500 leading-relaxed">{{ $mom['body'] }}</p>
+                            <h4 class="font-bold text-[#1E1B4B] text-[14px] group-hover:text-violet-700 transition mb-1">{{ $momTitle }}</h4>
+                            @if ($momSummary)
+                                <p class="text-[12px] text-slate-600 leading-relaxed font-medium mb-1">{{ $momSummary }}</p>
+                            @endif
+                            <p class="text-[12px] text-slate-500 leading-relaxed whitespace-pre-line">{{ $momBody }}</p>
                         </div>
                     @empty
                         <div data-mom-empty class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
@@ -764,16 +785,13 @@
                     </p>
                     <button
                         type="button"
-                        @if ($canEdit) data-toast="AI Generator segera tersedia." @endif
-                        @class([
-                            'w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition',
-                            'bg-gradient-to-r from-pink-500 to-violet-600 text-white shadow-lg shadow-violet-500/20 hover:scale-[1.02]' => $canEdit,
-                            'bg-slate-100 text-slate-400 cursor-not-allowed' => ! $canEdit,
-                        ])
-                        @if (! $canEdit) disabled aria-disabled="true" title="Hanya Lihat — aksi dinonaktifkan untuk CEO/PM" @endif
+                        disabled
+                        aria-disabled="true"
+                        title="Integrasi AI belum aktif"
+                        class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition bg-slate-100 text-slate-400 cursor-not-allowed"
                     >
                         <x-heroicon-o-sparkles class="w-4 h-4" />
-                        AI MoM Fixer
+                        AI MoM Fixer — segera tersedia
                     </button>
                 </div>
             </div>
@@ -820,16 +838,13 @@
                     </p>
                     <button
                         type="button"
-                        @if ($canEdit) data-toast="AI Generator segera tersedia." @endif
-                        @class([
-                            'w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition',
-                            'bg-gradient-to-r from-pink-500 to-violet-600 text-white shadow-lg shadow-violet-500/20 hover:scale-[1.02]' => $canEdit,
-                            'bg-slate-100 text-slate-400 cursor-not-allowed' => ! $canEdit,
-                        ])
-                        @if (! $canEdit) disabled aria-disabled="true" title="Hanya Lihat — aksi dinonaktifkan untuk CEO/PM" @endif
+                        disabled
+                        aria-disabled="true"
+                        title="Integrasi AI belum aktif"
+                        class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition bg-slate-100 text-slate-400 cursor-not-allowed"
                     >
                         <x-heroicon-o-sparkles class="w-4 h-4" />
-                        AI WBS Generator
+                        AI WBS Generator — segera tersedia
                     </button>
                 </div>
             </div>
@@ -1088,50 +1103,12 @@
                     kbnSelect.addEventListener('change', () => applyKbn(kbnSelect.value));
                 }
 
-                /* === Simpan MoM with localStorage === */
-                const momKey = 'avt-mom:' + pid;
-                const momList = document.querySelector('[data-mom-list]');
-                const renderMom = (mom) => {
-                    if (! momList) return;
-                    const card = document.createElement('div');
-                    card.className = 'p-5 rounded-xl border border-violet-100 bg-violet-50/20 hover:border-violet-300 transition group cursor-pointer';
-                    card.dataset.momUser = '1';
-                    card.innerHTML = ''
-                        + '<div class="flex justify-between items-start mb-2">'
-                        + '  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">' + (mom.date || '-') + '</span>'
-                        + '  <span class="px-2 py-0.5 bg-violet-50 text-violet-600 text-[9px] font-extrabold rounded-full">DRAFT</span>'
-                        + '</div>'
-                        + '<h4 class="font-bold text-[#1E1B4B] text-[14px] group-hover:text-violet-700 transition mb-1">MoM ' + (mom.date || '-') + '</h4>'
-                        + '<p class="text-[12px] text-slate-500 leading-relaxed whitespace-pre-line">' + (mom.body || '').replace(/</g, '&lt;') + '</p>';
-                    momList.insertBefore(card, momList.firstChild);
-                };
-                // Restore saved MoMs
+                /* MoM is now DB-backed via POST /projects/{project}/moms.
+                 * The legacy localStorage capture has been removed; the
+                 * form submits normally and Laravel persists + redirects. */
                 try {
-                    const raw = localStorage.getItem(momKey);
-                    if (raw) JSON.parse(raw).forEach(renderMom);
+                    localStorage.removeItem('avt-mom:' + pid);
                 } catch (e) {}
-                const momSaveBtn = document.querySelector('[data-mom-save]');
-                const momDate    = document.querySelector('[data-mom-date]');
-                const momBody    = document.querySelector('[data-mom-body]');
-                momSaveBtn?.addEventListener('click', () => {
-                    const date = (momDate?.value || '').trim();
-                    const body = (momBody?.value || '').trim();
-                    if (! date || ! body) {
-                        window.toast && window.toast('Isi tanggal dan notulensi mentah dulu.');
-                        return;
-                    }
-                    const fmt = new Date(date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-                    const mom = { date: fmt, body };
-                    renderMom(mom);
-                    try {
-                        const cur = JSON.parse(localStorage.getItem(momKey) || '[]');
-                        cur.unshift(mom);
-                        localStorage.setItem(momKey, JSON.stringify(cur));
-                    } catch (err) {}
-                    if (momDate) momDate.value = '';
-                    if (momBody) momBody.value = '';
-                    window.toast && window.toast('MoM disimpan.');
-                });
             };
 
             if (document.readyState === 'loading') {

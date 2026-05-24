@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Project;
+use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectTask;
 use App\Models\User;
@@ -247,6 +248,7 @@ class ProjectController extends Controller
             'lead',
             'modules' => fn ($query) => $query->with('tasks')->orderBy('sort_order')->orderBy('id'),
             'tasks' => fn ($query) => $query->with(['module', 'assignee'])->orderBy('sort_order')->orderBy('id'),
+            'moms' => fn ($query) => $query->with('creator:id,name')->orderByDesc('meeting_date')->orderByDesc('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -278,6 +280,7 @@ class ProjectController extends Controller
             'dbTabs'       => $this->projectTabs($project),
             'dbTaskTotal'  => $project->tasks->count(),
             'dbTaskDone'   => $project->tasks->where('status', 'done')->count(),
+            'dbMoms'       => $this->projectMomRows($project),
             'moduleStatusOptions' => self::MODULE_STATUS_LABELS,
             'taskStatusOptions' => self::TASK_STATUS_LABELS,
             'taskPriorityOptions' => self::TASK_PRIORITY_LABELS,
@@ -392,6 +395,44 @@ class ProjectController extends Controller
             ->with('status', 'Status task "' . $task->title . '" berhasil diperbarui.');
     }
 
+    public function storeMom(Request $request, Project $project)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $validated = $request->validate([
+            'meeting_date' => ['required', 'date'],
+            'notes'        => ['required', 'string', 'max:8000'],
+            'summary'      => ['nullable', 'string', 'max:4000'],
+        ], [
+            'meeting_date.required' => 'Tanggal rapat wajib diisi.',
+            'meeting_date.date'     => 'Tanggal rapat tidak valid.',
+            'notes.required'        => 'Notulensi wajib diisi.',
+            'notes.max'             => 'Notulensi terlalu panjang.',
+        ]);
+
+        $mom = $project->moms()->create([
+            'created_by'   => $request->user()?->id,
+            'meeting_date' => $validated['meeting_date'],
+            'notes'        => $validated['notes'],
+            'summary'      => $validated['summary'] ?? null,
+            'status'       => 'draft',
+        ]);
+
+        AuditLogger::log(
+            'mom_created',
+            'Project Master',
+            'Menambah MoM <strong>' . e($mom->meeting_date->format('d M Y')) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $mom,
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#aiplanning')
+            ->with('status', 'MoM untuk ' . $mom->meeting_date->format('d M Y') . ' berhasil disimpan.');
+    }
+
     private function validateProject(Request $request, ?Project $project = null): array
     {
         return $request->validate([
@@ -491,23 +532,44 @@ class ProjectController extends Controller
         $taskTotal = $project->tasks->count();
         $taskDone = $project->tasks->where('status', 'done')->count();
         $taskOpen = max(0, $taskTotal - $taskDone);
+        $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
 
         return [
             ['code' => 'MOD',  'value' => $moduleApproved . '/' . $moduleTotal, 'label' => 'Modul Disetujui',    'color' => '#3B82F6', 'progress' => $this->percentage($moduleApproved, $moduleTotal), 'sub' => $moduleTotal > 0 ? $moduleTotal . ' modul terdefinisi' : 'Belum ada modul'],
             ['code' => 'TASK', 'value' => $taskDone . '/' . $taskTotal,         'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => $this->percentage($taskDone, $taskTotal),         'sub' => $taskDone . ' Selesai • ' . $taskOpen . ' Open'],
-            ['code' => 'MOM',  'value' => '0/0',                                'label' => 'MoM AI Rapi',        'color' => '#10B981', 'progress' => 0,                                           'sub' => 'Belum ada MoM'],
+            ['code' => 'MOM',  'value' => $momTotal . ' MoM',                   'label' => 'MoM Tersimpan',      'color' => '#10B981', 'progress' => $momTotal > 0 ? 100 : 0,                          'sub' => $momTotal > 0 ? 'Catatan rapat tersimpan' : 'Belum ada MoM'],
             ['code' => 'QC',   'value' => '0%',                                 'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0,                                           'sub' => 'Pass Rate'],
         ];
     }
 
     private function projectTabs(Project $project): array
     {
+        $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
+
         return [
             ['id' => 'overview',   'label' => 'Overview',         'count' => $project->modules->count()],
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $project->tasks->count()],
-            ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => 0],
+            ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => 0],
         ];
+    }
+
+    private function projectMomRows(Project $project): array
+    {
+        return $project->moms->map(function (ProjectMom $mom) {
+            return [
+                'id'           => $mom->id,
+                'meeting_date' => optional($mom->meeting_date)->format('Y-m-d'),
+                'date_label'   => $mom->meeting_date
+                    ? $this->formatDateLongId($mom->meeting_date)
+                    : '—',
+                'notes'        => $mom->notes,
+                'summary'      => $mom->summary,
+                'status'       => $mom->status ?: 'draft',
+                'creator'      => $mom->creator?->name,
+                'created_at'   => $mom->created_at?->diffForHumans(),
+            ];
+        })->all();
     }
 
     private function projectKanbanColumns(Project $project): array
