@@ -121,16 +121,19 @@ class ProjectController extends Controller
             ->orderByDesc('updated_at')
             ->get();
 
+        /* Primary action per role. We deliberately avoid copy that implies
+         * features not yet wired up (QC DB flow, design upload). Every label
+         * here links to a real Project Detail tab anchor. */
         $actionPresets = match ($role) {
             'sa_qa' => [
-                'label'  => 'Review QC',
-                'icon'   => 'beaker',
-                'anchor' => '#qc',
+                'label'  => 'Buka Workspace',
+                'icon'   => 'squares-2x2',
+                'anchor' => '#workspace',
             ],
             'uiux_designer', 'ui_ux' => [
-                'label'  => 'Upload Design',
-                'icon'   => 'photo',
-                'anchor' => '#workspace',
+                'label'  => 'Buka Project',
+                'icon'   => 'arrow-up-right',
+                'anchor' => '',
             ],
             default => [ /* fullstack_dev */
                 'label'  => 'Buka Kanban',

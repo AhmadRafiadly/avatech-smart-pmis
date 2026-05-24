@@ -103,6 +103,17 @@
 
     $auditTotal = count($auditEntries);
 
+    /* For operational viewers, hide chips that always read 0 — Klien / Settings /
+       Login are unreachable from their UI. Keep "Semua" and only chips that have
+       at least one entry in the current modal payload. CEO/PM keep all chips. */
+    if ($isOperationalViewer) {
+        $presentCategories = array_unique(array_column($auditEntries, 'category'));
+        $auditFilters = array_values(array_filter(
+            $auditFilters,
+            fn ($f) => $f['id'] === 'all' || in_array($f['id'], $presentCategories, true),
+        ));
+    }
+
     /* ============== Notifications (DB-backed, role-aware) ==============
      * No dedicated notifications table — we derive notifications from
      * audit_logs. CEO/PM + admin-tier see the latest global events,
@@ -356,8 +367,14 @@
         <a href="{{ route('executive.index') }}" class="hover:text-primary transition-colors">Home</a>
         <x-heroicon-o-chevron-right class="w-4 h-4 opacity-60" />
         @if (request()->routeIs('projects.show'))
-            @php $crumbProject = request()->route('project'); @endphp
-            <a href="{{ route('projects.index') }}" class="hover:text-primary transition-colors">Project Master</a>
+            @php
+                $crumbProject = request()->route('project');
+                /* Operational users see this index as "Projects" (assigned-only);
+                   CEO/PM see it as "Project Master" (full inventory). Mirror the
+                   wording in the breadcrumb so it matches what they clicked into. */
+                $crumbProjectsLabel = $isOperationalViewer ? 'Projects' : 'Project Master';
+            @endphp
+            <a href="{{ route('projects.index') }}" class="hover:text-primary transition-colors">{{ $crumbProjectsLabel }}</a>
             <x-heroicon-o-chevron-right class="w-4 h-4 opacity-60" />
             <span class="text-primary font-semibold truncate max-w-[280px]">{{ $crumbProject?->name ?? $pageTitle }}</span>
         @else
@@ -688,16 +705,11 @@
                 @endforelse
             </div>
 
-            {{-- Footer --}}
-            <div class="px-5 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-between gap-3">
-                <button
-                    type="button"
-                    data-notif-mark-all-read
-                    class="text-[12px] font-semibold text-slate-500 hover:text-violet-700 transition cursor-pointer inline-flex items-center gap-1.5"
-                >
-                    <x-heroicon-o-check class="w-3.5 h-3.5" />
-                    Tandai semua dibaca
-                </button>
+            {{-- Footer.
+                 "Tandai semua dibaca" intentionally omitted: there is no
+                 persistent read/unread state on the server yet, and a
+                 client-only toggle would only fake the action away. --}}
+            <div class="px-5 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-3">
                 @if ($isFullAuditViewer)
                     <a
                         href="{{ route('settings.index') }}#notif"

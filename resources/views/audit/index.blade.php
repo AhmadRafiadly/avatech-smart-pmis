@@ -5,6 +5,7 @@
     $activeChip ??= 'all';
     $selectedActor ??= 'all';
     $selectedRange ??= 'all';
+    $isOperationalView ??= false;
 
     $filters = [
         ['id' => 'all',      'label' => 'Semua'],
@@ -25,6 +26,16 @@
         'settings' => $col->where('filter', 'settings')->count(),
         'login'    => $col->where('filter', 'login')->count(),
     ];
+
+    /* Operational view: hide chips that are always zero (Klien / Settings /
+       Login are unreachable from their UI). Keep "Semua" plus whatever has
+       at least one log so the chip row reads as actionable. CEO/PM keep all. */
+    if ($isOperationalView) {
+        $filters = array_values(array_filter(
+            $filters,
+            fn ($f) => $f['id'] === 'all' || ($filterCounts[$f['id']] ?? 0) > 0,
+        ));
+    }
 
     $dataChanged = $filterCounts['proyek'] + $filterCounts['klien'] + $filterCounts['tim'];
     $visibleCount = $activeChip === 'all' ? $filterCounts['all'] : ($filterCounts[$activeChip] ?? $filterCounts['all']);
