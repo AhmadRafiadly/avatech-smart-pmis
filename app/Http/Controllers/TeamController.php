@@ -8,7 +8,6 @@ use App\Models\TeamWorkload;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class TeamController extends Controller
@@ -33,7 +32,7 @@ class TeamController extends Controller
             $archiveScope = 'active';
         }
 
-        $members = User::with(['roles', 'workload', 'teamAssignments.project'])
+        $members = User::with(['roles', 'teamAssignments.project'])
             ->whereDoesntHave('roles', fn ($query) => $query->where('name', 'ceo_pm'))
             ->whereHas('roles', fn ($query) => $query->whereIn('name', ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev']))
             ->when($archiveScope === 'active', fn ($query) => $query->whereNull('archived_at'))
@@ -43,11 +42,17 @@ class TeamController extends Controller
             ->map(fn (User $user) => $this->memberRow($user))
             ->all();
 
+        $totalActiveProjects = TeamAssignment::query()
+            ->whereNotIn('status', ['done', 'completed'])
+            ->distinct('project_id')
+            ->count('project_id');
+
         return view('team.index', [
             'title' => 'Team Management',
             'members' => $members,
             'projects' => Project::orderBy('name')->get(['id', 'code', 'color', 'name']),
             'archiveScope' => $archiveScope,
+            'totalActiveProjects' => $totalActiveProjects,
         ]);
     }
 
@@ -58,7 +63,7 @@ class TeamController extends Controller
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
-            'password' => Hash::make(Str::password(16)),
+            'password' => Hash::make('password'),
             'phone' => $validated['phone'] ?? null,
             'level' => $validated['level'],
             'skills' => $this->skillsFromInput($validated['skills'] ?? ''),
@@ -68,12 +73,10 @@ class TeamController extends Controller
 
         $user->syncRoles([self::UI_ROLES[$validated['role']]['rbac']]);
 
-        TeamWorkload::create([
-            'user_id' => $user->id,
-            'load_pct' => 0,
-            'active_tasks' => 0,
-            'is_sim' => false,
-        ]);
+        TeamWorkload::firstOrCreate(
+            ['user_id' => $user->id],
+            ['load_pct' => 0, 'active_tasks' => 0, 'is_sim' => false]
+        );
 
         return redirect()
             ->route('team.index', ['open' => 'member:' . $user->id])
@@ -139,6 +142,7 @@ class TeamController extends Controller
             'title' => ['required', 'string', 'max:160'],
             'type' => ['required', 'string', 'max:60'],
             'status' => ['required', 'string', 'max:60'],
+            'estimated_hours' => ['nullable', 'integer', 'min:0', 'max:200'],
             'due_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ], [
@@ -147,6 +151,9 @@ class TeamController extends Controller
             'title.required' => 'Ringkasan penugasan wajib diisi.',
             'type.required' => 'Tipe penugasan wajib diisi.',
             'status.required' => 'Status wajib dipilih.',
+            'estimated_hours.integer' => 'Estimasi jam harus berupa angka.',
+            'estimated_hours.min' => 'Estimasi jam tidak boleh negatif.',
+            'estimated_hours.max' => 'Estimasi jam terlalu besar.',
         ]);
 
         TeamAssignment::create([
@@ -155,6 +162,7 @@ class TeamController extends Controller
             'title' => $validated['title'],
             'type' => $validated['type'],
             'status' => $validated['status'],
+            'estimated_hours' => $validated['estimated_hours'] ?? 0,
             'due_date' => $validated['due_date'] ?? null,
             'notes' => $validated['notes'] ?? null,
         ]);
@@ -194,15 +202,21 @@ class TeamController extends Controller
     {
         $roleName = $user->roles->first()?->name ?? '';
         $roleKey = self::RBAC_TO_UI[$roleName] ?? 'fullstack_dev';
-        $workload = $user->workload;
         $assignments = $user->teamAssignments->sortByDesc('created_at')->values();
-        $load = (int) ($workload?->load_pct ?? 0);
         $capacityHours = 40;
         $skills = $user->skills ?: $this->fallbackSkills($roleKey);
         $joinedAt = $user->created_at ?: now();
-        $openAssignments = $assignments->whereNotIn('status', ['done', 'completed']);
+
+        $openAssignments = $assignments->whereNotIn('status', ['done', 'completed'])->values();
+        $doneAssignments = $assignments->whereIn('status', ['done', 'completed']);
+
+        $loadHours = (int) $openAssignments->sum(fn (TeamAssignment $a) => (int) ($a->estimated_hours ?? 0));
+        $load = $capacityHours > 0 ? (int) min(100, round($loadHours / $capacityHours * 100)) : 0;
+
         $ledProjects = Project::where('lead_user_id', $user->id)->count();
-        $activeProjects = $assignments->pluck('project_id')->unique()->count() + $ledProjects;
+        $activeProjects = $openAssignments->pluck('project_id')->unique()->count();
+
+        $hasData = $assignments->isNotEmpty();
 
         return [
             'id' => $user->id,
@@ -215,11 +229,12 @@ class TeamController extends Controller
             'tenure' => $joinedAt->diffForHumans(null, true),
             'avatar_color' => $user->avatar_color ?: $this->colorForRole($roleKey),
             'load' => $load,
-            'load_hours' => (int) round($capacityHours * ($load / 100)),
+            'load_hours' => $loadHours,
             'capacity_hours' => $capacityHours,
             'projects_active' => $activeProjects,
-            'tasks_open' => (int) ($workload?->active_tasks ?? $openAssignments->count()),
-            'perf' => max(70, min(98, 92 - max(0, $load - 70))),
+            'tasks_open' => $openAssignments->count(),
+            'perf' => null,
+            'perf_label' => $hasData ? null : 'Belum ada data',
             'presence' => $user->archived_at ? 'offline' : ($load >= 85 ? 'away' : 'online'),
             'skills' => $skills,
             'phone' => $user->phone ?: '',
@@ -227,7 +242,7 @@ class TeamController extends Controller
             'join_date' => $joinedAt->translatedFormat('d M Y'),
             'last_active' => $user->updated_at?->diffForHumans() ?: 'baru saja',
             'projects_lead' => $ledProjects,
-            'tasks_done' => $assignments->whereIn('status', ['done', 'completed'])->count(),
+            'tasks_done' => $doneAssignments->count(),
             'bio' => self::UI_ROLES[$roleKey]['label'] . ' · ' . ($user->level ?: 'Mid') . '. Profil ini tersimpan di database Smart-PMIS.',
             'archived' => (bool) $user->archived_at,
             'raw_role' => $roleKey,
@@ -238,17 +253,22 @@ class TeamController extends Controller
             'wa_link' => $this->whatsAppLink($user->phone),
             'email_link' => $this->gmailLink($user->email),
             'assignment_url' => route('team.assignments.store', $user),
-            'allocations' => $assignments->map(fn (TeamAssignment $assignment) => [
-                'code' => $assignment->project?->code ?: 'PRJ',
-                'color' => $assignment->project?->color ?: '#7C3AED',
-                'name' => $assignment->project?->name ?: 'Project',
-                'role' => $assignment->title,
-                'pct' => 0,
-                'hours' => 0,
-                'status' => $assignment->status,
-                'due_date' => $assignment->due_date?->format('Y-m-d'),
-                'notes' => $assignment->notes,
-            ])->all(),
+            'allocations' => $openAssignments->map(function (TeamAssignment $assignment) use ($capacityHours) {
+                $hours = (int) ($assignment->estimated_hours ?? 0);
+
+                return [
+                    'project_id' => $assignment->project_id,
+                    'code' => $assignment->project?->code ?: 'PRJ',
+                    'color' => $assignment->project?->color ?: '#7C3AED',
+                    'name' => $assignment->project?->name ?: 'Project',
+                    'role' => $assignment->title,
+                    'pct' => $capacityHours > 0 ? (int) min(100, round($hours / $capacityHours * 100)) : 0,
+                    'hours' => $hours,
+                    'status' => $assignment->status,
+                    'due_date' => $assignment->due_date?->format('Y-m-d'),
+                    'notes' => $assignment->notes,
+                ];
+            })->all(),
             'activities' => $this->activityRows($assignments),
             'permissions' => $this->permissionsForRole($roleKey),
         ];

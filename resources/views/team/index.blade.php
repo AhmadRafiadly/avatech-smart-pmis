@@ -2,6 +2,7 @@
     $errors ??= new \Illuminate\Support\ViewErrorBag;
     $projects ??= collect();
     $archiveScope ??= 'active';
+    $totalActiveProjects ??= 0;
     if (! isset($members)) {
     $members = [
         [
@@ -195,10 +196,12 @@
     $stats = [
         ['label' => 'Total Anggota', 'value' => count($deliveryMembers),                                              'suffix' => '',      'color' => '#7C3AED'],
         ['label' => 'Kapasitas',     'value' => $col->sum('capacity_hours'),                                          'suffix' => 'h/mgg', 'color' => '#3B82F6'],
-        ['label' => 'Avg Load',      'value' => round($col->avg('load')),                                             'suffix' => '%',     'color' => '#10B981'],
-        ['label' => 'Proyek Aktif',  'value' => 7,                                                                     'suffix' => '',      'color' => '#A855F7'],
+        ['label' => 'Avg Load',      'value' => $col->count() ? (int) round($col->avg('load')) : 0,                  'suffix' => '%',     'color' => '#10B981'],
+        ['label' => 'Proyek Aktif',  'value' => $totalActiveProjects,                                                  'suffix' => '',      'color' => '#A855F7'],
         ['label' => 'Burnout Risk',  'value' => $col->where('load', '>=', 85)->count(),                              'suffix' => '',      'color' => '#EF4444'],
     ];
+
+    $overloadedMembers = $col->where('load', '>=', 85)->sortByDesc('load')->values();
 
     $rolePill = [
         'ceo'       => 'bg-fuchsia-50 text-fuchsia-700',
@@ -265,7 +268,7 @@
             </button>
             <button type="button" data-create-trigger="team" class="inline-flex items-center gap-2 h-12 px-5 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[14px] shadow-[0_4px_14px_rgba(124,58,237,0.35)] hover:shadow-[0_6px_20px_rgba(124,58,237,0.45)] hover:-translate-y-0.5 transition-all cursor-pointer">
                 <x-heroicon-o-user-plus class="w-5 h-5" />
-                Undang Anggota
+                Tambah Anggota
             </button>
         </div>
     </section>
@@ -287,35 +290,35 @@
         @endforeach
     </section>
 
-    <section class="relative overflow-hidden rounded-2xl p-6 mb-8 text-white bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 shadow-[0_8px_24px_rgba(124,58,237,0.18)]">
-        <div class="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 pointer-events-none"></div>
-        <div class="absolute top-12 right-32 w-24 h-24 rounded-full bg-white/5 pointer-events-none"></div>
-        <div class="relative flex items-start gap-5 flex-wrap">
-            <div class="w-12 h-12 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center flex-shrink-0">
-                <x-heroicon-o-sparkles class="w-6 h-6" />
-            </div>
-            <div class="flex-1 min-w-[280px]">
-                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <span class="text-[10px] font-bold tracking-[0.18em] uppercase bg-white/20 px-2 py-1 rounded-md">AI WORKLOAD BALANCER</span>
-                    <span class="text-[11px] text-white/80">Diperbarui 5 menit lalu</span>
+    @if ($overloadedMembers->isNotEmpty())
+        @php
+            $primaryOverloaded = $overloadedMembers->first();
+            $extraOverloaded = $overloadedMembers->slice(1, 1)->first();
+        @endphp
+        <section class="relative overflow-hidden rounded-2xl p-6 mb-8 text-white bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 shadow-[0_8px_24px_rgba(124,58,237,0.18)]">
+            <div class="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 pointer-events-none"></div>
+            <div class="absolute top-12 right-32 w-24 h-24 rounded-full bg-white/5 pointer-events-none"></div>
+            <div class="relative flex items-start gap-5 flex-wrap">
+                <div class="w-12 h-12 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center flex-shrink-0">
+                    <x-heroicon-o-bolt class="w-6 h-6" />
                 </div>
-                <h3 class="text-[19px] font-bold leading-tight mb-1.5">Yuda &amp; Irwan mendekati overload minggu ini</h3>
-                <p class="text-[13.5px] text-white/85 leading-relaxed">
-                    Beban kerja <strong>Yuda Prayoga</strong> mencapai 90% kapasitas (Beta Portal + Gamma API).
-                    Sarankan re-assign task <em>"UI Review Beta Portal"</em> ke <strong>Ferry Achmad</strong> (load 42%) untuk meredakan tekanan.
-                </p>
+                <div class="flex-1 min-w-[280px]">
+                    <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span class="text-[10px] font-bold tracking-[0.18em] uppercase bg-white/20 px-2 py-1 rounded-md">WORKLOAD ALERT</span>
+                        <span class="text-[11px] text-white/80">{{ $overloadedMembers->count() }} anggota &ge; 85% kapasitas</span>
+                    </div>
+                    <h3 class="text-[19px] font-bold leading-tight mb-1.5">
+                        {{ $primaryOverloaded['name'] }}{{ $extraOverloaded ? ' & ' . $extraOverloaded['name'] : '' }} mendekati overload minggu ini
+                    </h3>
+                    <p class="text-[13.5px] text-white/85 leading-relaxed">
+                        Beban kerja <strong>{{ $primaryOverloaded['name'] }}</strong> mencapai {{ $primaryOverloaded['load'] }}% kapasitas
+                        ({{ $primaryOverloaded['load_hours'] }}h dari {{ $primaryOverloaded['capacity_hours'] }}h).
+                        Pertimbangkan re-assign penugasan ke anggota dengan beban lebih rendah lewat tombol <span class="font-semibold">Atur Penugasan</span>.
+                    </p>
+                </div>
             </div>
-            <div class="flex flex-col gap-2 flex-shrink-0">
-                <button type="button" data-toast="Penerapan saran AI Workload segera tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-white text-violet-700 font-bold text-[13px] hover:bg-violet-50 transition cursor-pointer">
-                    <x-heroicon-o-sparkles class="w-4 h-4" />
-                    Terapkan Saran
-                </button>
-                <button type="button" data-toast="Detail rekomendasi AI segera tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-white/15 backdrop-blur text-white font-semibold text-[12.5px] hover:bg-white/25 transition border border-white/20 cursor-pointer">
-                    Tinjau detail
-                </button>
-            </div>
-        </div>
-    </section>
+        </section>
+    @endif
 
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5 mb-6 flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2 flex-wrap">
@@ -459,7 +462,11 @@
                         <div class="text-[10.5px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Task</div>
                     </div>
                     <div>
-                        <div class="text-[18px] font-bold tabular-nums" style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</div>
+                        @if ($m['perf'] !== null)
+                            <div class="text-[18px] font-bold tabular-nums" style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</div>
+                        @else
+                            <div class="text-[18px] font-bold tabular-nums text-slate-300" title="Belum ada data">—</div>
+                        @endif
                         <div class="text-[10.5px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Skor</div>
                     </div>
                 </div>
@@ -565,7 +572,13 @@
                             </td>
                             <td class="px-4 py-4 text-[13px] font-semibold text-[#1E1B4B] tabular-nums">{{ $m['projects_active'] }}</td>
                             <td class="px-4 py-4 text-[13px] font-semibold text-[#1E1B4B] tabular-nums">{{ $m['tasks_open'] }}</td>
-                            <td class="px-4 py-4 text-[13px] font-bold tabular-nums" style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</td>
+                            <td class="px-4 py-4 text-[13px] font-bold tabular-nums">
+                                @if ($m['perf'] !== null)
+                                    <span style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</span>
+                                @else
+                                    <span class="text-slate-300" title="Belum ada data">—</span>
+                                @endif
+                            </td>
                             <td class="px-7 py-4 text-right">
                                 <button type="button" data-edit-member data-no-modal class="inline-flex items-center text-violet-600 mr-3 cursor-pointer" aria-label="Edit anggota">
                                     <x-heroicon-o-pencil-square class="w-4 h-4" />
@@ -694,16 +707,26 @@
                                 </div>
                                 <div class="rounded-2xl border border-violet-100 p-5">
                                     <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-3">Skor Performa</h4>
-                                    <div class="flex items-baseline gap-2 mb-2">
-                                        <span class="text-[40px] font-bold leading-none tabular-nums" style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</span>
-                                        <span class="text-[14px] font-semibold text-slate-400">/ 100</span>
-                                    </div>
-                                    <div class="h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
-                                        <div class="h-full rounded-full" style="width: {{ $m['perf'] }}%; background: {{ $perfFill($m['perf']) }};"></div>
-                                    </div>
-                                    <div class="text-[11.5px] text-slate-500 mt-2.5 leading-relaxed">
-                                        Dihitung dari konsistensi WBS, tingkat lulus QC, dan respon AI Smart Reminders.
-                                    </div>
+                                    @if ($m['perf'] !== null)
+                                        <div class="flex items-baseline gap-2 mb-2">
+                                            <span class="text-[40px] font-bold leading-none tabular-nums" style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</span>
+                                            <span class="text-[14px] font-semibold text-slate-400">/ 100</span>
+                                        </div>
+                                        <div class="h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
+                                            <div class="h-full rounded-full" style="width: {{ $m['perf'] }}%; background: {{ $perfFill($m['perf']) }};"></div>
+                                        </div>
+                                        <div class="text-[11.5px] text-slate-500 mt-2.5 leading-relaxed">
+                                            Dihitung dari konsistensi WBS, tingkat lulus QC, dan respon AI Smart Reminders.
+                                        </div>
+                                    @else
+                                        <div class="flex items-baseline gap-2 mb-2">
+                                            <span class="text-[40px] font-bold leading-none text-slate-300">—</span>
+                                        </div>
+                                        <div class="h-2 rounded-full bg-slate-100 overflow-hidden"></div>
+                                        <div class="text-[11.5px] text-slate-500 mt-2.5 leading-relaxed">
+                                            Belum ada data performa. Skor akan muncul saat anggota memiliki riwayat penugasan dan QC.
+                                        </div>
+                                    @endif
                                 </div>
                             </div>
 
@@ -738,7 +761,13 @@
                                 <div class="rounded-2xl border border-violet-100 p-5">
                                     <div class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Proyek Aktif</div>
                                     <div class="text-[32px] font-bold text-[#1E1B4B] tabular-nums">{{ $m['projects_active'] }}</div>
-                                    <div class="text-[11.5px] text-slate-500 mt-2.5">Termasuk peran lead di <span class="font-semibold text-[#1E1B4B] tabular-nums">{{ $m['projects_lead'] }}</span> proyek</div>
+                                    <div class="text-[11.5px] text-slate-500 mt-2.5">
+                                        @if ($m['projects_active'] > 0)
+                                            Dari <span class="font-semibold text-[#1E1B4B] tabular-nums">{{ $m['projects_active'] }}</span> proyek aktif
+                                        @else
+                                            Belum ada proyek aktif
+                                        @endif
+                                    </div>
                                 </div>
                                 <div class="rounded-2xl border border-violet-100 p-5">
                                     <div class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Task Terbuka</div>
@@ -794,10 +823,16 @@
                             </div>
                         </div>
 
-                        {{-- Role & Akses --}}
+                        {{-- Role & Akses (read-only — derived from role) --}}
                         <div data-tm-panel="access" class="hidden">
                             <div class="rounded-2xl border border-violet-100 p-5 mb-5">
-                                <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-3">Level Akses Sistem</h4>
+                                <div class="flex items-center justify-between gap-3 mb-3">
+                                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400">Level Akses Sistem</h4>
+                                    <span class="inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-md px-2 py-1 bg-slate-100 text-slate-600">
+                                        <x-heroicon-o-lock-closed class="w-3 h-3" />
+                                        Read-only
+                                    </span>
+                                </div>
                                 <div class="space-y-2.5">
                                     @foreach ($m['permissions'] as $p)
                                         <div class="flex items-center justify-between gap-4 py-2 border-b border-violet-50 last:border-0">
@@ -810,11 +845,11 @@
                                     @endforeach
                                 </div>
                             </div>
-                            <div class="rounded-2xl border border-amber-200 bg-amber-50/40 p-5 flex items-start gap-3">
-                                <x-heroicon-o-shield-exclamation class="w-5 h-5 text-amber-700 mt-0.5 flex-shrink-0" />
+                            <div class="rounded-2xl border border-violet-100 bg-violet-50/40 p-5 flex items-start gap-3">
+                                <x-heroicon-o-information-circle class="w-5 h-5 text-violet-600 mt-0.5 flex-shrink-0" />
                                 <div>
-                                    <div class="text-[13.5px] font-bold text-amber-900">Konfirmasi CEO/PM dibutuhkan</div>
-                                    <p class="text-[12.5px] text-amber-700 mt-1">Perubahan level akses anggota memerlukan persetujuan CEO untuk menjaga audit trail tetap aman.</p>
+                                    <div class="text-[13.5px] font-bold text-[#1E1B4B]">Akses mengikuti role</div>
+                                    <p class="text-[12.5px] text-slate-600 mt-1">Daftar akses di atas otomatis mengikuti role anggota. Untuk mengubah akses, ubah role lewat tombol <span class="font-semibold text-violet-700">Edit Anggota</span>.</p>
                                 </div>
                             </div>
                         </div>
@@ -1118,10 +1153,6 @@
                     <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Penugasan Saat Ini</h4>
                     <div data-assign-current class="space-y-2"></div>
                 </section>
-                <section>
-                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Penugasan Tersimpan</h4>
-                    <div data-assign-saved class="space-y-2"></div>
-                </section>
                 <section class="rounded-2xl border border-dashed border-violet-200 bg-violet-50/30 p-4">
                     <h4 class="text-[11px] font-bold tracking-wider uppercase text-violet-700 mb-3">Tambah Penugasan Baru</h4>
                     <div class="space-y-3">
@@ -1134,10 +1165,18 @@
                                 @endforeach
                             </select>
                         </div>
+                        <div>
+                            <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Ringkasan / Peran</label>
+                            <input name="title" data-assign-title type="text" placeholder="mis. Review flow onboarding" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Peran</label>
-                                <input name="title" data-assign-title type="text" placeholder="mis. Review flow onboarding" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tipe</label>
+                                <select name="type" data-assign-type class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    <option value="task">Task</option>
+                                    <option value="review">Review</option>
+                                    <option value="support">Support</option>
+                                </select>
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Status</label>
@@ -1150,16 +1189,12 @@
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tipe</label>
-                                <select name="type" data-assign-type class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                    <option value="task">Task</option>
-                                    <option value="review">Review</option>
-                                    <option value="support">Support</option>
-                                </select>
-                            </div>
-                            <div>
                                 <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Due Date</label>
                                 <input name="due_date" data-assign-due type="date" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Estimasi Jam / Minggu</label>
+                                <input name="estimated_hours" data-assign-hours type="number" min="0" max="200" step="1" placeholder="0" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
                             </div>
                         </div>
                         <div>
@@ -1189,18 +1224,16 @@
                 const form     = modal.querySelector('[data-assign-form]');
                 const nameEl   = modal.querySelector('[data-assign-member-name]');
                 const curEl    = modal.querySelector('[data-assign-current]');
-                const savedEl  = modal.querySelector('[data-assign-saved]');
                 const projSel  = modal.querySelector('[data-assign-project]');
                 const titleInp = modal.querySelector('[data-assign-title]');
                 const typeSel = modal.querySelector('[data-assign-type]');
                 const statusSel = modal.querySelector('[data-assign-status]');
                 const dueInp = modal.querySelector('[data-assign-due]');
+                const hoursInp = modal.querySelector('[data-assign-hours]');
                 const notesInp = modal.querySelector('[data-assign-notes]');
                 let currentId  = null;
 
                 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-                const loadSaved = () => [];
-                const persistSaved = () => {};
 
                 const renderCurrent = (allocs) => {
                     if (! curEl) return;
@@ -1222,24 +1255,6 @@
                     ).join('');
                 };
 
-                const renderSaved = (id) => {
-                    if (! savedEl) return;
-                    const list = loadSaved(id);
-                    if (list.length === 0) {
-                        savedEl.innerHTML = '<p class="text-[12.5px] text-slate-400 italic">Belum ada penugasan tambahan tersimpan.</p>';
-                        return;
-                    }
-                    savedEl.innerHTML = list.map((row, idx) =>
-                        '<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-violet-200 bg-violet-50/40">'
-                        + '  <div class="min-w-0">'
-                        + '    <div class="text-[13px] font-semibold text-[#1E1B4B] truncate">' + esc(row.project) + '</div>'
-                        + '    <div class="text-[11.5px] text-slate-500">' + esc(row.role || '—') + ' · ' + esc(row.load) + '%</div>'
-                        + '  </div>'
-                        + '  <button type="button" data-assign-remove="' + idx + '" class="text-[11.5px] font-semibold text-rose-600 hover:text-rose-700 transition cursor-pointer">Hapus</button>'
-                        + '</div>'
-                    ).join('');
-                };
-
                 const openAssign = (id, fallbackName) => {
                     currentId = id;
                     const member = (window.__teamCsvMap && window.__teamCsvMap[id]) || null;
@@ -1247,12 +1262,12 @@
                     if (form && member?.assignment_url) form.action = member.assignment_url;
                     if (nameEl) nameEl.textContent = name;
                     renderCurrent(member ? (member.allocations || []) : []);
-                    renderSaved(id);
                     if (projSel) projSel.value = '';
                     if (titleInp) titleInp.value = '';
                     if (typeSel) typeSel.value = 'task';
                     if (statusSel) statusSel.value = 'planned';
                     if (dueInp) dueInp.value = '';
+                    if (hoursInp) hoursInp.value = '';
                     if (notesInp) notesInp.value = '';
                     modal.classList.remove('hidden');
                     modal.classList.add('flex');
@@ -1280,18 +1295,6 @@
                 if (panel) {
                     panel.addEventListener('click', (e) => {
                         if (e.target.closest('[data-assign-close]')) { closeAssign(); return; }
-                        const rm = e.target.closest('[data-assign-remove]');
-                        if (rm && currentId !== null) {
-                            const idx = parseInt(rm.dataset.assignRemove, 10);
-                            const list = loadSaved(currentId);
-                            if (! isNaN(idx) && idx >= 0 && idx < list.length) {
-                                const removed = list.splice(idx, 1)[0];
-                                persistSaved(currentId, list);
-                                renderSaved(currentId);
-                                if (window.toast) window.toast('Penugasan "' + (removed?.project || '') + '" dihapus.');
-                            }
-                            return;
-                        }
                     });
                 }
                 if (overlay) overlay.addEventListener('click', closeAssign);
@@ -1379,12 +1382,16 @@
             @csrf
             <input type="hidden" name="_form" value="create">
             <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
-                <h3 class="text-[16px] font-bold text-[#1E1B4B]">Undang Anggota</h3>
+                <h3 class="text-[16px] font-bold text-[#1E1B4B]">Tambah Anggota</h3>
                 <button type="button" data-create-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
                     <x-heroicon-o-x-mark class="w-5 h-5" />
                 </button>
             </div>
             <div class="px-6 py-5 space-y-3">
+                <div class="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2.5 flex items-start gap-2">
+                    <x-heroicon-o-key class="w-4 h-4 text-violet-600 mt-0.5 flex-shrink-0" />
+                    <p class="text-[12px] text-violet-800 leading-snug">Akun akan dibuat dengan password awal: <span class="font-bold">password</span></p>
+                </div>
                 <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Nama Lengkap</label>
                     <input name="name" value="{{ old('_form') === 'create' ? old('name') : '' }}" data-ct-name class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Nama anggota..." />
@@ -1427,8 +1434,8 @@
             <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2">
                 <button type="button" data-create-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Batal</button>
                 <button type="submit" class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
-                    <x-heroicon-o-paper-airplane class="w-4 h-4" />
-                    Kirim Undangan
+                    <x-heroicon-o-user-plus class="w-4 h-4" />
+                    Tambah Anggota
                 </button>
             </div>
         </form>

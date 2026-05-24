@@ -13,12 +13,14 @@ class TeamAssignment extends Model
         'title',
         'type',
         'status',
+        'estimated_hours',
         'due_date',
         'notes',
     ];
 
     protected $casts = [
         'due_date' => 'date',
+        'estimated_hours' => 'integer',
     ];
 
     public function user(): BelongsTo
