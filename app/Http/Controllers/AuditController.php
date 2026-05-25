@@ -34,6 +34,8 @@ class AuditController extends Controller
         'task_status_changed'      => 'STATUS TASK DIUBAH',
         'mom_created'              => 'MOM BARU',
         'ai_wbs_generated'         => 'WBS AI DIBUAT',
+        'qc_created'               => 'QC BARU',
+        'qc_status_updated'        => 'QC DIPERBARUI',
     ];
 
     public function index(Request $request)
@@ -141,6 +143,104 @@ class AuditController extends Controller
                 'range' => $request->query('range', 'all'),
             ],
         ]);
+    }
+
+    /**
+     * Resolve a safe deep link for an audit row so notifications/activity
+     * entries can jump to the right Project Detail tab. Falls back to
+     * /audit when the parent project can't be resolved — we never want to
+     * accidentally point a notification at the wrong project.
+     */
+    public static function deepLinkForLog(AuditLog $log): string
+    {
+        if ($log->module === 'Project Master') {
+            $projectId = self::resolveProjectIdForLog($log);
+            if ($projectId) {
+                $anchor = self::deepLinkAnchorForAction((string) $log->action);
+                return url('/projects/' . $projectId) . $anchor;
+            }
+        }
+
+        return route('audit.index');
+    }
+
+    private static function deepLinkAnchorForAction(string $action): string
+    {
+        return match (true) {
+            str_starts_with($action, 'qc_')   => '#qc',
+            str_starts_with($action, 'mom_')  => '#aiplanning',
+            $action === 'ai_wbs_generated'    => '#aiplanning',
+            $action === 'wbs_module_created'  => '#overview',
+            str_starts_with($action, 'task_') => '#workspace',
+            default                           => '',
+        };
+    }
+
+    /**
+     * Resolve the parent project's name for an audit row (used to render
+     * the "ERP Test 1 · Project Master" context line under each entry).
+     * Cached per request so a 500-row audit page doesn't fan out into 500
+     * SELECTs even when many rows share the same project.
+     */
+    public static function projectNameForLog(AuditLog $log): ?string
+    {
+        static $cache = [];
+        $pid = self::resolveProjectIdForLog($log);
+        if ($pid === null) {
+            return null;
+        }
+        if (! array_key_exists($pid, $cache)) {
+            try {
+                $cache[$pid] = (string) (\App\Models\Project::query()->whereKey($pid)->value('name') ?? '') ?: null;
+            } catch (\Throwable $e) {
+                $cache[$pid] = null;
+            }
+        }
+        return $cache[$pid];
+    }
+
+    /**
+     * Pull project_id out of the audit row. Prefers the snapshot we
+     * persisted in new_values / old_values; for older rows that don't
+     * carry it, falls back to a single SELECT against the auditable
+     * model. Returns null if neither path resolves a real project — the
+     * caller will then route to /audit instead of a wrong /projects/{id}.
+     */
+    public static function resolveProjectIdForLog(AuditLog $log): ?int
+    {
+        foreach ([(array) ($log->new_values ?? []), (array) ($log->old_values ?? [])] as $vals) {
+            if (isset($vals['project_id']) && (int) $vals['project_id'] > 0) {
+                return (int) $vals['project_id'];
+            }
+        }
+
+        $type = (string) $log->auditable_type;
+        $id   = (int) $log->auditable_id;
+        if ($id <= 0 || $type === '') {
+            return null;
+        }
+
+        if ($type === \App\Models\Project::class) {
+            return $id;
+        }
+
+        $modelClass = match (true) {
+            str_ends_with($type, '\\ProjectTask')   => \App\Models\ProjectTask::class,
+            str_ends_with($type, '\\ProjectModule') => \App\Models\ProjectModule::class,
+            str_ends_with($type, '\\ProjectMom')    => \App\Models\ProjectMom::class,
+            str_ends_with($type, '\\ProjectQcTest') => \App\Models\ProjectQcTest::class,
+            default                                 => null,
+        };
+        if ($modelClass === null) {
+            return null;
+        }
+
+        try {
+            $pid = (int) $modelClass::query()->whereKey($id)->value('project_id');
+            return $pid > 0 ? $pid : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     public static function categoryForModule(string $module, string $action = ''): string
@@ -275,17 +375,28 @@ class AuditController extends Controller
         $tag = self::tagForLog($log->module, $log->action, $log->auditable_type, $log->description);
         $filter = self::categoryForModule($log->module, $log->action);
 
+        /* Deep link + project name resolution. project_name doubles as
+         * the "has a safe project deep link" flag for the view layer —
+         * if it's null we don't render a project context line and (on
+         * /audit) we keep the row non-clickable to avoid sending the
+         * user back to /audit in a loop. */
+        $projectName = self::projectNameForLog($log);
+        $deepLink    = self::deepLinkForLog($log);
+        $hasProjectLink = $projectName !== null && str_contains($deepLink, '/projects/');
+
         return [
-            'id'       => $log->id,
-            'date'     => $date,
-            'time'     => $created->format('H:i'),
-            'actor'    => $actor,
-            'initials' => $this->initials($actor),
-            'tag'      => $tag,
-            'filter'   => $filter,
-            'module'   => $log->module,
-            'text'     => $log->description ?: $this->fallbackDescription($log, $actor),
-            'days'     => (int) $logDay->diffInDays($today),
+            'id'           => $log->id,
+            'date'         => $date,
+            'time'         => $created->format('H:i'),
+            'actor'        => $actor,
+            'initials'     => $this->initials($actor),
+            'tag'          => $tag,
+            'filter'       => $filter,
+            'module'       => $log->module,
+            'text'         => $log->description ?: $this->fallbackDescription($log, $actor),
+            'days'         => (int) $logDay->diffInDays($today),
+            'deep_link'    => $hasProjectLink ? $deepLink : null,
+            'project_name' => $projectName,
         ];
     }
 

@@ -84,15 +84,26 @@
             }
             $palette = $auditCategoryPalette[$filterKey] ?? $auditCategoryPalette['all'];
 
+            /* Project context + safe deep link for clickable rows.
+             * project_name is also the gate for showing the small context
+             * line and for making the row clickable (when null we keep
+             * the row static and link to /audit to avoid wrong /projects/{id}). */
+            $entryProjectName = \App\Http\Controllers\AuditController::projectNameForLog($log);
+            $entryDeepLink    = \App\Http\Controllers\AuditController::deepLinkForLog($log);
+            $entryHasProjectLink = $entryProjectName !== null && str_contains($entryDeepLink, '/projects/');
+
             $auditEntries[] = [
-                'category'        => $filterKey,
-                'category_label'  => $tag,
-                'category_class'  => $palette['pill'],
-                'initials'        => $initialsLabel,
-                'avatar_class'    => $palette['avatar'],
-                'text'            => $log->description ?: e($actorName) . ' melakukan ' . e($log->action),
-                'time'            => $log->created_at?->diffForHumans() ?? 'baru saja',
-                'user'            => $actorName,
+                'category'         => $filterKey,
+                'category_label'   => $tag,
+                'category_class'   => $palette['pill'],
+                'initials'         => $initialsLabel,
+                'avatar_class'     => $palette['avatar'],
+                'text'             => $log->description ?: e($actorName) . ' melakukan ' . e($log->action),
+                'time'             => $log->created_at?->diffForHumans() ?? 'baru saja',
+                'user'             => $actorName,
+                'module'           => $log->module,
+                'project_name'     => $entryProjectName,
+                'deep_link'        => $entryHasProjectLink ? $entryDeepLink : null,
             ];
         }
     } catch (\Throwable $e) {
@@ -153,9 +164,14 @@
                 $tag = \App\Http\Controllers\AuditController::tagForLog($log->module, $log->action, $log->auditable_type, $log->description);
                 $actorName = $log->user?->name ?? 'Sistem';
 
-                /* Default deep-link by module — safe for both roles. */
+                /* Default deep-link by module — safe for both roles.
+                 * Project Master rows route through AuditController::deepLinkForLog
+                 * which resolves the real parent project_id (from new_values or
+                 * the auditable model) instead of treating auditable_id as the
+                 * project id directly — that previously sent QC/MoM/task logs to
+                 * the wrong /projects/{id} page. */
                 $href = match (true) {
-                    $log->module === 'Project Master' && $log->auditable_id => url('/projects/' . $log->auditable_id),
+                    $log->module === 'Project Master' => \App\Http\Controllers\AuditController::deepLinkForLog($log),
                     $log->module === 'Team Management' && $isOperationalViewer => route('dashboard.index'),
                     $log->module === 'Team Management' => route('team.index'),
                     $log->module === 'Client Directory' && $isFullAuditViewer => route('clients.index'),
@@ -591,10 +607,15 @@
                         ></div>
                     @endif
                     @forelse ($auditEntries as $i => $e)
-                        <div
+                        @php
+                            $entryTag = ! empty($e['deep_link']) ? 'a' : 'div';
+                            $entryHref = $e['deep_link'] ?? null;
+                        @endphp
+                        <{{ $entryTag }}
                             data-audit-entry
                             data-audit-category="{{ $e['category'] }}"
-                            class="relative flex items-start group hover:bg-violet-50/40 -mx-6 px-6 transition-colors py-4"
+                            @if ($entryHref) href="{{ $entryHref }}" @endif
+                            class="relative flex items-start group hover:bg-violet-50/40 -mx-6 px-6 transition-colors py-4 no-underline"
                         >
                             <div class="w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-bold flex-shrink-0 border-2 border-white z-10 relative {{ $e['avatar_class'] }}">{{ $e['initials'] }}</div>
                             <div class="ml-3 flex-1 min-w-0 pr-2">
@@ -603,9 +624,16 @@
                                     <span class="text-[11px] text-slate-400 flex-shrink-0">{{ $e['time'] }}</span>
                                 </div>
                                 <p class="text-[13.5px] text-[#1E1B4B] leading-snug break-words">{!! $e['text'] !!}</p>
+                                @if (! empty($e['project_name']))
+                                    <p class="text-[11px] text-violet-600 font-semibold mt-1 truncate">
+                                        {{ $e['project_name'] }}
+                                        <span class="text-slate-300 font-normal">·</span>
+                                        <span class="text-slate-400 font-normal">{{ $e['module'] ?? '' }}</span>
+                                    </p>
+                                @endif
                                 <p class="text-[11px] text-slate-400 mt-1">{{ $e['user'] }}</p>
                             </div>
-                        </div>
+                        </{{ $entryTag }}>
                         @if ($i < $auditTotal - 1)
                             <div class="border-b border-violet-50 ml-14"></div>
                         @endif

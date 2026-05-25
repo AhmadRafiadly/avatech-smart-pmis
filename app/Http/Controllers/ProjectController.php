@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\Project;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
+use App\Models\ProjectQcTest;
 use App\Models\ProjectTask;
 use App\Models\User;
 use App\Services\AiPlanner;
@@ -61,6 +62,19 @@ class ProjectController extends Controller
     ];
 
     private const TASK_PRIORITY_LABELS = [
+        'low'    => 'Low',
+        'medium' => 'Medium',
+        'high'   => 'High',
+    ];
+
+    private const QC_STATUS_LABELS = [
+        'pending' => 'Pending',
+        'passed'  => 'Lulus',
+        'failed'  => 'Gagal',
+        'retest'  => 'Retest',
+    ];
+
+    private const QC_PRIORITY_LABELS = [
         'low'    => 'Low',
         'medium' => 'Medium',
         'high'   => 'High',
@@ -251,6 +265,10 @@ class ProjectController extends Controller
             'modules' => fn ($query) => $query->with('tasks')->orderBy('sort_order')->orderBy('id'),
             'tasks' => fn ($query) => $query->with(['module', 'assignee'])->orderBy('sort_order')->orderBy('id'),
             'moms' => fn ($query) => $query->with('creator:id,name')->orderByDesc('meeting_date')->orderByDesc('id'),
+            'qcTests' => fn ($query) => $query->with(['module:id,title', 'task:id,title', 'creator:id,name'])
+                ->orderByRaw("FIELD(status, 'failed', 'retest', 'pending', 'passed')")
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -283,6 +301,10 @@ class ProjectController extends Controller
             'dbTaskTotal'  => $project->tasks->count(),
             'dbTaskDone'   => $project->tasks->where('status', 'done')->count(),
             'dbMoms'       => $this->projectMomRows($project),
+            'dbQcTests'    => $this->projectQcTestRows($project),
+            'dbQcSummary'  => $this->projectQcSummary($project),
+            'qcStatusOptions'   => self::QC_STATUS_LABELS,
+            'qcPriorityOptions' => self::QC_PRIORITY_LABELS,
             'aiReady'      => AiPlanner::isConfigured(),
             'aiProvider'   => AiPlanner::providerLabel(),
             'moduleStatusOptions' => self::MODULE_STATUS_LABELS,
@@ -571,6 +593,102 @@ class ProjectController extends Controller
             ->with('status', 'AI WBS Generator selesai: ' . $createdModules . ' modul, ' . $createdTasks . ' task.');
     }
 
+    public function storeQcTest(Request $request, Project $project)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $validated = $request->validate([
+            'title'             => ['required', 'string', 'max:180'],
+            'scenario'          => ['required', 'string', 'max:4000'],
+            'expected_result'   => ['nullable', 'string', 'max:4000'],
+            'project_module_id' => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
+            'project_task_id'   => ['nullable', Rule::exists('project_tasks', 'id')->where('project_id', $project->id)],
+            'priority'          => ['required', Rule::in(array_keys(self::QC_PRIORITY_LABELS))],
+        ], [
+            'title.required'    => 'Judul test case wajib diisi.',
+            'scenario.required' => 'Skenario test case wajib diisi.',
+            'priority.required' => 'Prioritas wajib dipilih.',
+            'priority.in'       => 'Prioritas tidak valid.',
+        ]);
+
+        $qc = $project->qcTests()->create([
+            'project_module_id' => $validated['project_module_id'] ?? null,
+            'project_task_id'   => $validated['project_task_id'] ?? null,
+            'created_by'        => $request->user()?->id,
+            'title'             => $validated['title'],
+            'scenario'          => $validated['scenario'],
+            'expected_result'   => $validated['expected_result'] ?? null,
+            'status'            => 'pending',
+            'priority'          => $validated['priority'],
+        ]);
+
+        AuditLogger::log(
+            'qc_created',
+            'Project Master',
+            'Menambah QC <strong>' . e($qc->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $qc,
+            null,
+            ['project_id' => $project->id, 'qc_test_id' => $qc->id, 'priority' => $qc->priority],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#qc')
+            ->with('status', 'Test case "' . $qc->title . '" berhasil dibuat.');
+    }
+
+    public function updateQcTest(Request $request, Project $project, ProjectQcTest $qc)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($qc->project_id === $project->id, 404);
+
+        $validated = $request->validate([
+            'status'        => ['required', Rule::in(array_keys(self::QC_STATUS_LABELS))],
+            'actual_result' => ['nullable', 'string', 'max:4000'],
+            'notes'         => ['nullable', 'string', 'max:4000'],
+        ], [
+            'status.required' => 'Status QC wajib dipilih.',
+            'status.in'       => 'Status QC tidak valid.',
+        ]);
+
+        $original = $qc->getOriginal();
+        $newStatus = $validated['status'];
+
+        $qc->fill([
+            'status'        => $newStatus,
+            'actual_result' => $validated['actual_result'] ?? $qc->actual_result,
+            'notes'         => $validated['notes'] ?? $qc->notes,
+        ]);
+
+        /* Stamp tested_at when the row reaches a terminal verdict.
+         * Retest clears it so the next pass/fail records a fresh timestamp. */
+        if (in_array($newStatus, ['passed', 'failed'], true)) {
+            $qc->tested_at = now();
+        } elseif ($newStatus === 'retest') {
+            $qc->tested_at = null;
+        }
+
+        $qc->save();
+
+        AuditLogger::log(
+            'qc_status_updated',
+            'Project Master',
+            'Mengubah status QC <strong>' . e($qc->title) . '</strong> menjadi <strong>' . e(self::QC_STATUS_LABELS[$newStatus]) . '</strong>',
+            $qc,
+            ['project_id' => $project->id, 'qc_test_id' => $qc->id, 'status' => $original['status'] ?? null],
+            ['project_id' => $project->id, 'qc_test_id' => $qc->id, 'status' => $qc->status],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#qc')
+            ->with('status', 'Status QC "' . $qc->title . '" diperbarui ke ' . self::QC_STATUS_LABELS[$newStatus] . '.');
+    }
+
     private function validateProject(Request $request, ?Project $project = null): array
     {
         return $request->validate([
@@ -671,25 +789,68 @@ class ProjectController extends Controller
         $taskDone = $project->tasks->where('status', 'done')->count();
         $taskOpen = max(0, $taskTotal - $taskDone);
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
+        $qcSummary = $this->projectQcSummary($project);
+        $qcTotal = $qcSummary['total'];
+        $qcExecuted = $qcSummary['passed'] + $qcSummary['failed'];
+        $qcPassRate = $this->percentage($qcSummary['passed'], $qcExecuted ?: 0);
 
         return [
             ['code' => 'MOD',  'value' => $moduleApproved . '/' . $moduleTotal, 'label' => 'Modul Disetujui',    'color' => '#3B82F6', 'progress' => $this->percentage($moduleApproved, $moduleTotal), 'sub' => $moduleTotal > 0 ? $moduleTotal . ' modul terdefinisi' : 'Belum ada modul'],
             ['code' => 'TASK', 'value' => $taskDone . '/' . $taskTotal,         'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => $this->percentage($taskDone, $taskTotal),         'sub' => $taskDone . ' Selesai • ' . $taskOpen . ' Open'],
             ['code' => 'MOM',  'value' => $momTotal . ' MoM',                   'label' => 'MoM Tersimpan',      'color' => '#10B981', 'progress' => $momTotal > 0 ? 100 : 0,                          'sub' => $momTotal > 0 ? 'Catatan rapat tersimpan' : 'Belum ada MoM'],
-            ['code' => 'QC',   'value' => '0%',                                 'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0,                                           'sub' => 'Pass Rate'],
+            ['code' => 'QC',   'value' => $qcTotal > 0 ? $qcPassRate . '%' : '0%', 'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => $qcTotal > 0 ? $qcPassRate : 0, 'sub' => $qcTotal > 0 ? ($qcSummary['passed'] . ' lulus • ' . $qcSummary['failed'] . ' gagal • ' . $qcSummary['pending'] . ' pending') : 'Belum ada test case'],
         ];
     }
 
     private function projectTabs(Project $project): array
     {
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
+        $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
 
         return [
             ['id' => 'overview',   'label' => 'Overview',         'count' => $project->modules->count()],
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $project->tasks->count()],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal],
-            ['id' => 'qc',         'label' => 'Quality Control',  'count' => 0],
+            ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
         ];
+    }
+
+    private function projectQcSummary(Project $project): array
+    {
+        $col = $project->relationLoaded('qcTests') ? $project->qcTests : $project->qcTests()->get(['status']);
+        $by = $col->countBy('status');
+
+        return [
+            'total'   => (int) $col->count(),
+            'pending' => (int) ($by['pending'] ?? 0),
+            'passed'  => (int) ($by['passed']  ?? 0),
+            'failed'  => (int) ($by['failed']  ?? 0),
+            'retest'  => (int) ($by['retest']  ?? 0),
+        ];
+    }
+
+    private function projectQcTestRows(Project $project): array
+    {
+        $col = $project->relationLoaded('qcTests') ? $project->qcTests : $project->qcTests()->with(['module', 'task', 'creator'])->get();
+
+        return $col->map(function (ProjectQcTest $qc) {
+            return [
+                'id'              => $qc->id,
+                'code'            => 'QC-' . str_pad((string) $qc->id, 4, '0', STR_PAD_LEFT),
+                'title'           => $qc->title,
+                'scenario'        => $qc->scenario,
+                'module'          => $qc->module?->title ?? '—',
+                'task'            => $qc->task?->title,
+                'status'          => $qc->status ?: 'pending',
+                'priority'        => $qc->priority ?: 'medium',
+                'expected_result' => $qc->expected_result,
+                'actual_result'   => $qc->actual_result,
+                'notes'           => $qc->notes,
+                'tested_at'       => $qc->tested_at?->format('d M Y H:i'),
+                'creator'         => $qc->creator?->name,
+                'updated_at'      => $qc->updated_at?->diffForHumans(),
+            ];
+        })->all();
     }
 
     private function projectMomRows(Project $project): array

@@ -46,4 +46,9 @@ class Project extends Model
     {
         return $this->hasMany(ProjectMom::class);
     }
+
+    public function qcTests(): HasMany
+    {
+        return $this->hasMany(ProjectQcTest::class);
+    }
 }

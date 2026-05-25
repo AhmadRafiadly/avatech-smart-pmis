@@ -152,22 +152,43 @@
             ['id' => 'done',    'label' => 'Done',    'color' => '#059669', 'bg' => '#D1FAE5', 'tasks' => []],
         ];
         $moms = $dbMoms ?? [];
-        $testCases = [];
+        $testCases = $dbQcTests ?? [];
         $workspaceTaskTotal = $dbTaskTotal ?? 0;
         $workspaceTaskDone = $dbTaskDone ?? 0;
-        $qcSummary = ['lulus' => 0, 'gagal' => 0, 'pending' => 0];
+        /* Map DB summary (passed/failed/pending/retest) to the legacy
+         * lulus/gagal/pending keys the QC panel header was originally built for,
+         * keeping retest as its own counter. */
+        $qcSummary = [
+            'lulus'   => $dbQcSummary['passed']  ?? 0,
+            'gagal'   => $dbQcSummary['failed']  ?? 0,
+            'pending' => $dbQcSummary['pending'] ?? 0,
+            'retest'  => $dbQcSummary['retest']  ?? 0,
+            'total'   => $dbQcSummary['total']   ?? 0,
+        ];
     }
 
     $tcStatusPill = [
         'lulus'   => 'bg-emerald-50 text-emerald-700 border border-emerald-100',
         'gagal'   => 'bg-rose-50 text-rose-700 border border-rose-100',
         'pending' => 'bg-amber-50 text-amber-700 border border-amber-100',
+        'passed'  => 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+        'failed'  => 'bg-rose-50 text-rose-700 border border-rose-100',
+        'retest'  => 'bg-violet-50 text-violet-700 border border-violet-100',
     ];
 
     $tcStatusLabel = [
         'lulus'   => 'Lulus',
         'gagal'   => 'Gagal',
         'pending' => 'Pending',
+        'passed'  => 'Lulus',
+        'failed'  => 'Gagal',
+        'retest'  => 'Retest',
+    ];
+
+    $tcPriorityPill = [
+        'low'    => 'bg-slate-100 text-slate-600 border border-slate-200',
+        'medium' => 'bg-amber-50 text-amber-700 border border-amber-100',
+        'high'   => 'bg-rose-50 text-rose-700 border border-rose-100',
     ];
 @endphp
 
@@ -904,10 +925,13 @@
                 <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Test Case Black-Box</h3>
             </div>
             <div class="text-[13px] text-slate-500 font-medium">
-                {{ count($testCases) }} case &middot;
+                {{ ($qcSummary['total'] ?? count($testCases)) }} case &middot;
                 <span class="text-emerald-600 font-semibold">{{ $qcSummary['lulus'] }} lulus</span> ·
                 <span class="text-rose-600 font-semibold">{{ $qcSummary['gagal'] }} gagal</span> ·
                 <span class="text-amber-600 font-semibold">{{ $qcSummary['pending'] }} pending</span>
+                @if (! empty($qcSummary['retest']))
+                    · <span class="text-violet-600 font-semibold">{{ $qcSummary['retest'] }} retest</span>
+                @endif
             </div>
         </div>
 
@@ -915,39 +939,105 @@
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="bg-violet-50/40">
-                        <th class="px-7 py-4 text-[10px] font-bold tracking-wider uppercase text-slate-400">ID</th>
+                        <th class="px-7 py-4 text-[10px] font-bold tracking-wider uppercase text-slate-400 w-[110px]">ID</th>
                         <th class="px-4 py-4 text-[10px] font-bold tracking-wider uppercase text-slate-400">Skenario</th>
                         <th class="px-4 py-4 text-[10px] font-bold tracking-wider uppercase text-slate-400">Modul</th>
+                        <th class="px-4 py-4 text-[10px] font-bold tracking-wider uppercase text-slate-400 w-[110px]">Prioritas</th>
                         <th class="px-4 py-4 text-[10px] font-bold tracking-wider uppercase text-slate-400 w-[120px]">Status</th>
-                        @if ($canEdit)
-                            <th class="px-7 py-4 text-[10px] font-bold tracking-wider uppercase text-slate-400 text-right w-[220px]">Aksi</th>
+                        @if ($canEdit && ! $useReferenceProjectData)
+                            <th class="px-7 py-4 text-[10px] font-bold tracking-wider uppercase text-slate-400 text-right w-[260px]">Aksi</th>
                         @endif
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-violet-100/40">
                     @forelse ($testCases as $tc)
-                        <tr data-tc-row data-tc-id="{{ $tc['id'] }}" data-tc-initial-status="{{ $tc['status'] }}" class="hover:bg-[#FAF5FF] transition">
-                            <td class="px-7 py-4 text-[12px] font-bold text-violet-600/70">{{ $tc['id'] }}</td>
-                            <td class="px-4 py-4 text-[13.5px] font-medium text-[#1E1B4B]">{{ $tc['scenario'] }}</td>
-                            <td class="px-4 py-4 text-[12px] text-slate-500 font-medium">{{ $tc['module'] }}</td>
+                        @php
+                            $tcStatus  = $tc['status'] ?? 'pending';
+                            $tcCode    = $tc['code'] ?? ('TC-' . ($tc['id'] ?? '----'));
+                            $tcModule  = $tc['module'] ?? '—';
+                            $tcPriority = $tc['priority'] ?? 'medium';
+                            $tcTitle   = $tc['title'] ?? null;
+                            $tcScenario = $tc['scenario'] ?? '';
+                        @endphp
+                        <tr data-tc-row data-tc-id="{{ $tc['id'] ?? '' }}" data-tc-initial-status="{{ $tcStatus }}" class="hover:bg-[#FAF5FF] transition align-top">
+                            <td class="px-7 py-4 text-[12px] font-bold text-violet-600/70">{{ $tcCode }}</td>
+                            <td class="px-4 py-4 text-[13.5px] font-medium text-[#1E1B4B]">
+                                @if ($tcTitle)
+                                    <div class="font-semibold leading-snug">{{ $tcTitle }}</div>
+                                    @if ($tcScenario && $tcScenario !== $tcTitle)
+                                        <div class="text-[12px] text-slate-500 mt-1 leading-snug">{{ $tcScenario }}</div>
+                                    @endif
+                                @else
+                                    {{ $tcScenario }}
+                                @endif
+
+                                @if (! empty($tc['expected_result']))
+                                    <div class="mt-2 text-[11.5px] leading-snug">
+                                        <span class="font-bold tracking-wider uppercase text-violet-700 mr-1">Expected</span>
+                                        <span class="text-slate-600">{{ $tc['expected_result'] }}</span>
+                                    </div>
+                                @endif
+                                @if (! empty($tc['actual_result']))
+                                    <div class="mt-1 text-[11.5px] leading-snug">
+                                        <span class="font-bold tracking-wider uppercase text-emerald-700 mr-1">Actual</span>
+                                        <span class="text-slate-600">{{ $tc['actual_result'] }}</span>
+                                    </div>
+                                @endif
+                                @if (! empty($tc['notes']))
+                                    <div class="mt-1 text-[11.5px] leading-snug text-slate-500 italic">{{ $tc['notes'] }}</div>
+                                @endif
+                            </td>
+                            <td class="px-4 py-4 text-[12px] text-slate-500 font-medium">{{ $tcModule }}</td>
                             <td class="px-4 py-4">
-                                <span data-tc-pill class="inline-flex items-center text-[10px] font-bold tracking-wide uppercase rounded-full px-3 py-1 {{ $tcStatusPill[$tc['status']] }}">
-                                    {{ $tcStatusLabel[$tc['status']] }}
+                                <span class="inline-flex items-center text-[10px] font-bold tracking-wide uppercase rounded-md px-2 py-1 {{ $tcPriorityPill[$tcPriority] ?? $tcPriorityPill['medium'] }}">
+                                    {{ ucfirst($tcPriority) }}
                                 </span>
                             </td>
-                            @if ($canEdit)
+                            <td class="px-4 py-4">
+                                <span data-tc-pill class="inline-flex items-center text-[10px] font-bold tracking-wide uppercase rounded-full px-3 py-1 {{ $tcStatusPill[$tcStatus] ?? $tcStatusPill['pending'] }}">
+                                    {{ $tcStatusLabel[$tcStatus] ?? ucfirst($tcStatus) }}
+                                </span>
+                                @if (! empty($tc['tested_at']))
+                                    <div class="text-[10.5px] text-slate-400 mt-1">{{ $tc['tested_at'] }}</div>
+                                @endif
+                            </td>
+                            @if ($canEdit && ! $useReferenceProjectData && ! empty($tc['id']))
                                 <td data-tc-actions class="px-7 py-4 text-right">
-                                    @if ($tc['status'] === 'lulus')
-                                        <span class="text-[12px] font-semibold text-violet-600">Status Final</span>
-                                    @elseif ($tc['status'] === 'gagal')
-                                        <button type="button" data-qc-action="retest" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-white text-[12px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">
-                                            <x-heroicon-o-arrow-path class="w-3.5 h-3.5" />
-                                            Retest
-                                        </button>
+                                    @php $qcAction = route('projects.qc.update', [$project, $tc['id']]); @endphp
+                                    @if (in_array($tcStatus, ['passed', 'lulus'], true))
+                                        <form method="POST" action="{{ $qcAction }}" class="inline">
+                                            @csrf
+                                            @method('PATCH')
+                                            <input type="hidden" name="status" value="retest">
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-white text-[12px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">
+                                                <x-heroicon-o-arrow-path class="w-3.5 h-3.5" />
+                                                Retest
+                                            </button>
+                                        </form>
+                                    @elseif (in_array($tcStatus, ['failed', 'gagal'], true))
+                                        <form method="POST" action="{{ $qcAction }}" class="inline">
+                                            @csrf
+                                            @method('PATCH')
+                                            <input type="hidden" name="status" value="retest">
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-white text-[12px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">
+                                                <x-heroicon-o-arrow-path class="w-3.5 h-3.5" />
+                                                Retest
+                                            </button>
+                                        </form>
                                     @else
                                         <div class="inline-flex gap-2">
-                                            <button type="button" data-qc-action="lulus" class="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-bold transition cursor-pointer">Lulus</button>
-                                            <button type="button" data-qc-action="gagal" class="h-8 px-3 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[12px] font-bold transition cursor-pointer">Gagal</button>
+                                            <form method="POST" action="{{ $qcAction }}" class="inline">
+                                                @csrf
+                                                @method('PATCH')
+                                                <input type="hidden" name="status" value="passed">
+                                                <button type="submit" class="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-bold transition cursor-pointer">Lulus</button>
+                                            </form>
+                                            <form method="POST" action="{{ $qcAction }}" class="inline">
+                                                @csrf
+                                                @method('PATCH')
+                                                <input type="hidden" name="status" value="failed">
+                                                <button type="submit" class="h-8 px-3 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[12px] font-bold transition cursor-pointer">Gagal</button>
+                                            </form>
                                         </div>
                                     @endif
                                 </td>
@@ -955,7 +1045,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="{{ $canEdit ? 5 : 4 }}" class="px-7 py-10 text-center text-[13px] font-medium text-slate-400">
+                            <td colspan="{{ $canEdit && ! $useReferenceProjectData ? 6 : 5 }}" class="px-7 py-10 text-center text-[13px] font-medium text-slate-400">
                                 Belum ada test case untuk project ini.
                             </td>
                         </tr>
@@ -964,12 +1054,67 @@
             </table>
         </div>
 
+        @if ($canEdit && ! $useReferenceProjectData)
+            <div class="px-7 py-5 border-t border-violet-100/60 bg-violet-50/20">
+                <form method="POST" action="{{ route('projects.qc.store', $project) }}" class="grid grid-cols-1 md:grid-cols-12 gap-3">
+                    @csrf
+                    <div class="md:col-span-3">
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Judul</label>
+                        <input type="text" name="title" required value="{{ old('title') }}" placeholder="mis. Login user valid" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        @error('title') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    </div>
+                    <div class="md:col-span-9">
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Skenario</label>
+                        <input type="text" name="scenario" required value="{{ old('scenario') }}" placeholder="Skenario uji yang dilakukan..." class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        @error('scenario') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    </div>
+                    <div class="md:col-span-7">
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Expected Result <span class="text-slate-400 normal-case tracking-normal">(opsional)</span></label>
+                        <textarea name="expected_result" rows="2" placeholder="Hasil yang diharapkan dari skenario..." class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('expected_result') }}</textarea>
+                        @error('expected_result') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    </div>
+                    <div class="md:col-span-3">
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Modul (opsional)</label>
+                        <select name="project_module_id" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            <option value="">— pilih modul —</option>
+                            @foreach ($modules as $mod)
+                                @php $modId = $mod['id'] ?? null; @endphp
+                                @if ($modId)
+                                    <option value="{{ $modId }}" @selected(old('project_module_id') == $modId)>{{ $mod['name'] }}</option>
+                                @endif
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Prioritas</label>
+                        <select name="priority" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                            @foreach ($qcPriorityOptions ?? ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High'] as $key => $label)
+                                <option value="{{ $key }}" @selected(old('priority', 'medium') === $key)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="md:col-span-12 flex justify-end">
+                        <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
+                            <x-heroicon-o-plus class="w-4 h-4" />
+                            Tambah Test Case
+                        </button>
+                    </div>
+                </form>
+            </div>
+        @endif
+
         <div class="px-7 py-5 border-t border-violet-100/60 bg-violet-50/30 flex items-center justify-between flex-wrap gap-3">
-            <p class="text-[11.5px] text-slate-400 italic">Status yang sudah ditentukan tidak dapat diubah, kecuali melalui retest.</p>
-            @if ($canEdit)
-                <button type="button" data-toast="AI Test Case Generator segera tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-violet-600 text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:scale-[1.02] transition cursor-pointer">
+            <p class="text-[11.5px] text-slate-400 italic">Status pass/fail dapat dikembalikan ke pending lewat tombol Retest.</p>
+            @if ($canEdit && ! $useReferenceProjectData)
+                <button
+                    type="button"
+                    disabled
+                    aria-disabled="true"
+                    title="Integrasi AI Test Case Generator belum aktif."
+                    class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-slate-100 text-slate-400 font-semibold text-[13px] cursor-not-allowed"
+                >
                     <x-heroicon-o-sparkles class="w-4 h-4" />
-                    AI Test Case Generator
+                    AI Test Case Generator — segera tersedia
                 </button>
             @endif
         </div>

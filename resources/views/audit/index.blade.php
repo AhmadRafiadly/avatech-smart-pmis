@@ -178,12 +178,17 @@
 
                 <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] overflow-hidden">
                     @foreach ($items as $a)
-                        @php $palette = $tagPaletteByFilter[$a['filter']] ?? $tagPaletteByFilter['all']; @endphp
-                        <div
+                        @php
+                            $palette = $tagPaletteByFilter[$a['filter']] ?? $tagPaletteByFilter['all'];
+                            $rowTag  = ! empty($a['deep_link']) ? 'a' : 'div';
+                            $rowHref = $a['deep_link'] ?? null;
+                        @endphp
+                        <{{ $rowTag }}
                             data-entry="{{ $a['filter'] }}"
                             data-actor="{{ $a['actor'] }}"
                             data-days="{{ $a['days'] ?? 99 }}"
-                            class="flex items-start gap-4 px-6 py-4 border-b border-violet-50 last:border-0 hover:bg-violet-50/40 transition"
+                            @if ($rowHref) href="{{ $rowHref }}" @endif
+                            class="flex items-start gap-4 px-6 py-4 border-b border-violet-50 last:border-0 hover:bg-violet-50/40 transition no-underline"
                         >
                             <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[11.5px] text-white flex-shrink-0" style="background: {{ $actorColorMap[$a['actor']] ?? '#7C3AED' }};">
                                 {{ $a['initials'] }}
@@ -197,10 +202,17 @@
                                     <span class="text-[11.5px] text-slate-500">{{ $a['module'] }}</span>
                                 </div>
                                 <p class="text-[13.5px] text-[#1E1B4B] leading-snug">{!! $a['text'] !!}</p>
+                                @if (! empty($a['project_name']))
+                                    <div class="text-[11.5px] text-violet-600 font-semibold mt-1 truncate">
+                                        {{ $a['project_name'] }}
+                                        <span class="text-slate-300 font-normal">·</span>
+                                        <span class="text-slate-400 font-normal">{{ $a['module'] }}</span>
+                                    </div>
+                                @endif
                                 <div class="text-[12px] text-slate-500 mt-1">{{ $a['actor'] }}</div>
                             </div>
                             <div class="text-[11.5px] text-slate-400 flex-shrink-0 pt-1 tabular-nums">{{ $a['time'] }}</div>
-                        </div>
+                        </{{ $rowTag }}>
                     @endforeach
                 </div>
             </div>
