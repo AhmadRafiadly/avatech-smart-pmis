@@ -15,6 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // served from browser cache (otherwise Back-after-logout still shows
         // protected pages and the cached login form 419s on stale CSRF).
         $middleware->appendToGroup('web', \App\Http\Middleware\PreventBackHistory::class);
+        $middleware->alias([
+            'ceo.pm' => \App\Http\Middleware\EnsureCeoPmAccess::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
