@@ -142,9 +142,7 @@
         ];
 
         $modules = $dbModules ?? [];
-        $activities = [
-            ['dot' => '#7C3AED', 'time' => $createdAt, 'title' => 'Project dibuat', 'text' => 'Project baru dibuat dan menunggu perencanaan awal.'],
-        ];
+        $activities = $dbActivities ?? [];
         $kanban = $dbKanban ?? [
             ['id' => 'todo',    'label' => 'Todo',    'color' => '#475569', 'bg' => '#F1F5F9', 'tasks' => []],
             ['id' => 'doing',   'label' => 'Doing',   'color' => '#2563EB', 'bg' => '#DBEAFE', 'tasks' => []],
@@ -292,13 +290,13 @@
         <p class="mt-4 text-[14px] text-slate-500 max-w-3xl leading-relaxed">{{ $desc }}</p>
 
         <div class="mt-5 flex flex-wrap items-center gap-2">
-            <button type="button" data-export-wbs class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-100 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer">
+            <button type="button" disabled aria-disabled="true" title="Export PDF WBS segera tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-100 bg-slate-50 text-[13px] font-semibold text-slate-400 transition cursor-not-allowed">
                 <x-heroicon-o-document-text class="w-4 h-4" />
-                Export WBS (PDF)
+                Export WBS (PDF) — segera tersedia
             </button>
-            <button type="button" data-export-tc class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-100 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer">
+            <button type="button" disabled aria-disabled="true" title="Export PDF test case segera tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-100 bg-slate-50 text-[13px] font-semibold text-slate-400 transition cursor-not-allowed">
                 <x-heroicon-o-beaker class="w-4 h-4" />
-                Export Test Case (PDF)
+                Export Test Case (PDF) — segera tersedia
             </button>
             @if ($project->archived_at)
                 <form method="POST" action="{{ route('projects.restore', $project) }}">
@@ -414,7 +412,7 @@
     </section>
 
     {{-- =============== OVERVIEW =============== --}}
-    <div data-panel="overview" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div id="overview" data-panel="overview" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="lg:col-span-2 space-y-6">
             <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
                 <div class="flex items-center justify-between mb-6">
@@ -541,14 +539,20 @@
                 <div class="relative pl-6 max-h-[640px] overflow-y-auto">
                     <div class="absolute left-[7px] top-1 bottom-1 w-[2px] bg-violet-100"></div>
                     <div class="space-y-6">
-                        @foreach ($activities as $a)
+                        @forelse ($activities as $a)
                             <div class="relative">
                                 <div class="absolute -left-6 top-1 w-4 h-4 rounded-full border-4 border-white shadow" style="background: {{ $a['dot'] }};"></div>
                                 <div class="text-[11px] text-slate-400 mb-1">{{ $a['time'] }}</div>
                                 <div class="text-[13.5px] font-bold text-[#1E1B4B]">{{ $a['title'] }}</div>
                                 <div class="text-[12.5px] text-slate-500 mt-1 leading-relaxed">{{ $a['text'] }}</div>
                             </div>
-                        @endforeach
+                        @empty
+                            <div class="relative">
+                                <div class="absolute -left-6 top-1 w-4 h-4 rounded-full border-4 border-white shadow bg-slate-300"></div>
+                                <div class="text-[13px] font-semibold text-slate-500">Belum ada aktivitas untuk project ini.</div>
+                                <div class="text-[12.5px] text-slate-400 mt-1 leading-relaxed">Aktivitas WBS, task, MoM, dan QC akan muncul setelah ada perubahan DB.</div>
+                            </div>
+                        @endforelse
                     </div>
                 </div>
             </div>
@@ -556,7 +560,7 @@
     </div>
 
     {{-- =============== WORKSPACE (kept as-is) =============== --}}
-    <div data-panel="workspace" class="hidden bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
+    <div id="workspace" data-panel="workspace" class="hidden bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
         <div class="flex items-center justify-between mb-5 flex-wrap gap-4">
             <h3 class="inline-flex items-center gap-2 text-[12px] font-bold tracking-[0.12em] uppercase text-violet-600">
                 <span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span> Kanban Proyek
@@ -726,7 +730,7 @@
     </div>
 
     {{-- =============== AI PLANNING =============== --}}
-    <div data-panel="aiplanning" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div id="aiplanning" data-panel="aiplanning" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
         {{-- LEFT: Daftar MoM --}}
         <div class="bg-white rounded-2xl pd-stitch-card flex flex-col">
             <div class="p-7 flex-1 space-y-5">
@@ -918,7 +922,7 @@
     </div>
 
     {{-- =============== QUALITY CONTROL =============== --}}
-    <div data-panel="qc" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+    <div id="qc" data-panel="qc" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
         <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
             <div class="flex items-center gap-3">
                 <span class="pd-section-bar"></span>
@@ -1121,16 +1125,6 @@
     </div>
 
     <script>
-        window.__pdExport = {
-            projectId: @json($project->id),
-            projectName: @json($project->name),
-            projectCode: @json($project->code),
-            modules: @json($modules),
-            testCases: @json($testCases),
-        };
-    </script>
-
-    <script>
         (function () {
             const wire = () => {
                 const tabs       = document.querySelectorAll('.pd-tab');
@@ -1169,100 +1163,28 @@
                     });
                 };
 
-                tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.tab)));
+                /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
+                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc'];
+                const setHash = (id) => {
+                    if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
+                };
+
+                tabs.forEach(t => t.addEventListener('click', () => {
+                    activate(t.dataset.tab);
+                    setHash(t.dataset.tab);
+                }));
                 sideLinks.forEach(t => t.addEventListener('click', (e) => {
                     e.preventDefault();
                     activate(t.dataset.pdNav);
+                    setHash(t.dataset.pdNav);
                 }));
 
-                /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc'];
                 const hashToTab = () => {
                     const h = (window.location.hash || '').replace(/^#/, '').trim();
                     if (h && TAB_IDS.includes(h)) activate(h);
                 };
                 hashToTab();
                 window.addEventListener('hashchange', hashToTab);
-
-                /* === Exports === */
-                document.querySelector('[data-export-wbs]')?.addEventListener('click', () => {
-                    const d = window.__pdExport || {};
-                    const lines = [
-                        'WBS — ' + (d.projectCode || '') + ' ' + (d.projectName || ''),
-                        'Diekspor: ' + new Date().toLocaleString('id-ID'),
-                        ''.padEnd(60, '='),
-                        '',
-                    ];
-                    (d.modules || []).forEach((m, i) => {
-                        lines.push((i + 1) + '. ' + m.name);
-                        lines.push('   Task: ' + m.tasks_done + '/' + m.tasks_total + '   Estimasi: ' + m.hours + 'h   Status: ' + m.status);
-                        lines.push('');
-                    });
-                    lines.push(''.padEnd(60, '='));
-                    lines.push('Total modul: ' + (d.modules || []).length);
-                    lines.push('Catatan: versi PDF resmi akan tersedia setelah AI WBS Generator dirilis.');
-                    window.downloadFile && window.downloadFile('wbs-' + (d.projectCode || 'project') + '.txt', lines.join('\n'), 'text/plain;charset=utf-8');
-                    window.toast && window.toast('WBS diunduh (TXT — versi PDF segera tersedia).');
-                });
-
-                document.querySelector('[data-export-tc]')?.addEventListener('click', () => {
-                    const d = window.__pdExport || {};
-                    const csvCell = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-                    const rows = [['ID','Scenario','Module','Status']];
-                    (d.testCases || []).forEach(t => rows.push([t.id, t.scenario, t.module, t.status]));
-                    const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-                    window.downloadFile && window.downloadFile('testcase-' + (d.projectCode || 'project') + '.csv', csv, 'text/csv;charset=utf-8');
-                    window.toast && window.toast('Test case diunduh (CSV — versi PDF segera tersedia).');
-                });
-
-                /* === QC pill toggle with localStorage === */
-                const pid = (window.__pdExport && window.__pdExport.projectId) || 0;
-                const qcKey = (tcId) => 'avt-qc:' + pid + ':' + tcId;
-                const qcPillClass = {
-                    lulus:   'bg-emerald-50 text-emerald-700 border border-emerald-100',
-                    gagal:   'bg-rose-50 text-rose-700 border border-rose-100',
-                    pending: 'bg-amber-50 text-amber-700 border border-amber-100',
-                };
-                const qcLabel = { lulus: 'Lulus', gagal: 'Gagal', pending: 'Pending' };
-                const setQcStatus = (row, status) => {
-                    const pill = row.querySelector('[data-tc-pill]');
-                    if (! pill) return;
-                    const cls = qcPillClass[status] || qcPillClass.pending;
-                    pill.className = 'inline-flex items-center text-[10px] font-bold tracking-wide uppercase rounded-full px-3 py-1 ' + cls;
-                    pill.textContent = qcLabel[status] || status;
-                    const actions = row.querySelector('[data-tc-actions]');
-                    if (actions) {
-                        if (status === 'lulus') {
-                            actions.innerHTML = '<span class="text-[12px] font-semibold text-violet-600">Status Final</span>';
-                        } else if (status === 'gagal') {
-                            actions.innerHTML = '<button type="button" data-qc-action="retest" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-white text-[12px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">Retest</button>';
-                        } else {
-                            actions.innerHTML = '<div class="inline-flex gap-2">'
-                                + '<button type="button" data-qc-action="lulus" class="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-bold transition cursor-pointer">Lulus</button>'
-                                + '<button type="button" data-qc-action="gagal" class="h-8 px-3 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[12px] font-bold transition cursor-pointer">Gagal</button>'
-                                + '</div>';
-                        }
-                    }
-                };
-                // Restore persisted QC state per row
-                document.querySelectorAll('[data-tc-row]').forEach(row => {
-                    let saved = null;
-                    try { saved = localStorage.getItem(qcKey(row.dataset.tcId)); } catch (e) {}
-                    if (saved && saved !== row.dataset.tcInitialStatus) setQcStatus(row, saved);
-                });
-                // Delegated click for any qc-action button (including dynamically replaced ones)
-                document.addEventListener('click', (e) => {
-                    const btn = e.target.closest('[data-qc-action]');
-                    if (! btn) return;
-                    const row = btn.closest('[data-tc-row]');
-                    if (! row) return;
-                    const action = btn.dataset.qcAction;
-                    const next = action === 'retest' ? 'pending' : action;
-                    setQcStatus(row, next);
-                    try { localStorage.setItem(qcKey(row.dataset.tcId), next); } catch (err) {}
-                    const labels = { lulus: 'Test case ditandai Lulus.', gagal: 'Test case ditandai Gagal.', pending: 'Retest dijadwalkan — status kembali Pending.' };
-                    window.toast && window.toast(labels[next] || 'Status QC diperbarui.');
-                });
 
                 /* === Kanban Filter Anggota === */
                 const kbnSelect = document.querySelector('[data-kanban-filter]');
@@ -1293,12 +1215,8 @@
                     kbnSelect.addEventListener('change', () => applyKbn(kbnSelect.value));
                 }
 
-                /* MoM is now DB-backed via POST /projects/{project}/moms.
-                 * The legacy localStorage capture has been removed; the
-                 * form submits normally and Laravel persists + redirects. */
-                try {
-                    localStorage.removeItem('avt-mom:' + pid);
-                } catch (e) {}
+                /* Project Detail writes now submit to Laravel routes for WBS,
+                 * Kanban, MoM, and QC actions. */
             };
 
             if (document.readyState === 'loading') {

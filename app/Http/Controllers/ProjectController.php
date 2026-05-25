@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\AuditLog;
 use App\Models\Project;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
@@ -303,6 +304,7 @@ class ProjectController extends Controller
             'dbMoms'       => $this->projectMomRows($project),
             'dbQcTests'    => $this->projectQcTestRows($project),
             'dbQcSummary'  => $this->projectQcSummary($project),
+            'dbActivities' => $this->projectActivityRows($project),
             'qcStatusOptions'   => self::QC_STATUS_LABELS,
             'qcPriorityOptions' => self::QC_PRIORITY_LABELS,
             'aiReady'      => AiPlanner::isConfigured(),
@@ -869,6 +871,87 @@ class ProjectController extends Controller
                 'created_at'   => $mom->created_at?->diffForHumans(),
             ];
         })->all();
+    }
+
+    private function projectActivityRows(Project $project): array
+    {
+        $moduleIds = $project->relationLoaded('modules') ? $project->modules->pluck('id')->all() : $project->modules()->pluck('id')->all();
+        $taskIds = $project->relationLoaded('tasks') ? $project->tasks->pluck('id')->all() : $project->tasks()->pluck('id')->all();
+        $momIds = $project->relationLoaded('moms') ? $project->moms->pluck('id')->all() : $project->moms()->pluck('id')->all();
+        $qcIds = $project->relationLoaded('qcTests') ? $project->qcTests->pluck('id')->all() : $project->qcTests()->pluck('id')->all();
+
+        $projectType = $project->getMorphClass();
+        $moduleType = (new ProjectModule())->getMorphClass();
+        $taskType = (new ProjectTask())->getMorphClass();
+        $momType = (new ProjectMom())->getMorphClass();
+        $qcType = (new ProjectQcTest())->getMorphClass();
+
+        $logs = AuditLog::query()
+            ->with('user:id,name')
+            ->where('module', 'Project Master')
+            ->where(function ($query) use ($project, $projectType, $moduleType, $moduleIds, $taskType, $taskIds, $momType, $momIds, $qcType, $qcIds) {
+                $query->where(function ($q) use ($project, $projectType) {
+                    $q->where('auditable_type', $projectType)
+                        ->where('auditable_id', $project->id);
+                });
+
+                if (! empty($moduleIds)) {
+                    $query->orWhere(function ($q) use ($moduleType, $moduleIds) {
+                        $q->where('auditable_type', $moduleType)
+                            ->whereIn('auditable_id', $moduleIds);
+                    });
+                }
+
+                if (! empty($taskIds)) {
+                    $query->orWhere(function ($q) use ($taskType, $taskIds) {
+                        $q->where('auditable_type', $taskType)
+                            ->whereIn('auditable_id', $taskIds);
+                    });
+                }
+
+                if (! empty($momIds)) {
+                    $query->orWhere(function ($q) use ($momType, $momIds) {
+                        $q->where('auditable_type', $momType)
+                            ->whereIn('auditable_id', $momIds);
+                    });
+                }
+
+                if (! empty($qcIds)) {
+                    $query->orWhere(function ($q) use ($qcType, $qcIds) {
+                        $q->where('auditable_type', $qcType)
+                            ->whereIn('auditable_id', $qcIds);
+                    });
+                }
+
+                $query->orWhere('new_values->project_id', $project->id)
+                    ->orWhere('old_values->project_id', $project->id);
+            })
+            ->latest('created_at')
+            ->limit(8)
+            ->get();
+
+        return $logs->map(function (AuditLog $log) {
+            $tag = AuditController::tagForLog($log->module, $log->action, $log->auditable_type, $log->description);
+
+            return [
+                'dot' => $this->activityDot($log->action),
+                'time' => $log->created_at?->diffForHumans() ?? 'Baru saja',
+                'title' => $tag,
+                'text' => trim(strip_tags((string) $log->description)) ?: 'Aktivitas project tercatat.',
+            ];
+        })->all();
+    }
+
+    private function activityDot(string $action): string
+    {
+        return match (true) {
+            str_starts_with($action, 'qc_') => '#F59E0B',
+            str_starts_with($action, 'mom_') => '#10B981',
+            str_starts_with($action, 'task_') => '#7C3AED',
+            $action === 'ai_wbs_generated' => '#C084FC',
+            $action === 'wbs_module_created' => '#3B82F6',
+            default => '#7C3AED',
+        };
     }
 
     private function projectKanbanColumns(Project $project): array
