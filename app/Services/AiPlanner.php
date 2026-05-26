@@ -31,8 +31,8 @@ class AiPlanner
     public const DEFAULT_TASK_STATUS    = 'planned';
     public const DEFAULT_TASK_PRIORITY  = 'medium';
 
-    public const MAX_MODULES         = 8;
-    public const MAX_TASKS_PER_MODULE = 8;
+    public const MAX_MODULES         = 5;
+    public const MAX_TASKS_PER_MODULE = 3;
     public const MAX_TEST_CASES       = 20;
 
     private const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent';
@@ -172,6 +172,58 @@ class AiPlanner
     }
 
     /**
+     * Generate a structured MoM summary from raw meeting notes. Single Gemini
+     * call; no DB writes.
+     *
+     * @return array{ok: bool, data: array{mom: array, formatted: string}, error: ?string}
+     */
+    public static function generateMomSummary(array $context): array
+    {
+        if (! self::isConfigured()) {
+            return self::failure('AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.', ['mom' => [], 'formatted' => '']);
+        }
+
+        $model  = (string) (config('ai.gemini.model') ?: 'gemini-1.5-flash');
+        $apiKey = (string) config('ai.gemini.api_key');
+        $prompt = self::buildMomFixerPrompt($context);
+
+        try {
+            $response = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
+                ->acceptJson()
+                ->asJson()
+                ->withQueryParameters(['key' => $apiKey])
+                ->post(sprintf(self::GEMINI_ENDPOINT, $model), [
+                    'contents' => [[
+                        'role'  => 'user',
+                        'parts' => [['text' => $prompt]],
+                    ]],
+                    'generationConfig' => [
+                        'temperature'      => 0.25,
+                        'responseMimeType' => 'application/json',
+                    ],
+                ]);
+        } catch (Throwable $e) {
+            report($e);
+
+            return self::failure('Gagal menghubungi Gemini: ' . $e->getMessage(), ['mom' => [], 'formatted' => '']);
+        }
+
+        if (! $response->successful()) {
+            $detail = trim((string) ($response->json('error.message') ?? $response->body()));
+            $detail = $detail !== '' ? $detail : ('HTTP ' . $response->status());
+
+            return self::failure('Gemini menolak permintaan: ' . $detail, ['mom' => [], 'formatted' => '']);
+        }
+
+        $text = (string) ($response->json('candidates.0.content.parts.0.text') ?? '');
+        if ($text === '') {
+            return self::failure('Respons Gemini kosong.', ['mom' => [], 'formatted' => '']);
+        }
+
+        return self::parseMomSummaryResponse($text);
+    }
+
+    /**
      * Pure parser/validator. Public so tests + tinker can exercise the
      * full contract without hitting the network.
      *
@@ -276,6 +328,41 @@ class AiPlanner
         ];
     }
 
+    /**
+     * Pure parser/formatter for AI-generated structured MoM summaries.
+     *
+     * @return array{ok: bool, data: array{mom: array, formatted: string}, error: ?string}
+     */
+    public static function parseMomSummaryResponse(string $raw): array
+    {
+        $clean = self::stripFences($raw);
+        if ($clean === '') {
+            return self::failure('Respons AI kosong.', ['mom' => [], 'formatted' => '']);
+        }
+
+        try {
+            $decoded = json_decode($clean, true, 32, JSON_THROW_ON_ERROR);
+        } catch (Throwable $e) {
+            return self::failure('Format JSON tidak valid: ' . $e->getMessage(), ['mom' => [], 'formatted' => '']);
+        }
+
+        $mom = self::normalizeMomSummary($decoded);
+        if ($mom === null) {
+            return self::failure('Tidak ada struktur MoM valid yang bisa diparsing dari respons.', ['mom' => [], 'formatted' => '']);
+        }
+
+        $formatted = self::formatMomSummary($mom);
+        if ($formatted === '') {
+            return self::failure('MoM hasil AI kosong setelah diformat.', ['mom' => [], 'formatted' => '']);
+        }
+
+        return [
+            'ok'    => true,
+            'data'  => ['mom' => $mom, 'formatted' => $formatted],
+            'error' => null,
+        ];
+    }
+
     /* ===================== Internals ===================== */
 
     public static function buildWbsPrompt(array $context): string
@@ -289,6 +376,8 @@ class AiPlanner
         $momDate     = self::str($context['mom_date'] ?? '');
         $momSummary  = self::str($context['mom_summary'] ?? '');
         $momNotes    = self::str($context['mom_notes'] ?? '');
+        $momSourceLabel = $momSummary !== '' ? 'Proper MoM Summary' : 'Raw MoM Notes';
+        $momSourceText = $momSummary !== '' ? $momSummary : $momNotes;
         $existingModules = self::listContext($context['existing_module_titles'] ?? []);
         $existingTasks = self::listContext($context['existing_task_titles'] ?? []);
 
@@ -303,6 +392,8 @@ class AiPlanner
             'Jawab HANYA dengan JSON murni. Jangan tambahkan teks lain di luar JSON.',
             'Struktur: { "modules": [ { "title", "description", "status", "estimated_hours", "tasks": [ { "title", "description", "status", "priority", "estimated_hours" } ] } ] }.',
             'Maksimum ' . self::MAX_MODULES . ' modul, maksimum ' . self::MAX_TASKS_PER_MODULE . ' task per modul.',
+            'Buat draft WBS ringkas untuk tahap awal/MVP. Hindari terlalu banyak task kecil. Gabungkan task yang masih satu konteks teknis.',
+            'Fokus pada core scope/MVP. Hindari ledakan CRUD per entitas kecuali eksplisit diminta di MoM.',
             'status modul harus salah satu dari: ' . $moduleStatuses . '.',
             'status task harus salah satu dari: ' . $taskStatuses . '. Gunakan todo untuk task baru yang belum dimulai.',
             'priority task harus salah satu dari: ' . $taskPriorities . '. Default medium.',
@@ -366,14 +457,117 @@ JSON;
             . '- Task yang sudah ada: ' . $existingTasks . "\n\n"
             . "MoM aktual:\n"
             . '- Tanggal: ' . ($momDate !== '' ? $momDate : '-') . "\n"
-            . '- Ringkasan: ' . ($momSummary !== '' ? $momSummary : '-') . "\n"
-            . '- Catatan mentah: ' . ($momNotes !== '' ? $momNotes : '-');
+            . '- Sumber utama: ' . $momSourceLabel . "\n"
+            . '- Isi sumber utama: ' . ($momSourceText !== '' ? $momSourceText : '-') . "\n"
+            . '- Catatan mentah pendukung: ' . ($momSummary !== '' && $momNotes !== '' ? $momNotes : '-');
 
         return $intro
             . "\n\nInstruksi output:\n- " . implode("\n- ", $rules)
             . "\n\n" . $exampleInput
             . "\n\n" . $exampleOutput
             . "\n\nSekarang buat output JSON untuk input aktual berikut. Ingat: output akhir hanya JSON, tanpa markdown, tanpa komentar.\n\n"
+            . $contextBlock;
+    }
+
+    public static function buildMomFixerPrompt(array $context): string
+    {
+        $projectName = self::str($context['project_name'] ?? '');
+        $projectCode = self::str($context['project_code'] ?? '');
+        $projectDesc = self::str($context['project_description'] ?? '');
+        $projectClient = self::str($context['project_client'] ?? '');
+        $momDate = self::str($context['mom_date'] ?? '');
+        $rawNotes = self::str($context['mom_notes'] ?? '');
+
+        $intro = 'Kamu adalah Smart-PMIS meeting analyst untuk proyek perangkat lunak. '
+            . 'Rapikan notulensi mentah menjadi MoM formal yang terstruktur agar siap dipakai PM untuk WBS.';
+
+        $rules = [
+            'Jawab HANYA dengan JSON murni. Jangan tambahkan markdown fences atau teks lain.',
+            'Struktur: { "title", "meeting_date", "summary", "sections": [ { "heading", "items" } ], "action_items", "open_questions", "technical_notes" }.',
+            'sections[].items, action_items, open_questions, dan technical_notes harus berupa array string.',
+            'Jangan mengarang keputusan client yang tidak ada pada notulensi mentah.',
+            'Boleh mengelompokkan catatan berantakan menjadi section yang jelas.',
+            'Jika catatan memuat beberapa rekap meeting, pertahankan heading/section meeting yang terpisah.',
+            'Gunakan Bahasa Indonesia formal tetapi natural.',
+            'Hindari output terlalu panjang.',
+            'Jangan menghitung final project fee atau biaya.',
+            'Jika menyebut estimasi, tulis bahwa estimasi perlu konfirmasi PM/Fullstack.',
+        ];
+
+        $exampleInput = <<<'TEXT'
+Contoh raw MoM:
+Rekap Meeting Stullo | Minggu 12 April 2026
+Client mau PRD di awal sebelum development. Hero section mau fleksibel untuk video/foto. Home page butuh job list, wishlist, favorites, suggestion bar. Sertifikat harus bisa diakses via link/download. My profile customer perlu biodata, pengalaman kerja, pendidikan, bisa generate/download CV. Pembayaran perlu payment gateway, fintech partner, dan cicilan internal tanpa bunga/denda.
+TEXT;
+
+        $exampleOutput = <<<'JSON'
+Contoh proper MoM JSON:
+{
+  "title": "Rekap Meeting Stullo",
+  "meeting_date": "12 April 2026",
+  "summary": "Client membutuhkan penyusunan PRD di tahap awal sebagai acuan development. Fokus kebutuhan meliputi pengembangan homepage, profil customer, sertifikat, serta integrasi pembayaran.",
+  "sections": [
+    {
+      "heading": "Kebutuhan Dokumen dan Perencanaan",
+      "items": [
+        "PRD perlu disiapkan sebelum development sebagai acuan utama pengerjaan."
+      ]
+    },
+    {
+      "heading": "Homepage dan Engagement User",
+      "items": [
+        "Hero section fleksibel untuk video maupun gambar.",
+        "Job list untuk menarik minat learner.",
+        "Wishlist untuk produk yang belum pernah diorder.",
+        "Favorites untuk personalized order.",
+        "Suggestion bar atau notifikasi rekomendasi berdasarkan minat user."
+      ]
+    },
+    {
+      "heading": "Profil Customer dan Sertifikat",
+      "items": [
+        "Sertifikat dapat diakses melalui link atau download.",
+        "My Profile Customer berisi biodata, pengalaman kerja, pendidikan, dan data pendukung opsional.",
+        "Data profil dapat digenerate atau didownload sebagai CV."
+      ]
+    },
+    {
+      "heading": "Pembayaran",
+      "items": [
+        "Integrasi payment gateway dan fintech partner.",
+        "Cicilan internal Stullo menggunakan skema markup/commission based tanpa bunga dan denda."
+      ]
+    }
+  ],
+  "action_items": [
+    "Susun PRD awal sebelum development.",
+    "Validasi detail metode pembayaran dan integrasi fintech/payment gateway.",
+    "Konfirmasi prioritas fitur untuk MVP."
+  ],
+  "open_questions": [
+    "Apakah fitur suggestion bar berbasis histori order atau minat manual user?",
+    "Apakah CV generator membutuhkan format template tertentu?"
+  ],
+  "technical_notes": [
+    "Estimasi jam dan biaya tetap perlu dikonfirmasi oleh tim Fullstack/PM setelah WBS dibuat."
+  ]
+}
+JSON;
+
+        $contextBlock = "Input aktual:\n"
+            . '- Nama proyek: ' . ($projectName !== '' ? $projectName : '-') . "\n"
+            . '- Kode proyek: ' . ($projectCode !== '' ? $projectCode : '-') . "\n"
+            . '- Client: ' . ($projectClient !== '' ? $projectClient : '-') . "\n"
+            . '- Deskripsi proyek: ' . ($projectDesc !== '' ? $projectDesc : '-') . "\n"
+            . '- Tanggal MoM tersimpan: ' . ($momDate !== '' ? $momDate : '-') . "\n"
+            . "Notulensi mentah aktual:\n"
+            . ($rawNotes !== '' ? $rawNotes : '-');
+
+        return $intro
+            . "\n\nInstruksi output:\n- " . implode("\n- ", $rules)
+            . "\n\n" . $exampleInput
+            . "\n\n" . $exampleOutput
+            . "\n\nSekarang rapikan input aktual berikut. Ingat: output akhir hanya JSON, tanpa markdown, tanpa komentar.\n\n"
             . $contextBlock;
     }
 
@@ -554,6 +748,98 @@ JSON;
         ];
     }
 
+    private static function normalizeMomSummary($raw): ?array
+    {
+        if (! is_array($raw)) {
+            return null;
+        }
+
+        $title = self::str($raw['title'] ?? '');
+        $summary = self::str($raw['summary'] ?? '');
+        if ($title === '' || $summary === '') {
+            return null;
+        }
+
+        $sections = [];
+        foreach (array_values(is_array($raw['sections'] ?? null) ? $raw['sections'] : []) as $section) {
+            if (! is_array($section)) {
+                continue;
+            }
+            $heading = self::str($section['heading'] ?? '');
+            $items = self::stringList($section['items'] ?? []);
+            if ($heading === '' || empty($items)) {
+                continue;
+            }
+            $sections[] = [
+                'heading' => self::clip($heading, 180),
+                'items'   => array_map(fn ($item) => self::clip($item, 500), $items),
+            ];
+        }
+
+        return [
+            'title'           => self::clip($title, 180),
+            'meeting_date'    => self::clipNullable(self::str($raw['meeting_date'] ?? ''), 80),
+            'summary'         => self::clip($summary, 1200),
+            'sections'        => array_slice($sections, 0, 8),
+            'action_items'    => array_slice(self::stringList($raw['action_items'] ?? []), 0, 10),
+            'open_questions'  => array_slice(self::stringList($raw['open_questions'] ?? []), 0, 10),
+            'technical_notes' => array_slice(self::stringList($raw['technical_notes'] ?? []), 0, 10),
+        ];
+    }
+
+    public static function formatMomSummary(array $mom): string
+    {
+        $lines = [];
+
+        $title = self::str($mom['title'] ?? '');
+        if ($title !== '') {
+            $lines[] = $title;
+        }
+
+        $date = self::str($mom['meeting_date'] ?? '');
+        if ($date !== '') {
+            $lines[] = 'Tanggal: ' . $date;
+        }
+
+        $summary = self::str($mom['summary'] ?? '');
+        if ($summary !== '') {
+            $lines[] = '';
+            $lines[] = 'Ringkasan:';
+            $lines[] = $summary;
+        }
+
+        foreach (array_values(is_array($mom['sections'] ?? null) ? $mom['sections'] : []) as $index => $section) {
+            $heading = self::str($section['heading'] ?? '');
+            $items = self::stringList($section['items'] ?? []);
+            if ($heading === '' || empty($items)) {
+                continue;
+            }
+            $lines[] = '';
+            $lines[] = ((int) $index + 1) . '. ' . $heading;
+            foreach ($items as $item) {
+                $lines[] = '- ' . $item;
+            }
+        }
+
+        foreach ([
+            'Action Items'   => $mom['action_items'] ?? [],
+            'Open Questions' => $mom['open_questions'] ?? [],
+            'Catatan Teknis' => $mom['technical_notes'] ?? [],
+        ] as $heading => $items) {
+            $items = self::stringList($items);
+            if (empty($items)) {
+                continue;
+            }
+            $lines[] = '';
+            $lines[] = $heading . ':';
+            foreach ($items as $item) {
+                $lines[] = '- ' . $item;
+            }
+        }
+
+        return trim(implode("\n", $lines));
+    }
+
     private static function pickEnum($value, array $allowed, string $default): string
     {
         if (! is_string($value)) {
@@ -593,6 +879,24 @@ JSON;
         $text = self::str($value);
 
         return $text !== '' ? $text : '-';
+    }
+
+    private static function stringList($value): array
+    {
+        if (! is_array($value)) {
+            $text = self::str($value);
+            return $text !== '' ? [$text] : [];
+        }
+
+        $items = [];
+        foreach (array_values($value) as $item) {
+            $text = self::str($item);
+            if ($text !== '') {
+                $items[] = $text;
+            }
+        }
+
+        return $items;
     }
 
     private static function intInRange($value, int $min, int $max): int

@@ -67,9 +67,15 @@ Route::middleware('auth')->group(function () {
     Route::patch('/projects/{project}/archive', [ProjectController::class, 'archive'])->name('projects.archive');
     Route::patch('/projects/{project}/restore', [ProjectController::class, 'restore'])->name('projects.restore');
     Route::post('/projects/{project}/modules', [ProjectController::class, 'storeModule'])->name('projects.modules.store');
+    Route::put('/projects/{project}/modules/{module}', [ProjectController::class, 'updateModule'])->name('projects.modules.update');
+    Route::delete('/projects/{project}/modules/{module}', [ProjectController::class, 'destroyModule'])->name('projects.modules.destroy');
     Route::post('/projects/{project}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
+    Route::put('/projects/{project}/tasks/{task}', [ProjectController::class, 'updateTask'])->name('projects.tasks.update');
+    Route::delete('/projects/{project}/tasks/{task}', [ProjectController::class, 'destroyTask'])->name('projects.tasks.destroy');
     Route::patch('/projects/{project}/tasks/{task}/status', [ProjectController::class, 'updateTaskStatus'])->name('projects.tasks.status');
     Route::post('/projects/{project}/moms', [ProjectController::class, 'storeMom'])->name('projects.moms.store');
+    Route::patch('/projects/{project}/moms/{mom}/summary', [ProjectController::class, 'updateMomSummary'])->name('projects.moms.summary');
+    Route::post('/projects/{project}/ai-mom/fix', [ProjectController::class, 'fixLatestMom'])->name('projects.ai-mom.fix');
     Route::post('/projects/{project}/ai-wbs/generate', [ProjectController::class, 'generateWbsFromMom'])->name('projects.ai-wbs.generate');
     Route::post('/projects/{project}/ai-test-cases/generate', [ProjectController::class, 'generateTestCases'])->name('projects.ai-test-cases.generate');
     Route::post('/projects/{project}/qc', [ProjectController::class, 'storeQcTest'])->name('projects.qc.store');

@@ -231,6 +231,9 @@
         /* === Stitch card border (AI Planning / QC) === */
         .pd-stitch-card { border: 1.5px solid #E9D5FF; box-shadow: 0 2px 8px rgba(124,58,237,0.08); }
         .pd-section-bar { width: 6px; height: 32px; background: linear-gradient(180deg, #7C3AED 0%, #C084FC 100%); border-radius: 9999px; }
+        .pd-detail-open-label { display: none; }
+        details[open] .pd-detail-open-label { display: inline; }
+        details[open] .pd-detail-closed-label { display: none; }
     </style>
 
     {{-- =============== HERO =============== --}}
@@ -512,17 +515,73 @@
                 <div class="space-y-3">
                     @forelse ($modules as $mod)
                         @php $st = $modStatusStyles[$mod['status']] ?? ['bg' => '#F3F4F6', 'color' => '#374151']; @endphp
-                        <div class="flex items-center justify-between gap-4 p-4 rounded-xl border border-violet-50 hover:bg-[#FAF5FF] transition">
-                            <div class="min-w-0">
-                                <h4 class="text-[14px] font-bold text-[#1E1B4B] truncate">{{ $mod['name'] }}</h4>
-                                <div class="text-[12px] text-slate-500 mt-1 inline-flex items-center gap-3">
-                                    <span>Task: <span class="font-semibold text-violet-600">{{ $mod['tasks_done'] }}/{{ $mod['tasks_total'] }}</span></span>
-                                    <span class="text-violet-600 font-semibold px-1.5 py-0.5 bg-violet-50 rounded">Estimation: {{ $mod['hours'] }}h</span>
+                        <div class="p-4 rounded-xl border border-violet-50 hover:bg-[#FAF5FF] transition">
+                            <div class="flex items-center justify-between gap-4">
+                                <div class="min-w-0">
+                                    <h4 class="text-[14px] font-bold text-[#1E1B4B] truncate">{{ $mod['name'] }}</h4>
+                                    <div class="text-[12px] text-slate-500 mt-1 inline-flex items-center gap-3 flex-wrap">
+                                        <span>Task: <span class="font-semibold text-violet-600">{{ $mod['tasks_done'] }}/{{ $mod['tasks_total'] }}</span></span>
+                                        <span class="text-violet-600 font-semibold px-1.5 py-0.5 bg-violet-50 rounded">Estimation: {{ $mod['hours'] }}h</span>
+                                    </div>
+                                    @if (! empty($mod['description']))
+                                        <p class="mt-2 text-[12px] text-slate-500 leading-relaxed">{{ $mod['description'] }}</p>
+                                    @endif
                                 </div>
+                                <span class="text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-full shrink-0 border" style="background: {{ $st['bg'] }}; color: {{ $st['color'] }}; border-color: {{ $st['color'] }}20;">
+                                    {{ $mod['status'] }}
+                                </span>
                             </div>
-                            <span class="text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-full shrink-0 border" style="background: {{ $st['bg'] }}; color: {{ $st['color'] }}; border-color: {{ $st['color'] }}20;">
-                                {{ $mod['status'] }}
-                            </span>
+
+                            @if ($canEdit && ! $useReferenceProjectData && ! empty($mod['id']))
+                                <details class="mt-3 rounded-lg border border-violet-100 bg-white/70 px-3 py-2">
+                                    <summary class="cursor-pointer select-none text-[12px] font-bold text-violet-700">Edit Modul</summary>
+                                    <form method="POST" action="{{ route('projects.modules.update', [$project, $mod['id']]) }}" class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        @csrf
+                                        @method('PUT')
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1.5">Judul</label>
+                                            <input name="title" value="{{ old('module_title_'.$mod['id'], $mod['name']) }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1.5">Status</label>
+                                                <select name="status" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    @foreach ($moduleStatusOptions as $value => $label)
+                                                        <option value="{{ $value }}" @selected(($mod['status_key'] ?? '') === $value)>{{ $label }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1.5">Jam</label>
+                                                <input name="estimate_hours" type="number" min="0" max="999" value="{{ $mod['hours'] }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1.5">Deskripsi</label>
+                                            <textarea name="description" rows="2" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $mod['description'] ?? '' }}</textarea>
+                                        </div>
+                                        <div class="md:col-span-2 flex justify-end gap-2">
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan</button>
+                                        </div>
+                                    </form>
+                                    @if ((int) ($mod['tasks_total'] ?? 0) > 0)
+                                        <div class="mt-2 flex flex-col items-start gap-1">
+                                            <button type="button" disabled class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-100 bg-slate-50 text-slate-400 text-[12px] font-semibold cursor-not-allowed">
+                                                Hapus
+                                            </button>
+                                            <p class="text-[11px] text-slate-400">Hapus task terlebih dahulu sebelum menghapus modul.</p>
+                                        </div>
+                                    @else
+                                        <form method="POST" action="{{ route('projects.modules.destroy', [$project, $mod['id']]) }}" class="mt-2" onsubmit="return confirm('Hapus modul WBS ini?');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-rose-100 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 transition cursor-pointer">
+                                                Hapus
+                                            </button>
+                                        </form>
+                                    @endif
+                                </details>
+                            @endif
                         </div>
                     @empty
                         <div class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
@@ -575,7 +634,7 @@
                     <select data-kanban-filter class="appearance-none h-9 pl-3 pr-9 rounded-lg border border-violet-100 bg-white text-[13px] text-slate-600 cursor-pointer">
                         <option value="">Semua</option>
                         @php
-                            $kanbanAssignees = ['Adly', 'Yuda Prayoga', 'Irwan Kurniawan', 'Ferry Achmad', 'Genta'];
+                            $kanbanAssignees = collect($assigneeOptions ?? [])->pluck('name')->all();
                             $seededAssignees = collect($kanban)->pluck('tasks')->flatten(1)->pluck('assignee')->filter()->unique()->values()->all();
                             $extraAssignees  = array_values(array_diff($seededAssignees, $kanbanAssignees, ['Belum Ditugaskan']));
                             $kanbanFilterOptions = array_merge($kanbanAssignees, $extraAssignees);
@@ -598,7 +657,7 @@
             @elseif (! $useReferenceProjectData)
                 <span class="text-[11px] font-bold tracking-wider uppercase px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 inline-flex items-center gap-1.5">
                     <x-heroicon-o-circle-stack class="w-3.5 h-3.5" />
-                    DB-backed
+                    Tersimpan
                 </span>
             @endif
         </div>
@@ -630,6 +689,7 @@
                                 <option value="{{ $member->id }}" @selected((string) old('assigned_to') === (string) $member->id)>{{ $member->name }}</option>
                             @endforeach
                         </select>
+                        <p class="mt-1 text-[11px] text-slate-400">Hanya anggota yang ditugaskan ke project ini yang muncul.</p>
                         @error('assigned_to')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
                     </div>
                     <div>
@@ -684,7 +744,7 @@
                             {{ count($col['tasks']) }}
                         </span>
                     </div>
-                    <div class="space-y-3 min-h-[100px]">
+                    <div class="space-y-3 min-h-[100px] max-h-[640px] overflow-y-auto pr-1">
                         @forelse ($col['tasks'] as $task)
                             @php $accent = $task['priority'] === 'High' ? '#EF4444' : '#F59E0B'; @endphp
                             <div data-kanban-task data-assignee="{{ $task['assignee'] }}" class="bg-white rounded-lg border border-violet-50 shadow-sm hover:shadow-[0_2px_8px_rgba(124,58,237,0.08)] transition p-3" style="border-left: 4px solid {{ $accent }};">
@@ -717,6 +777,74 @@
                                         </select>
                                         <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan</button>
                                     </form>
+                                    <details class="mt-2 rounded-lg border border-violet-100 bg-violet-50/30 px-3 py-2">
+                                        <summary class="cursor-pointer select-none text-[12px] font-bold text-violet-700">Edit Task</summary>
+                                        <form method="POST" action="{{ route('projects.tasks.update', [$project, $task['id']]) }}" class="mt-3 space-y-2">
+                                            @csrf
+                                            @method('PUT')
+                                            <div>
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Judul</label>
+                                                <input name="title" value="{{ $task['title'] }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Deskripsi</label>
+                                                <textarea name="description" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $task['description'] ?? '' }}</textarea>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Modul</label>
+                                                    <select name="project_module_id" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                        <option value="">Tanpa Modul</option>
+                                                        @foreach ($modules as $mod)
+                                                            <option value="{{ $mod['id'] }}" @selected((string) ($task['module_id'] ?? '') === (string) $mod['id'])>{{ $mod['name'] }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Assignee</label>
+                                                    <select name="assigned_to" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                        <option value="">Belum Ditugaskan</option>
+                                                        @foreach ($assigneeOptions as $member)
+                                                            <option value="{{ $member->id }}" @selected((string) ($task['assigned_to'] ?? '') === (string) $member->id)>{{ $member->name }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                    <p class="mt-1 text-[10.5px] text-slate-400 leading-tight">Hanya anggota yang ditugaskan ke project ini yang muncul.</p>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Status</label>
+                                                    <select name="status" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                        @foreach ($taskStatusOptions as $value => $label)
+                                                            <option value="{{ $value }}" @selected($task['status'] === $value)>{{ $label }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Prioritas</label>
+                                                    <select name="priority" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                        @foreach ($taskPriorityOptions as $value => $label)
+                                                            <option value="{{ $value }}" @selected(($task['priority_key'] ?? '') === $value)>{{ $label }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Due</label>
+                                                    <input name="due_date" type="date" value="{{ $task['due_date'] ?? '' }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Jam</label>
+                                                    <input name="estimate_hours" type="number" min="0" max="999" value="{{ $task['hours'] ?? 0 }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                                </div>
+                                            </div>
+                                            <div class="flex justify-end">
+                                                <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan</button>
+                                            </div>
+                                        </form>
+                                        <form method="POST" action="{{ route('projects.tasks.destroy', [$project, $task['id']]) }}" class="mt-2" onsubmit="return confirm('Hapus task ini?');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="h-8 px-3 rounded-lg border border-rose-100 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 transition cursor-pointer">Hapus</button>
+                                        </form>
+                                    </details>
                                 @endif
                             </div>
                         @empty
@@ -774,26 +902,83 @@
                         @php
                             $momIsDb     = is_array($mom) && array_key_exists('meeting_date', $mom);
                             $momDateText = $momIsDb ? ($mom['date_label'] ?? '-') : ($mom['date'] ?? '-');
-                            $momTag      = $momIsDb ? mb_strtoupper($mom['status'] ?? 'draft') : ($mom['tag'] ?? 'DRAFT');
+                            $momStatusLabels = [
+                                'ai_fixed' => 'Dirapikan AI',
+                                'manual_updated' => 'Diperbarui',
+                                'draft' => 'Draft',
+                            ];
+                            $momStatusKey = $momIsDb ? (string) ($mom['status'] ?? 'draft') : '';
+                            $momTag      = $momIsDb ? ($momStatusLabels[$momStatusKey] ?? 'Tersimpan') : ($mom['tag'] ?? 'Draft');
                             $momTitle    = $momIsDb
                                 ? 'MoM ' . $momDateText . ($mom['creator'] ? ' · ' . $mom['creator'] : '')
                                 : ($mom['title'] ?? 'MoM');
                             $momBody     = $momIsDb ? ($mom['notes'] ?? '') : ($mom['body'] ?? '');
                             $momSummary  = $momIsDb ? ($mom['summary'] ?? null) : null;
+                            $momRawPreview = \Illuminate\Support\Str::limit(trim(preg_replace('/\s+/', ' ', (string) $momBody)), 250, '...');
+                            $momSummaryPreview = \Illuminate\Support\Str::limit(trim(preg_replace('/\s+/', ' ', (string) $momSummary)), 250, '...');
                         @endphp
                         <div class="p-5 rounded-xl border border-violet-100 bg-violet-50/20 hover:border-violet-300 transition group">
                             <div class="flex justify-between items-start mb-2 gap-3">
                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{{ $momDateText }}</span>
-                                <span class="px-2 py-0.5 bg-violet-50 text-violet-700 text-[9px] font-extrabold rounded-full inline-flex items-center gap-1 flex-shrink-0">
-                                    <x-heroicon-o-bookmark-square class="w-3 h-3" />
-                                    {{ $momTag }}
-                                </span>
+                                <div class="inline-flex items-center gap-1.5 flex-shrink-0">
+                                    @if ($loop->first)
+                                        <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-extrabold rounded-full">Terbaru</span>
+                                    @endif
+                                    <span class="px-2 py-0.5 bg-violet-50 text-violet-700 text-[9px] font-extrabold rounded-full inline-flex items-center gap-1">
+                                        <x-heroicon-o-bookmark-square class="w-3 h-3" />
+                                        {{ $momTag }}
+                                    </span>
+                                </div>
                             </div>
                             <h4 class="font-bold text-[#1E1B4B] text-[14px] group-hover:text-violet-700 transition mb-1">{{ $momTitle }}</h4>
                             @if ($momSummary)
-                                <p class="text-[12px] text-slate-600 leading-relaxed font-medium mb-1">{{ $momSummary }}</p>
+                                <div class="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2">
+                                    <div class="text-[10px] font-bold tracking-wider uppercase text-emerald-700 mb-1">MoM Proper / Ringkasan AI</div>
+                                    <p class="text-[12px] text-slate-600 leading-relaxed font-medium">{{ $momSummaryPreview }}</p>
+                                </div>
                             @endif
-                            <p class="text-[12px] text-slate-500 leading-relaxed whitespace-pre-line">{{ $momBody }}</p>
+                            <div class="mt-3">
+                                <div class="text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Preview Notulensi Mentah</div>
+                                <p class="text-[12px] text-slate-500 leading-relaxed">{{ $momRawPreview ?: 'Tidak ada catatan.' }}</p>
+                            </div>
+
+                            <details class="group mt-4 rounded-lg border border-violet-100 bg-white/70 px-3 py-2">
+                                <summary class="cursor-pointer select-none text-[12px] font-bold text-violet-700">
+                                    <span class="pd-detail-closed-label">Lihat detail</span>
+                                    <span class="pd-detail-open-label">Sembunyikan</span>
+                                </summary>
+                                <div class="mt-3 space-y-4">
+                                    <div>
+                                        <div class="text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1.5">Raw MoM / Notulensi Mentah</div>
+                                        <div class="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[12px] text-slate-600 leading-relaxed whitespace-pre-line">{{ $momBody }}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-[10px] font-bold tracking-wider uppercase text-emerald-700 mb-1.5">Proper MoM / Ringkasan AI</div>
+                                        @if ($momSummary)
+                                            <div class="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 text-[12px] text-slate-700 leading-relaxed whitespace-pre-line">{{ $momSummary }}</div>
+                                        @else
+                                            <div class="rounded-lg border border-dashed border-violet-100 bg-violet-50/30 px-3 py-3 text-center text-[12px] font-medium text-slate-400">
+                                                Belum ada Ringkasan AI untuk MoM ini.
+                                            </div>
+                                        @endif
+                                    </div>
+                                    @if ($canEdit && ! $useReferenceProjectData && $momIsDb && ! empty($mom['id']))
+                                        <form method="POST" action="{{ route('projects.moms.summary', [$project, $mom['id']]) }}" class="space-y-2">
+                                            @csrf
+                                            @method('PATCH')
+                                            <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400">Edit Ringkasan</label>
+                                            <textarea name="summary" rows="5" placeholder="Ringkasan MoM yang sudah dirapikan..." class="w-full rounded-xl border border-violet-100 bg-white px-4 py-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('summary', $momSummary) }}</textarea>
+                                            @error('summary') <p class="text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                                            <div class="flex justify-end">
+                                                <button type="submit" class="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-violet-200 bg-white text-[12px] font-semibold text-violet-700 hover:border-violet-400 transition cursor-pointer">
+                                                    <x-heroicon-o-check class="w-4 h-4" />
+                                                    Simpan Ringkasan
+                                                </button>
+                                            </div>
+                                        </form>
+                                    @endif
+                                </div>
+                            </details>
                         </div>
                     @empty
                         <div data-mom-empty class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
@@ -804,20 +989,62 @@
             </div>
 
             <div class="p-7 pt-0">
+                @php
+                    $latestMom = $moms[0] ?? null;
+                    $latestMomRawNotes = is_array($latestMom) ? trim((string) ($latestMom['notes'] ?? ($latestMom['body'] ?? ''))) : '';
+                    $latestMomSummary = is_array($latestMom) ? trim((string) ($latestMom['summary'] ?? '')) : '';
+
+                    if ($latestMomRawNotes === '') {
+                        $momFixerState = [
+                            'label' => 'Tambahkan MoM terlebih dahulu',
+                            'tooltip' => 'AI MoM Fixer butuh setidaknya 1 MoM tersimpan dengan notulensi mentah.',
+                            'tone' => 'muted',
+                        ];
+                    } elseif (! ($aiReady ?? false)) {
+                        $momFixerState = [
+                            'label' => 'AI belum dikonfigurasi',
+                            'tooltip' => ($aiProvider ?? 'AI') . ' API key belum di-set di env (GEMINI_API_KEY).',
+                            'tone' => 'muted',
+                        ];
+                    } else {
+                        $momFixerState = [
+                            'label' => $latestMomSummary !== '' ? 'Rapikan Ulang MoM' : 'Rapikan MoM dengan AI',
+                            'tooltip' => 'Rapikan MoM terbaru menjadi ringkasan formal menggunakan ' . ($aiProvider ?? 'AI') . '.',
+                            'tone' => 'ready',
+                        ];
+                    }
+                @endphp
                 <div class="p-5 rounded-2xl border border-dashed border-violet-300 bg-violet-50/40 flex flex-col gap-3">
                     <p class="text-[12px] text-slate-500 leading-relaxed text-center font-medium">
                         Otomatis rapikan MoM mentah Anda menggunakan AI agar siap diproses.
                     </p>
-                    <button
-                        type="button"
-                        disabled
-                        aria-disabled="true"
-                        title="Integrasi AI belum aktif"
-                        class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition bg-slate-100 text-slate-400 cursor-not-allowed"
-                    >
-                        <x-heroicon-o-sparkles class="w-4 h-4" />
-                        AI MoM Fixer — segera tersedia
-                    </button>
+                    @if (($momFixerState['tone'] ?? 'muted') === 'ready' && $canEdit && ! $useReferenceProjectData)
+                        <form method="POST" action="{{ route('projects.ai-mom.fix', $project) }}" class="w-full" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                            @csrf
+                            <button
+                                type="submit"
+                                title="{{ $momFixerState['tooltip'] }}"
+                                class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition bg-gradient-to-r from-violet-500 to-pink-500 text-white shadow-lg shadow-violet-500/20 hover:scale-[1.02] cursor-pointer disabled:opacity-70 disabled:cursor-wait"
+                            >
+                                <x-heroicon-o-sparkles class="w-4 h-4" />
+                                {{ $momFixerState['label'] }}
+                            </button>
+                        </form>
+                    @else
+                        <button
+                            type="button"
+                            disabled
+                            aria-disabled="true"
+                            title="{{ $momFixerState['tooltip'] }}"
+                            class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition bg-slate-100 text-slate-400 cursor-not-allowed"
+                        >
+                            <x-heroicon-o-sparkles class="w-4 h-4" />
+                            {{ $momFixerState['label'] }}
+                        </button>
+                    @endif
+                    <p class="text-[11px] text-violet-600 italic text-center leading-relaxed">
+                        Notulensi mentah tetap disimpan apa adanya; AI hanya memperbarui ringkasan.
+                    </p>
                 </div>
             </div>
         </div>
@@ -838,6 +1065,9 @@
                         @php $st = $modStatusStyles[$mod['status']] ?? ['bg' => '#F3F4F6', 'color' => '#374151']; @endphp
                         <div class="p-5 rounded-xl border border-violet-100 bg-violet-50/20 space-y-3">
                             <h4 class="text-[14px] font-bold text-[#1E1B4B] truncate">{{ $mod['name'] }}</h4>
+                            @if (! empty($mod['description']))
+                                <p class="text-[12px] text-slate-500 leading-relaxed">{{ $mod['description'] }}</p>
+                            @endif
                             <div class="flex items-end justify-between gap-3">
                                 <div class="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
                                     <span>{{ $mod['tasks_total'] }} tasks</span>
@@ -847,6 +1077,56 @@
                                     {{ $mod['status'] }}
                                 </span>
                             </div>
+                            @if ($canEdit && ! $useReferenceProjectData && ! empty($mod['id']))
+                                <details class="rounded-lg border border-violet-100 bg-white/80 px-3 py-2">
+                                    <summary class="cursor-pointer select-none text-[12px] font-bold text-violet-700">Edit / Hapus Modul</summary>
+                                    <form method="POST" action="{{ route('projects.modules.update', [$project, $mod['id']]) }}" class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        @csrf
+                                        @method('PUT')
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1.5">Judul</label>
+                                            <input name="title" value="{{ $mod['name'] }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1.5">Status</label>
+                                                <select name="status" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    @foreach ($moduleStatusOptions as $value => $label)
+                                                        <option value="{{ $value }}" @selected(($mod['status_key'] ?? '') === $value)>{{ $label }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1.5">Jam</label>
+                                                <input name="estimate_hours" type="number" min="0" max="999" value="{{ $mod['hours'] }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1.5">Deskripsi</label>
+                                            <textarea name="description" rows="2" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $mod['description'] ?? '' }}</textarea>
+                                        </div>
+                                        <div class="md:col-span-2 flex justify-end">
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan</button>
+                                        </div>
+                                    </form>
+                                    @if ((int) ($mod['tasks_total'] ?? 0) > 0)
+                                        <div class="mt-2 flex flex-col items-start gap-1">
+                                            <button type="button" disabled class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-100 bg-slate-50 text-slate-400 text-[12px] font-semibold cursor-not-allowed">
+                                                Hapus
+                                            </button>
+                                            <p class="text-[11px] text-slate-400">Hapus task terlebih dahulu sebelum menghapus modul.</p>
+                                        </div>
+                                    @else
+                                        <form method="POST" action="{{ route('projects.modules.destroy', [$project, $mod['id']]) }}" class="mt-2" onsubmit="return confirm('Hapus modul WBS ini?');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-rose-100 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 transition cursor-pointer">
+                                                Hapus
+                                            </button>
+                                        </form>
+                                    @endif
+                                </details>
+                            @endif
                         </div>
                     @empty
                         <div class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
@@ -861,6 +1141,11 @@
                     $aiReady    ??= false;
                     $aiProvider ??= 'AI';
                     $momCount    = count($moms);
+                    $wbsLatestMom = $moms[0] ?? null;
+                    $projectHasWbs = count($modules) > 0 || ($workspaceTaskTotal ?? 0) > 0;
+                    $wbsSourceLabel = is_array($wbsLatestMom) && trim((string) ($wbsLatestMom['summary'] ?? '')) !== ''
+                        ? 'Proper MoM terbaru'
+                        : 'Raw MoM terbaru';
                     /* Three-state gate. Ready state now wires a real POST to
                      * projects.ai-wbs.generate; the muted states stay
                      * non-actionable with a clear reason. */
@@ -878,7 +1163,7 @@
                         ];
                     } else {
                         $wbsBtnState = [
-                            'label'   => 'Generate WBS dari MoM',
+                            'label'   => $projectHasWbs ? 'Tambah Draft WBS dari MoM' : 'Generate WBS dari MoM',
                             'tooltip' => 'Buat draft modul + task dari MoM terbaru menggunakan ' . $aiProvider . '.',
                             'tone'    => 'ready',
                         ];
@@ -902,8 +1187,13 @@
                             </button>
                         </form>
                         <p class="text-[11px] text-violet-600 italic text-center leading-relaxed">
-                            Sumber: MoM terbaru proyek ini. Modul/task dengan judul yang sudah ada akan dilewati.
+                            Sumber: {{ $wbsSourceLabel }}. Modul/task dengan judul yang sudah ada akan dilewati.
                         </p>
+                        @if ($projectHasWbs)
+                            <p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-center leading-relaxed">
+                                Project ini sudah memiliki WBS. Generate ulang akan menambahkan draft baru tanpa menghapus data lama.
+                            </p>
+                        @endif
                     @else
                         <button
                             type="button"

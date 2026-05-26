@@ -312,7 +312,7 @@ class ProjectController extends Controller
             'moduleStatusOptions' => self::MODULE_STATUS_LABELS,
             'taskStatusOptions' => self::TASK_STATUS_LABELS,
             'taskPriorityOptions' => self::TASK_PRIORITY_LABELS,
-            'assigneeOptions' => $this->operationalUsers(),
+            'assigneeOptions' => $this->projectAssignedUsers($project),
         ]);
     }
 
@@ -350,13 +350,97 @@ class ProjectController extends Controller
             ->with('status', 'Modul WBS "' . $module->title . '" berhasil dibuat.');
     }
 
+    public function updateModule(Request $request, Project $project, ProjectModule $module)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($module->project_id === $project->id, 404);
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:180'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'status' => ['required', Rule::in(array_keys(self::MODULE_STATUS_LABELS))],
+            'estimate_hours' => ['nullable', 'integer', 'min:0', 'max:999'],
+        ], [
+            'title.required' => 'Judul modul wajib diisi.',
+            'status.required' => 'Status modul wajib dipilih.',
+            'status.in' => 'Status modul tidak valid.',
+            'estimate_hours.integer' => 'Estimasi jam harus berupa angka.',
+        ]);
+
+        $original = $module->getOriginal();
+        $module->update([
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'status' => $validated['status'],
+            'estimate_hours' => (int) ($validated['estimate_hours'] ?? 0),
+        ]);
+
+        AuditLogger::log(
+            'wbs_module_updated',
+            'Project Master',
+            'Memperbarui modul WBS <strong>' . e($module->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $module,
+            [
+                'project_id' => $project->id,
+                'title' => $original['title'] ?? null,
+                'status' => $original['status'] ?? null,
+                'estimate_hours' => $original['estimate_hours'] ?? null,
+            ],
+            [
+                'project_id' => $project->id,
+                'title' => $module->title,
+                'status' => $module->status,
+                'estimate_hours' => $module->estimate_hours,
+            ],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#overview')
+            ->with('status', 'Modul WBS "' . $module->title . '" berhasil diperbarui.');
+    }
+
+    public function destroyModule(Project $project, ProjectModule $module)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($module->project_id === $project->id, 404);
+
+        if ($module->tasks()->exists()) {
+            return redirect()
+                ->to(route('projects.show', $project) . '#aiplanning')
+                ->with('status', 'Modul masih memiliki task. Hapus atau pindahkan task terlebih dahulu.');
+        }
+
+        $title = $module->title;
+        $moduleId = $module->id;
+        $module->delete();
+
+        AuditLogger::log(
+            'wbs_module_deleted',
+            'Project Master',
+            'Menghapus modul WBS <strong>' . e($title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            null,
+            ['project_id' => $project->id, 'module_id' => $moduleId, 'title' => $title],
+            null,
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#aiplanning')
+            ->with('status', 'Modul WBS "' . $title . '" berhasil dihapus.');
+    }
+
     public function storeTask(Request $request, Project $project)
     {
         $this->ensureCanEditProjectDetail();
         if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
             return $redirect;
         }
-        $assigneeIds = $this->operationalUsers()->pluck('id')->all();
+        $assigneeIds = $this->projectAssignedUsers($project)->pluck('id')->all();
 
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
@@ -370,7 +454,7 @@ class ProjectController extends Controller
         ], [
             'title.required' => 'Judul task wajib diisi.',
             'project_module_id.exists' => 'Modul WBS tidak valid.',
-            'assigned_to.exists' => 'Assignee tidak valid.',
+            'assigned_to.in' => 'Assignee harus anggota yang ditugaskan ke project ini.',
             'status.required' => 'Status task wajib dipilih.',
             'status.in' => 'Status task tidak valid.',
             'priority.required' => 'Prioritas task wajib dipilih.',
@@ -396,6 +480,105 @@ class ProjectController extends Controller
         return redirect()
             ->to(route('projects.show', $project) . '#workspace')
             ->with('status', 'Task "' . $task->title . '" berhasil dibuat.');
+    }
+
+    public function updateTask(Request $request, Project $project, ProjectTask $task)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($task->project_id === $project->id, 404);
+
+        $assigneeIds = $this->projectAssignedUsers($project)->pluck('id')->all();
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:180'],
+            'project_module_id' => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
+            'assigned_to' => ['nullable', Rule::in($assigneeIds)],
+            'status' => ['required', Rule::in(array_keys(self::TASK_STATUS_LABELS))],
+            'priority' => ['required', Rule::in(array_keys(self::TASK_PRIORITY_LABELS))],
+            'due_date' => ['nullable', 'date'],
+            'estimate_hours' => ['nullable', 'integer', 'min:0', 'max:999'],
+            'description' => ['nullable', 'string', 'max:2000'],
+        ], [
+            'title.required' => 'Judul task wajib diisi.',
+            'project_module_id.exists' => 'Modul WBS tidak valid.',
+            'assigned_to.in' => 'Assignee harus anggota yang ditugaskan ke project ini.',
+            'status.required' => 'Status task wajib dipilih.',
+            'status.in' => 'Status task tidak valid.',
+            'priority.required' => 'Prioritas task wajib dipilih.',
+            'priority.in' => 'Prioritas task tidak valid.',
+            'due_date.date' => 'Due date task tidak valid.',
+            'estimate_hours.integer' => 'Estimasi jam harus berupa angka.',
+        ]);
+
+        $original = $task->getOriginal();
+        $task->update([
+            'title' => $validated['title'],
+            'project_module_id' => $validated['project_module_id'] ?? null,
+            'assigned_to' => $validated['assigned_to'] ?? null,
+            'status' => $validated['status'],
+            'priority' => $validated['priority'],
+            'due_date' => $validated['due_date'] ?? null,
+            'estimate_hours' => (int) ($validated['estimate_hours'] ?? 0),
+            'description' => $validated['description'] ?? null,
+        ]);
+
+        $action = ((int) ($original['assigned_to'] ?? 0)) !== ((int) ($task->assigned_to ?? 0))
+            ? 'task_assigned'
+            : 'task_updated';
+
+        AuditLogger::log(
+            $action,
+            'Project Master',
+            'Memperbarui task <strong>' . e($task->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $task,
+            [
+                'project_id' => $project->id,
+                'assigned_to' => $original['assigned_to'] ?? null,
+                'status' => $original['status'] ?? null,
+                'priority' => $original['priority'] ?? null,
+                'estimate_hours' => $original['estimate_hours'] ?? null,
+            ],
+            [
+                'project_id' => $project->id,
+                'assigned_to' => $task->assigned_to,
+                'status' => $task->status,
+                'priority' => $task->priority,
+                'estimate_hours' => $task->estimate_hours,
+            ],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#workspace')
+            ->with('status', 'Task "' . $task->title . '" berhasil diperbarui.');
+    }
+
+    public function destroyTask(Project $project, ProjectTask $task)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($task->project_id === $project->id, 404);
+
+        $title = $task->title;
+        $taskId = $task->id;
+        $task->delete();
+
+        AuditLogger::log(
+            'task_deleted',
+            'Project Master',
+            'Menghapus task <strong>' . e($title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            null,
+            ['project_id' => $project->id, 'task_id' => $taskId, 'title' => $title],
+            null,
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#workspace')
+            ->with('status', 'Task "' . $title . '" berhasil dihapus.');
     }
 
     public function updateTaskStatus(Request $request, Project $project, ProjectTask $task)
@@ -459,6 +642,111 @@ class ProjectController extends Controller
         return redirect()
             ->to(route('projects.show', $project) . '#aiplanning')
             ->with('status', 'MoM untuk ' . $mom->meeting_date->format('d M Y') . ' berhasil disimpan.');
+    }
+
+    public function updateMomSummary(Request $request, Project $project, ProjectMom $mom)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($mom->project_id === $project->id, 404);
+
+        $validated = $request->validate([
+            'summary' => ['nullable', 'string', 'max:12000'],
+        ], [
+            'summary.max' => 'Ringkasan MoM terlalu panjang.',
+        ]);
+
+        $mom->update([
+            'summary' => $validated['summary'] ?? null,
+            'status'  => 'manual_updated',
+        ]);
+
+        AuditLogger::log(
+            'mom_summary_updated',
+            'Project Master',
+            'Memperbarui ringkasan MoM pada proyek <strong>' . e($project->name) . '</strong>',
+            $mom,
+            null,
+            ['project_id' => $project->id, 'mom_id' => $mom->id],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#aiplanning')
+            ->with('status', 'Ringkasan MoM berhasil diperbarui.');
+    }
+
+    public function fixLatestMom(Request $request, Project $project)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $backUrl = route('projects.show', $project) . '#aiplanning';
+
+        $latestMom = $project->moms()
+            ->orderByDesc('meeting_date')
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $latestMom || trim((string) $latestMom->notes) === '') {
+            return redirect()->to($backUrl)
+                ->with('status', 'Tambahkan MoM terlebih dahulu sebelum memakai AI MoM Fixer.');
+        }
+
+        if (! AiPlanner::isConfigured()) {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.');
+        }
+
+        $project->loadMissing('client');
+
+        $result = AiPlanner::generateMomSummary([
+            'project_name'        => $project->name,
+            'project_code'        => $project->code,
+            'project_description' => (string) ($project->description ?: ''),
+            'project_client'      => (string) ($project->client?->name ?: ''),
+            'mom_date'            => optional($latestMom->meeting_date)->format('Y-m-d'),
+            'mom_notes'           => (string) $latestMom->notes,
+        ]);
+
+        if (! ($result['ok'] ?? false)) {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI MoM Fixer gagal: ' . ($result['error'] ?? 'tidak diketahui.'));
+        }
+
+        $formatted = trim((string) ($result['data']['formatted'] ?? ''));
+        if ($formatted === '') {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI MoM Fixer gagal: hasil ringkasan kosong.');
+        }
+
+        try {
+            DB::transaction(function () use ($latestMom, $formatted) {
+                $latestMom->update([
+                    'summary' => $formatted,
+                    'status'  => 'ai_fixed',
+                ]);
+            });
+        } catch (\Throwable $e) {
+            report($e);
+            return redirect()->to($backUrl)
+                ->with('status', 'AI MoM Fixer gagal menyimpan ringkasan: ' . $e->getMessage());
+        }
+
+        AuditLogger::log(
+            'ai_mom_fixed',
+            'Project Master',
+            'Merapikan MoM dengan AI pada proyek <strong>' . e($project->name) . '</strong>',
+            $latestMom,
+            null,
+            ['project_id' => $project->id, 'mom_id' => $latestMom->id],
+        );
+
+        return redirect()->to($backUrl)
+            ->with('status', 'AI MoM Fixer selesai. Ringkasan MoM berhasil diperbarui.');
     }
 
     public function generateWbsFromMom(Request $request, Project $project)
@@ -977,13 +1265,15 @@ class ProjectController extends Controller
 
     private function projectTabs(Project $project): array
     {
+        $moduleTotal = $project->relationLoaded('modules') ? $project->modules->count() : $project->modules()->count();
+        $taskTotal = $project->relationLoaded('tasks') ? $project->tasks->count() : $project->tasks()->count();
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
         $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
 
         return [
-            ['id' => 'overview',   'label' => 'Overview',         'count' => $project->modules->count()],
-            ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $project->tasks->count()],
-            ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal],
+            ['id' => 'overview',   'label' => 'Overview',         'count' => $moduleTotal],
+            ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $taskTotal],
+            ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
         ];
     }
@@ -1119,8 +1409,9 @@ class ProjectController extends Controller
             str_starts_with($action, 'qc_') => '#F59E0B',
             str_starts_with($action, 'mom_') => '#10B981',
             str_starts_with($action, 'task_') => '#7C3AED',
+            $action === 'ai_mom_fixed' => '#10B981',
             $action === 'ai_wbs_generated' => '#C084FC',
-            $action === 'wbs_module_created' => '#3B82F6',
+            str_starts_with($action, 'wbs_module_') => '#3B82F6',
             default => '#7C3AED',
         };
     }
@@ -1147,18 +1438,42 @@ class ProjectController extends Controller
 
     private function projectTaskRow(ProjectTask $task): array
     {
-        return [
-            'id' => $task->id,
-            'module' => $task->module?->title ?? 'Tanpa Modul',
-            'priority' => self::TASK_PRIORITY_LABELS[$task->priority] ?? $task->priority,
-            'priority_key' => $task->priority,
-            'title' => $task->title,
-            'description' => $task->description,
-            'assignee' => $task->assignee?->name ?? 'Belum Ditugaskan',
-            'status' => $task->status,
-            'due' => $task->due_date ? $this->formatDateId($task->due_date) : null,
-            'hours' => (int) $task->estimate_hours,
-        ];
+            return [
+                'id' => $task->id,
+                'module_id' => $task->project_module_id,
+                'module' => $task->module?->title ?? 'Tanpa Modul',
+                'priority' => self::TASK_PRIORITY_LABELS[$task->priority] ?? $task->priority,
+                'priority_key' => $task->priority,
+                'title' => $task->title,
+                'description' => $task->description,
+                'assigned_to' => $task->assigned_to,
+                'assignee' => $task->assignee?->name ?? 'Belum Ditugaskan',
+                'status' => $task->status,
+                'due_date' => $task->due_date?->format('Y-m-d'),
+                'due' => $task->due_date ? $this->formatDateId($task->due_date) : null,
+                'hours' => (int) $task->estimate_hours,
+            ];
+    }
+
+    private function projectAssignedUsers(Project $project)
+    {
+        $ids = \App\Models\TeamAssignment::query()
+            ->where('project_id', $project->id)
+            ->pluck('user_id')
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return User::query()
+            ->with('roles')
+            ->whereIn('id', $ids)
+            ->whereNull('archived_at')
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', self::OPERATIONAL_ROLES))
+            ->orderBy('name')
+            ->get(['id', 'name']);
     }
 
     private function operationalUsers()
