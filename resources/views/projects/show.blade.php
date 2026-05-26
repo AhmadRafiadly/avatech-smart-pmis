@@ -1110,16 +1110,57 @@
         <div class="px-7 py-5 border-t border-violet-100/60 bg-violet-50/30 flex items-center justify-between flex-wrap gap-3">
             <p class="text-[11.5px] text-slate-400 italic">Status pass/fail dapat dikembalikan ke pending lewat tombol Retest.</p>
             @if ($canEdit && ! $useReferenceProjectData)
-                <button
-                    type="button"
-                    disabled
-                    aria-disabled="true"
-                    title="Integrasi AI Test Case Generator belum aktif."
-                    class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-slate-100 text-slate-400 font-semibold text-[13px] cursor-not-allowed"
-                >
-                    <x-heroicon-o-sparkles class="w-4 h-4" />
-                    AI Test Case Generator — segera tersedia
-                </button>
+                @php
+                    $qcAiSourceReady = count($modules) > 0 || ($workspaceTaskTotal ?? 0) > 0;
+
+                    if (! $qcAiSourceReady) {
+                        $qcAiState = [
+                            'label' => 'Tambahkan WBS/task terlebih dahulu',
+                            'tooltip' => 'Generator butuh setidaknya 1 WBS module atau task sebagai sumber.',
+                            'tone' => 'muted',
+                        ];
+                    } elseif (! $aiReady) {
+                        $qcAiState = [
+                            'label' => 'AI belum dikonfigurasi',
+                            'tooltip' => $aiProvider . ' API key belum di-set di env (GEMINI_API_KEY).',
+                            'tone' => 'muted',
+                        ];
+                    } else {
+                        $qcAiState = [
+                            'label' => 'Generate Test Case',
+                            'tooltip' => 'Buat draft black-box test case dari WBS module dan task menggunakan ' . $aiProvider . '.',
+                            'tone' => 'ready',
+                        ];
+                    }
+                @endphp
+
+                <div class="flex flex-col items-end gap-1.5">
+                    @if ($qcAiState['tone'] === 'ready')
+                        <form method="POST" action="{{ route('projects.ai-test-cases.generate', $project) }}" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                            @csrf
+                            <button
+                                type="submit"
+                                title="{{ $qcAiState['tooltip'] }}"
+                                class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer disabled:opacity-70 disabled:cursor-wait"
+                            >
+                                <x-heroicon-o-sparkles class="w-4 h-4" />
+                                {{ $qcAiState['label'] }}
+                            </button>
+                        </form>
+                    @else
+                        <button
+                            type="button"
+                            disabled
+                            aria-disabled="true"
+                            title="{{ $qcAiState['tooltip'] }}"
+                            class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-slate-100 text-slate-400 font-semibold text-[13px] cursor-not-allowed"
+                        >
+                            <x-heroicon-o-sparkles class="w-4 h-4" />
+                            {{ $qcAiState['label'] }}
+                        </button>
+                    @endif
+                    <span class="text-[11px] text-slate-400 italic">Hasil AI tetap bisa direview dan diedit manual.</span>
+                </div>
             @endif
         </div>
     </div>

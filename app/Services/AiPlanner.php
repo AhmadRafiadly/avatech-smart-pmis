@@ -33,6 +33,7 @@ class AiPlanner
 
     public const MAX_MODULES         = 8;
     public const MAX_TASKS_PER_MODULE = 8;
+    public const MAX_TEST_CASES       = 20;
 
     private const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent';
     private const HTTP_TIMEOUT_SECONDS = 30;
@@ -119,6 +120,58 @@ class AiPlanner
     }
 
     /**
+     * Generate black-box QC test cases from WBS/task context. Single Gemini
+     * call; no DB writes.
+     *
+     * @return array{ok: bool, data: array{test_cases: array}, error: ?string}
+     */
+    public static function generateTestCaseDraft(array $context): array
+    {
+        if (! self::isConfigured()) {
+            return self::failure('AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.', ['test_cases' => []]);
+        }
+
+        $model  = (string) (config('ai.gemini.model') ?: 'gemini-1.5-flash');
+        $apiKey = (string) config('ai.gemini.api_key');
+        $prompt = self::buildTestCasePrompt($context);
+
+        try {
+            $response = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
+                ->acceptJson()
+                ->asJson()
+                ->withQueryParameters(['key' => $apiKey])
+                ->post(sprintf(self::GEMINI_ENDPOINT, $model), [
+                    'contents' => [[
+                        'role'  => 'user',
+                        'parts' => [['text' => $prompt]],
+                    ]],
+                    'generationConfig' => [
+                        'temperature'      => 0.35,
+                        'responseMimeType' => 'application/json',
+                    ],
+                ]);
+        } catch (Throwable $e) {
+            report($e);
+
+            return self::failure('Gagal menghubungi Gemini: ' . $e->getMessage(), ['test_cases' => []]);
+        }
+
+        if (! $response->successful()) {
+            $detail = trim((string) ($response->json('error.message') ?? $response->body()));
+            $detail = $detail !== '' ? $detail : ('HTTP ' . $response->status());
+
+            return self::failure('Gemini menolak permintaan: ' . $detail, ['test_cases' => []]);
+        }
+
+        $text = (string) ($response->json('candidates.0.content.parts.0.text') ?? '');
+        if ($text === '') {
+            return self::failure('Respons Gemini kosong.', ['test_cases' => []]);
+        }
+
+        return self::parseTestCaseResponse($text);
+    }
+
+    /**
      * Pure parser/validator. Public so tests + tinker can exercise the
      * full contract without hitting the network.
      *
@@ -168,6 +221,57 @@ class AiPlanner
         return [
             'ok'    => true,
             'data'  => ['modules' => $modules],
+            'error' => null,
+        ];
+    }
+
+    /**
+     * Pure parser/validator for AI-generated black-box test cases.
+     *
+     * @return array{ok: bool, data: array{test_cases: array}, error: ?string}
+     */
+    public static function parseTestCaseResponse(string $raw): array
+    {
+        $clean = self::stripFences($raw);
+        if ($clean === '') {
+            return self::failure('Respons AI kosong.', ['test_cases' => []]);
+        }
+
+        try {
+            $decoded = json_decode($clean, true, 32, JSON_THROW_ON_ERROR);
+        } catch (Throwable $e) {
+            return self::failure('Format JSON tidak valid: ' . $e->getMessage(), ['test_cases' => []]);
+        }
+
+        if (! is_array($decoded)) {
+            return self::failure('Format JSON tidak sesuai (bukan object).', ['test_cases' => []]);
+        }
+
+        // Accept either {"test_cases": [...]} or a bare list at root.
+        $rawCases = $decoded['test_cases'] ?? $decoded;
+        if (! is_array($rawCases)) {
+            return self::failure('Field "test_cases" tidak ditemukan.', ['test_cases' => []]);
+        }
+
+        $cases = [];
+        foreach (array_values($rawCases) as $rawCase) {
+            if (count($cases) >= self::MAX_TEST_CASES) {
+                break;
+            }
+            $normalized = self::normalizeTestCase($rawCase);
+            if ($normalized === null) {
+                continue;
+            }
+            $cases[] = $normalized;
+        }
+
+        if (empty($cases)) {
+            return self::failure('Tidak ada test case valid yang bisa diparsing dari respons.', ['test_cases' => []]);
+        }
+
+        return [
+            'ok'    => true,
+            'data'  => ['test_cases' => $cases],
             'error' => null,
         ];
     }
@@ -273,6 +377,78 @@ JSON;
             . $contextBlock;
     }
 
+    public static function buildTestCasePrompt(array $context): string
+    {
+        $projectName = self::str($context['project_name'] ?? '');
+        $projectCode = self::str($context['project_code'] ?? '');
+        $projectDesc = self::str($context['project_description'] ?? '');
+        $projectClient = self::str($context['project_client'] ?? '');
+        $modules = self::listContext($context['module_context'] ?? []);
+        $tasks = self::listContext($context['task_context'] ?? []);
+        $existingQc = self::listContext($context['existing_qc_titles'] ?? []);
+        $priorities = implode('|', self::ALLOWED_TASK_PRIORITY);
+
+        $intro = 'Kamu adalah Smart-PMIS quality assurance assistant untuk proyek perangkat lunak. '
+            . 'Buat draft black-box test case dari konteks WBS module dan task agar bisa langsung dimasukkan ke project_qc_tests.';
+
+        $rules = [
+            'Jawab HANYA dengan JSON murni. Jangan tambahkan teks lain di luar JSON.',
+            'Struktur: { "test_cases": [ { "title", "scenario", "expected_result", "priority", "module_title" } ] }.',
+            'Maksimum ' . self::MAX_TEST_CASES . ' test case.',
+            'priority harus salah satu dari: ' . $priorities . '. Default medium.',
+            'module_title harus cocok dengan salah satu module_title dari konteks aktual jika relevan.',
+            'Gunakan Bahasa Indonesia natural. Title singkat, scenario dan expected_result jelas.',
+            'Fokus pada black-box testing: input, aksi user, aturan bisnis, dan hasil yang terlihat.',
+            'Hindari test case level kode/internal implementation kecuali memang terlihat sebagai requirement.',
+            'Hindari duplikasi dengan judul test case yang sudah ada pada konteks aktual.',
+            'Tidak boleh ada properti tambahan di luar yang disebut.',
+        ];
+
+        $exampleInput = "Contoh input:\n"
+            . "Project: Sistem Booking Ruang Meeting\n"
+            . "Module: Autentikasi dan Manajemen Role\n"
+            . "Task: Implementasi login role-based\n"
+            . 'Requirement: User dapat login dan diarahkan ke dashboard sesuai role.';
+
+        $exampleOutput = <<<'JSON'
+Contoh output JSON:
+{
+  "test_cases": [
+    {
+      "title": "Validasi login role-based",
+      "scenario": "User login menggunakan akun dengan role yang valid.",
+      "expected_result": "Sistem berhasil mengautentikasi user dan mengarahkan ke dashboard sesuai role.",
+      "priority": "high",
+      "module_title": "Autentikasi dan Manajemen Role"
+    },
+    {
+      "title": "Validasi penolakan login dengan password salah",
+      "scenario": "User mengisi email valid tetapi password salah.",
+      "expected_result": "Sistem menolak login dan menampilkan pesan kredensial tidak valid.",
+      "priority": "medium",
+      "module_title": "Autentikasi dan Manajemen Role"
+    }
+  ]
+}
+JSON;
+
+        $contextBlock = "Input aktual:\n"
+            . '- Nama: ' . ($projectName !== '' ? $projectName : '-') . "\n"
+            . '- Kode: ' . ($projectCode !== '' ? $projectCode : '-') . "\n"
+            . '- Client: ' . ($projectClient !== '' ? $projectClient : '-') . "\n"
+            . '- Deskripsi: ' . ($projectDesc !== '' ? $projectDesc : '-') . "\n"
+            . '- Modul WBS: ' . $modules . "\n"
+            . '- Task implementasi: ' . $tasks . "\n"
+            . '- Test case yang sudah ada: ' . $existingQc;
+
+        return $intro
+            . "\n\nInstruksi output:\n- " . implode("\n- ", $rules)
+            . "\n\n" . $exampleInput
+            . "\n\n" . $exampleOutput
+            . "\n\nSekarang buat output JSON untuk input aktual berikut. Ingat: output akhir hanya JSON, tanpa markdown, tanpa komentar.\n\n"
+            . $contextBlock;
+    }
+
     private static function stripFences(string $raw): string
     {
         $trim = trim($raw);
@@ -357,6 +533,27 @@ JSON;
         ];
     }
 
+    private static function normalizeTestCase($raw): ?array
+    {
+        if (! is_array($raw)) {
+            return null;
+        }
+
+        $title = self::str($raw['title'] ?? '');
+        $scenario = self::str($raw['scenario'] ?? '');
+        if ($title === '' || $scenario === '') {
+            return null;
+        }
+
+        return [
+            'title'           => self::clip($title, 180),
+            'scenario'        => self::clip($scenario, 4000),
+            'expected_result' => self::clipNullable(self::str($raw['expected_result'] ?? ''), 4000),
+            'priority'        => self::pickEnum($raw['priority'] ?? null, self::ALLOWED_TASK_PRIORITY, self::DEFAULT_TASK_PRIORITY),
+            'module_title'    => self::clipNullable(self::str($raw['module_title'] ?? ''), 180),
+        ];
+    }
+
     private static function pickEnum($value, array $allowed, string $default): string
     {
         if (! is_string($value)) {
@@ -435,11 +632,11 @@ JSON;
         return self::clip($value, $max);
     }
 
-    private static function failure(string $message): array
+    private static function failure(string $message, array $data = ['modules' => []]): array
     {
         return [
             'ok'    => false,
-            'data'  => ['modules' => []],
+            'data'  => $data,
             'error' => $message,
         ];
     }

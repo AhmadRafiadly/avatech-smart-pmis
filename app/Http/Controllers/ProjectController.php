@@ -615,6 +615,157 @@ class ProjectController extends Controller
             ->with('status', 'AI WBS Generator selesai: ' . $createdModules . ' modul, ' . $createdTasks . ' task.');
     }
 
+    public function generateTestCases(Request $request, Project $project)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $backUrl = route('projects.show', $project) . '#qc';
+
+        $project->loadMissing([
+            'client',
+            'modules' => fn ($query) => $query->with('tasks')->orderBy('sort_order')->orderBy('id'),
+            'tasks' => fn ($query) => $query->with('module')->orderBy('sort_order')->orderBy('id'),
+            'qcTests',
+        ]);
+
+        if ($project->modules->isEmpty() && $project->tasks->isEmpty()) {
+            return redirect()->to($backUrl)
+                ->with('status', 'Tambahkan WBS/task terlebih dahulu sebelum generate test case.');
+        }
+
+        if (! AiPlanner::isConfigured()) {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.');
+        }
+
+        $moduleContext = $project->modules
+            ->map(function (ProjectModule $module) {
+                $taskTitles = $module->tasks
+                    ->pluck('title')
+                    ->filter()
+                    ->values()
+                    ->take(6)
+                    ->implode('; ');
+
+                return trim($module->title
+                    . ($module->description ? ' - ' . $module->description : '')
+                    . ($taskTitles ? ' | Task: ' . $taskTitles : ''));
+            })
+            ->filter()
+            ->values()
+            ->all();
+
+        $taskContext = $project->tasks
+            ->map(function (ProjectTask $task) {
+                return trim(($task->module?->title ? '[' . $task->module->title . '] ' : '')
+                    . $task->title
+                    . ($task->description ? ' - ' . $task->description : '')
+                    . ' | status: ' . ($task->status ?: 'planned')
+                    . ' | priority: ' . ($task->priority ?: 'medium'));
+            })
+            ->filter()
+            ->values()
+            ->all();
+
+        $context = [
+            'project_name'        => $project->name,
+            'project_code'        => $project->code,
+            'project_description' => (string) ($project->description ?: ''),
+            'project_client'      => (string) ($project->client?->name ?: ''),
+            'module_context'      => $moduleContext,
+            'task_context'        => $taskContext,
+            'existing_qc_titles'  => $project->qcTests->pluck('title')->filter()->values()->all(),
+        ];
+
+        $result = AiPlanner::generateTestCaseDraft($context);
+
+        if (! ($result['ok'] ?? false)) {
+            return redirect()->to($backUrl)
+                ->with('status', 'Generator AI gagal: ' . ($result['error'] ?? 'tidak diketahui.'));
+        }
+
+        $moduleByLower = $project->modules
+            ->mapWithKeys(fn (ProjectModule $module) => [mb_strtolower($module->title) => $module->id])
+            ->all();
+
+        $existingTitles = $project->qcTests
+            ->pluck('title')
+            ->map(fn ($title) => mb_strtolower((string) $title))
+            ->filter()
+            ->flip()
+            ->all();
+
+        $createdCases = 0;
+        $moduleIdsUsed = [];
+
+        try {
+            DB::transaction(function () use (
+                $project,
+                $request,
+                $result,
+                $moduleByLower,
+                &$existingTitles,
+                &$createdCases,
+                &$moduleIdsUsed,
+            ) {
+                foreach (($result['data']['test_cases'] ?? []) as $caseDraft) {
+                    $titleLower = mb_strtolower((string) ($caseDraft['title'] ?? ''));
+                    if ($titleLower === '' || isset($existingTitles[$titleLower])) {
+                        continue;
+                    }
+
+                    $moduleTitle = mb_strtolower((string) ($caseDraft['module_title'] ?? ''));
+                    $moduleId = $moduleTitle !== '' ? ($moduleByLower[$moduleTitle] ?? null) : null;
+
+                    $qc = $project->qcTests()->create([
+                        'project_module_id' => $moduleId,
+                        'project_task_id'   => null,
+                        'created_by'        => $request->user()?->id,
+                        'title'             => $caseDraft['title'],
+                        'scenario'          => $caseDraft['scenario'],
+                        'expected_result'   => $caseDraft['expected_result'] ?? null,
+                        'status'            => 'pending',
+                        'priority'          => $caseDraft['priority'] ?? AiPlanner::DEFAULT_TASK_PRIORITY,
+                    ]);
+
+                    $createdCases++;
+                    $existingTitles[$titleLower] = true;
+                    if ($qc->project_module_id) {
+                        $moduleIdsUsed[$qc->project_module_id] = true;
+                    }
+                }
+            });
+        } catch (\Throwable $e) {
+            report($e);
+            return redirect()->to($backUrl)
+                ->with('status', 'Generator AI gagal menyimpan test case: ' . $e->getMessage());
+        }
+
+        if ($createdCases === 0) {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI selesai, tapi semua test case sudah ada atau tidak ada item baru.');
+        }
+
+        AuditLogger::log(
+            'ai_test_cases_generated',
+            'Project Master',
+            'Generate AI Test Case: <strong>' . $createdCases . '</strong> test case pada proyek <strong>' . e($project->name) . '</strong>',
+            $project,
+            null,
+            [
+                'project_id'       => $project->id,
+                'test_case_count'  => $createdCases,
+                'module_count'     => count($moduleIdsUsed),
+            ],
+        );
+
+        return redirect()->to($backUrl)
+            ->with('status', 'AI Test Case Generator selesai: ' . $createdCases . ' test case.');
+    }
+
     public function storeQcTest(Request $request, Project $project)
     {
         $this->ensureCanEditProjectDetail();

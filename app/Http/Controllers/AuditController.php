@@ -34,6 +34,7 @@ class AuditController extends Controller
         'task_status_changed'      => 'STATUS TASK DIUBAH',
         'mom_created'              => 'MOM BARU',
         'ai_wbs_generated'         => 'WBS AI DIBUAT',
+        'ai_test_cases_generated'  => 'AI TEST CASE DIBUAT',
         'qc_created'               => 'QC BARU',
         'qc_status_updated'        => 'QC DIPERBARUI',
     ];
@@ -170,6 +171,7 @@ class AuditController extends Controller
             str_starts_with($action, 'qc_')   => '#qc',
             str_starts_with($action, 'mom_')  => '#aiplanning',
             $action === 'ai_wbs_generated'    => '#aiplanning',
+            $action === 'ai_test_cases_generated' => '#qc',
             $action === 'wbs_module_created'  => '#overview',
             str_starts_with($action, 'task_') => '#workspace',
             default                           => '',
