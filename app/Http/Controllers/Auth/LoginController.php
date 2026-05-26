@@ -61,6 +61,11 @@ class LoginController extends Controller
         $user->load('roles');
         $role = $user->roles->first()?->name;
 
+        // Drop any stale /admin url.intended for non-admin-tier roles. Without
+        // this, redirect()->intended() can send CEO/PM (or operational) users
+        // back to /admin where canAccessPanel() then 403s them.
+        $this->discardUnsafeIntendedUrl($role);
+
         $target = match (true) {
             $role === 'ceo_pm' => route('executive.index'),
             in_array($role, ['admin', 'super_admin', 'developer'], true) => url('/admin'),
@@ -68,5 +73,22 @@ class LoginController extends Controller
         };
 
         return redirect()->intended($target);
+    }
+
+    private function discardUnsafeIntendedUrl(?string $role): void
+    {
+        // Admin-tier users are the only ones legitimately bound for /admin.
+        if (in_array($role, ['admin', 'super_admin', 'developer'], true)) {
+            return;
+        }
+
+        $intended = (string) session()->get('url.intended', '');
+        if ($intended === '') {
+            return;
+        }
+        $path = parse_url($intended, PHP_URL_PATH) ?: $intended;
+        if ($path === '/admin' || str_starts_with($path, '/admin/')) {
+            session()->forget('url.intended');
+        }
     }
 }
