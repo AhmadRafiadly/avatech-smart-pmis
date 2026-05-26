@@ -700,7 +700,7 @@ class ProjectController extends Controller
 
         if (! AiPlanner::isConfigured()) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.');
+                ->with('status', 'AI belum dikonfigurasi. Set salah satu provider AI pada .env.');
         }
 
         $project->loadMissing('client');
@@ -744,7 +744,7 @@ class ProjectController extends Controller
             'Merapikan MoM dengan AI pada proyek <strong>' . e($project->name) . '</strong>',
             $latestMom,
             null,
-            ['project_id' => $project->id, 'mom_id' => $latestMom->id],
+            ['project_id' => $project->id, 'mom_id' => $latestMom->id, 'provider' => $result['provider'] ?? null],
         );
 
         return redirect()->to($backUrl)
@@ -771,7 +771,7 @@ class ProjectController extends Controller
 
         if (! AiPlanner::isConfigured()) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.');
+                ->with('status', 'AI belum dikonfigurasi. Set salah satu provider AI pada .env.');
         }
 
         $project->loadMissing('client');
@@ -898,6 +898,7 @@ class ProjectController extends Controller
                 'module_count'  => $createdModules,
                 'task_count'    => $createdTasks,
                 'source_mom_id' => $latestMom->id,
+                'provider'      => $result['provider'] ?? null,
             ],
         );
 
@@ -928,7 +929,7 @@ class ProjectController extends Controller
 
         if (! AiPlanner::isConfigured()) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.');
+                ->with('status', 'AI belum dikonfigurasi. Set salah satu provider AI pada .env.');
         }
 
         $moduleContext = $project->modules
@@ -1049,6 +1050,7 @@ class ProjectController extends Controller
                 'project_id'       => $project->id,
                 'test_case_count'  => $createdCases,
                 'module_count'     => count($moduleIdsUsed),
+                'provider'         => $result['provider'] ?? null,
             ],
         );
 

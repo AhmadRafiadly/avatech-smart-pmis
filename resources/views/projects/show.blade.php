@@ -1005,13 +1005,13 @@
                     } elseif (! ($aiReady ?? false)) {
                         $momFixerState = [
                             'label' => 'AI belum dikonfigurasi',
-                            'tooltip' => ($aiProvider ?? 'AI') . ' API key belum di-set di env (GEMINI_API_KEY).',
+                            'tooltip' => 'Belum ada provider AI yang dikonfigurasi.',
                             'tone' => 'muted',
                         ];
                     } else {
                         $momFixerState = [
                             'label' => $latestMomSummary !== '' ? 'Rapikan Ulang MoM' : 'Rapikan MoM dengan AI',
-                            'tooltip' => 'Rapikan MoM terbaru menjadi ringkasan formal menggunakan ' . ($aiProvider ?? 'AI') . '.',
+                            'tooltip' => 'Rapikan MoM terbaru menjadi ringkasan formal dengan provider AI aktif.',
                             'tone' => 'ready',
                         ];
                     }
@@ -1160,13 +1160,13 @@
                     } elseif (! $aiReady) {
                         $wbsBtnState = [
                             'label'   => 'AI belum dikonfigurasi',
-                            'tooltip' => $aiProvider . ' API key belum di-set di env (GEMINI_API_KEY).',
+                            'tooltip' => 'Belum ada provider AI yang dikonfigurasi.',
                             'tone'    => 'muted',
                         ];
                     } else {
                         $wbsBtnState = [
                             'label'   => $projectHasWbs ? 'Tambah Draft WBS dari MoM' : 'Generate WBS dari MoM',
-                            'tooltip' => 'Buat draft modul + task dari MoM terbaru menggunakan ' . $aiProvider . '.',
+                            'tooltip' => 'Buat draft modul + task dari MoM terbaru dengan provider AI aktif.',
                             'tone'    => 'ready',
                         ];
                     }
@@ -1414,13 +1414,13 @@
                     } elseif (! $aiReady) {
                         $qcAiState = [
                             'label' => 'AI belum dikonfigurasi',
-                            'tooltip' => $aiProvider . ' API key belum di-set di env (GEMINI_API_KEY).',
+                            'tooltip' => 'Belum ada provider AI yang dikonfigurasi.',
                             'tone' => 'muted',
                         ];
                     } else {
                         $qcAiState = [
                             'label' => 'Generate Test Case',
-                            'tooltip' => 'Buat draft black-box test case dari WBS module dan task menggunakan ' . $aiProvider . '.',
+                            'tooltip' => 'Buat draft black-box test case dari WBS module dan task dengan provider AI aktif.',
                             'tone' => 'ready',
                         ];
                     }

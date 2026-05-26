@@ -3,13 +3,14 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Phase 3B-1. Gemini client + JSON parser for the WBS draft pipeline.
+ * Multi-provider AI client + JSON parsers for planning workflows.
  *
  *  - isConfigured()         : readiness check used by the UI gate.
- *  - generateWbsDraft()     : single network call to Gemini, returns a
+ *  - generateWbsDraft()     : provider fallback call, returns a
  *                             validated draft array. Never writes to the DB.
  *  - parseResponse()        : pure parser. Tinker-friendly so the contract
  *                             can be exercised without burning API quota.
@@ -36,32 +37,24 @@ class AiPlanner
     public const MAX_TEST_CASES       = 20;
 
     private const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent';
-    private const HTTP_TIMEOUT_SECONDS = 30;
+    private const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+    private const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+    private const FRIENDLY_PROVIDER_ERROR = 'AI gagal menghasilkan respons. Coba ulangi beberapa saat lagi.';
 
     /* ===================== Public API ===================== */
 
     public static function isConfigured(): bool
     {
-        $provider = (string) (config('ai.provider') ?: 'gemini');
-
-        $key = match ($provider) {
-            'gemini' => config('ai.gemini.api_key'),
-            default  => null,
-        };
-
-        return is_string($key) && trim($key) !== '';
+        return self::configuredProviders() !== [];
     }
 
     public static function providerLabel(): string
     {
-        return match ((string) (config('ai.provider') ?: 'gemini')) {
-            'gemini' => 'Gemini',
-            default  => 'AI',
-        };
+        return self::isConfigured() ? 'AI siap digunakan' : 'AI';
     }
 
     /**
-     * Generate a WBS draft from MoM context. Single Gemini call; no DB writes.
+     * Generate a WBS draft from MoM context. Provider fallback call; no DB writes.
      *
      * Expected $context keys (all optional, all coerced to string):
      *   - project_name
@@ -76,151 +69,73 @@ class AiPlanner
     public static function generateWbsDraft(array $context): array
     {
         if (! self::isConfigured()) {
-            return self::failure('AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.');
+            return self::failure('AI belum dikonfigurasi. Set salah satu provider AI pada .env.');
         }
 
-        $model  = (string) (config('ai.gemini.model') ?: 'gemini-1.5-flash');
-        $apiKey = (string) config('ai.gemini.api_key');
         $prompt = self::buildWbsPrompt($context);
-
-        try {
-            $response = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
-                ->acceptJson()
-                ->asJson()
-                ->withQueryParameters(['key' => $apiKey])
-                ->post(sprintf(self::GEMINI_ENDPOINT, $model), [
-                    'contents' => [[
-                        'role'  => 'user',
-                        'parts' => [['text' => $prompt]],
-                    ]],
-                    'generationConfig' => [
-                        'temperature'     => 0.4,
-                        'responseMimeType' => 'application/json',
-                    ],
-                ]);
-        } catch (Throwable $e) {
-            report($e);
-
-            return self::failure('Gagal menghubungi Gemini: ' . $e->getMessage());
+        $providerResult = self::callConfiguredProviders($prompt, 0.4);
+        if (! ($providerResult['ok'] ?? false)) {
+            return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR);
         }
 
-        if (! $response->successful()) {
-            $detail = trim((string) ($response->json('error.message') ?? $response->body()));
-            $detail = $detail !== '' ? $detail : ('HTTP ' . $response->status());
-
-            return self::failure('Gemini menolak permintaan: ' . $detail);
+        $parsed = self::parseResponse((string) $providerResult['text']);
+        if ($parsed['ok'] ?? false) {
+            $parsed['provider'] = $providerResult['provider'] ?? null;
         }
 
-        $text = (string) ($response->json('candidates.0.content.parts.0.text') ?? '');
-        if ($text === '') {
-            return self::failure('Respons Gemini kosong.');
-        }
-
-        return self::parseResponse($text);
+        return $parsed;
     }
 
     /**
-     * Generate black-box QC test cases from WBS/task context. Single Gemini
-     * call; no DB writes.
+     * Generate black-box QC test cases from WBS/task context. Provider
+     * fallback call; no DB writes.
      *
      * @return array{ok: bool, data: array{test_cases: array}, error: ?string}
      */
     public static function generateTestCaseDraft(array $context): array
     {
         if (! self::isConfigured()) {
-            return self::failure('AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.', ['test_cases' => []]);
+            return self::failure('AI belum dikonfigurasi. Set salah satu provider AI pada .env.', ['test_cases' => []]);
         }
 
-        $model  = (string) (config('ai.gemini.model') ?: 'gemini-1.5-flash');
-        $apiKey = (string) config('ai.gemini.api_key');
         $prompt = self::buildTestCasePrompt($context);
-
-        try {
-            $response = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
-                ->acceptJson()
-                ->asJson()
-                ->withQueryParameters(['key' => $apiKey])
-                ->post(sprintf(self::GEMINI_ENDPOINT, $model), [
-                    'contents' => [[
-                        'role'  => 'user',
-                        'parts' => [['text' => $prompt]],
-                    ]],
-                    'generationConfig' => [
-                        'temperature'      => 0.35,
-                        'responseMimeType' => 'application/json',
-                    ],
-                ]);
-        } catch (Throwable $e) {
-            report($e);
-
-            return self::failure('Gagal menghubungi Gemini: ' . $e->getMessage(), ['test_cases' => []]);
+        $providerResult = self::callConfiguredProviders($prompt, 0.35);
+        if (! ($providerResult['ok'] ?? false)) {
+            return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR, ['test_cases' => []]);
         }
 
-        if (! $response->successful()) {
-            $detail = trim((string) ($response->json('error.message') ?? $response->body()));
-            $detail = $detail !== '' ? $detail : ('HTTP ' . $response->status());
-
-            return self::failure('Gemini menolak permintaan: ' . $detail, ['test_cases' => []]);
+        $parsed = self::parseTestCaseResponse((string) $providerResult['text']);
+        if ($parsed['ok'] ?? false) {
+            $parsed['provider'] = $providerResult['provider'] ?? null;
         }
 
-        $text = (string) ($response->json('candidates.0.content.parts.0.text') ?? '');
-        if ($text === '') {
-            return self::failure('Respons Gemini kosong.', ['test_cases' => []]);
-        }
-
-        return self::parseTestCaseResponse($text);
+        return $parsed;
     }
 
     /**
-     * Generate a structured MoM summary from raw meeting notes. Single Gemini
-     * call; no DB writes.
+     * Generate a structured MoM summary from raw meeting notes. Provider
+     * fallback call; no DB writes.
      *
      * @return array{ok: bool, data: array{mom: array, formatted: string}, error: ?string}
      */
     public static function generateMomSummary(array $context): array
     {
         if (! self::isConfigured()) {
-            return self::failure('AI belum dikonfigurasi. Set GEMINI_API_KEY pada .env.', ['mom' => [], 'formatted' => '']);
+            return self::failure('AI belum dikonfigurasi. Set salah satu provider AI pada .env.', ['mom' => [], 'formatted' => '']);
         }
 
-        $model  = (string) (config('ai.gemini.model') ?: 'gemini-1.5-flash');
-        $apiKey = (string) config('ai.gemini.api_key');
         $prompt = self::buildMomFixerPrompt($context);
-
-        try {
-            $response = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
-                ->acceptJson()
-                ->asJson()
-                ->withQueryParameters(['key' => $apiKey])
-                ->post(sprintf(self::GEMINI_ENDPOINT, $model), [
-                    'contents' => [[
-                        'role'  => 'user',
-                        'parts' => [['text' => $prompt]],
-                    ]],
-                    'generationConfig' => [
-                        'temperature'      => 0.25,
-                        'responseMimeType' => 'application/json',
-                    ],
-                ]);
-        } catch (Throwable $e) {
-            report($e);
-
-            return self::failure('Gagal menghubungi Gemini: ' . $e->getMessage(), ['mom' => [], 'formatted' => '']);
+        $providerResult = self::callConfiguredProviders($prompt, 0.25);
+        if (! ($providerResult['ok'] ?? false)) {
+            return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR, ['mom' => [], 'formatted' => '']);
         }
 
-        if (! $response->successful()) {
-            $detail = trim((string) ($response->json('error.message') ?? $response->body()));
-            $detail = $detail !== '' ? $detail : ('HTTP ' . $response->status());
-
-            return self::failure('Gemini menolak permintaan: ' . $detail, ['mom' => [], 'formatted' => '']);
+        $parsed = self::parseMomSummaryResponse((string) $providerResult['text']);
+        if ($parsed['ok'] ?? false) {
+            $parsed['provider'] = $providerResult['provider'] ?? null;
         }
 
-        $text = (string) ($response->json('candidates.0.content.parts.0.text') ?? '');
-        if ($text === '') {
-            return self::failure('Respons Gemini kosong.', ['mom' => [], 'formatted' => '']);
-        }
-
-        return self::parseMomSummaryResponse($text);
+        return $parsed;
     }
 
     /**
@@ -364,6 +279,236 @@ class AiPlanner
     }
 
     /* ===================== Internals ===================== */
+
+    /**
+     * @return array<int, string>
+     */
+    private static function configuredProviders(): array
+    {
+        $providers = [];
+        foreach (self::providerOrder() as $provider) {
+            $key = self::providerApiKey($provider);
+            if ($key !== '') {
+                $providers[] = $provider;
+            }
+        }
+
+        return $providers;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function providerOrder(): array
+    {
+        $order = config('ai.provider_order', ['gemini', 'groq', 'openrouter']);
+        if (! is_array($order)) {
+            $order = explode(',', (string) $order);
+        }
+
+        $allowed = ['gemini', 'groq', 'openrouter'];
+        $providers = [];
+        foreach ($order as $provider) {
+            $provider = strtolower(trim((string) $provider));
+            if (in_array($provider, $allowed, true) && ! in_array($provider, $providers, true)) {
+                $providers[] = $provider;
+            }
+        }
+
+        return $providers ?: ['gemini', 'groq', 'openrouter'];
+    }
+
+    private static function providerApiKey(string $provider): string
+    {
+        $key = config("ai.{$provider}.api_key");
+
+        return is_string($key) ? trim($key) : '';
+    }
+
+    private static function providerModel(string $provider): string
+    {
+        $fallback = match ($provider) {
+            'gemini' => 'gemini-1.5-flash',
+            'groq' => 'llama-3.1-8b-instant',
+            'openrouter' => 'openai/gpt-4o-mini',
+            default => '',
+        };
+
+        $model = config("ai.{$provider}.model", $fallback);
+        $model = is_string($model) ? trim($model) : '';
+
+        return $model !== '' ? $model : $fallback;
+    }
+
+    private static function timeoutSeconds(): int
+    {
+        return max(1, (int) config('ai.timeout_seconds', 30));
+    }
+
+    /**
+     * Calls configured providers in order and returns raw response text.
+     *
+     * @return array{ok: bool, text?: string, provider?: string, error?: string}
+     */
+    private static function callConfiguredProviders(string $prompt, float $temperature): array
+    {
+        $providers = self::configuredProviders();
+        if ($providers === []) {
+            return ['ok' => false, 'error' => 'AI belum dikonfigurasi. Set salah satu provider AI pada .env.'];
+        }
+
+        $errors = [];
+        foreach ($providers as $provider) {
+            $result = match ($provider) {
+                'gemini' => self::callGemini($prompt, $temperature),
+                'groq' => self::callGroq($prompt, $temperature),
+                'openrouter' => self::callOpenRouter($prompt, $temperature),
+                default => ['ok' => false, 'error' => 'Provider tidak dikenal.'],
+            };
+
+            if (($result['ok'] ?? false) && trim((string) ($result['text'] ?? '')) !== '') {
+                return [
+                    'ok' => true,
+                    'provider' => $provider,
+                    'text' => (string) $result['text'],
+                ];
+            }
+
+            $errors[$provider] = (string) ($result['error'] ?? 'Respons kosong.');
+        }
+
+        Log::warning('AI provider fallback exhausted.', [
+            'providers' => $providers,
+            'errors' => $errors,
+        ]);
+
+        return ['ok' => false, 'error' => self::FRIENDLY_PROVIDER_ERROR];
+    }
+
+    /**
+     * @return array{ok: bool, text?: string, error?: string}
+     */
+    private static function callGemini(string $prompt, float $temperature): array
+    {
+        try {
+            $response = Http::timeout(self::timeoutSeconds())
+                ->acceptJson()
+                ->asJson()
+                ->withQueryParameters(['key' => self::providerApiKey('gemini')])
+                ->post(sprintf(self::GEMINI_ENDPOINT, self::providerModel('gemini')), [
+                    'contents' => [[
+                        'role'  => 'user',
+                        'parts' => [['text' => $prompt]],
+                    ]],
+                    'generationConfig' => [
+                        'temperature'      => $temperature,
+                        'responseMimeType' => 'application/json',
+                    ],
+                ]);
+        } catch (Throwable $e) {
+            report($e);
+
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+
+        if (! $response->successful()) {
+            return ['ok' => false, 'error' => self::providerError($response->status(), $response->json('error.message') ?? null)];
+        }
+
+        $text = trim((string) ($response->json('candidates.0.content.parts.0.text') ?? ''));
+
+        return $text !== ''
+            ? ['ok' => true, 'text' => $text]
+            : ['ok' => false, 'error' => 'Respons kosong.'];
+    }
+
+    /**
+     * @return array{ok: bool, text?: string, error?: string}
+     */
+    private static function callGroq(string $prompt, float $temperature): array
+    {
+        return self::callOpenAiCompatible(
+            self::GROQ_ENDPOINT,
+            self::providerApiKey('groq'),
+            self::providerModel('groq'),
+            $prompt,
+            $temperature,
+        );
+    }
+
+    /**
+     * @return array{ok: bool, text?: string, error?: string}
+     */
+    private static function callOpenRouter(string $prompt, float $temperature): array
+    {
+        return self::callOpenAiCompatible(
+            self::OPENROUTER_ENDPOINT,
+            self::providerApiKey('openrouter'),
+            self::providerModel('openrouter'),
+            $prompt,
+            $temperature,
+            [
+                'HTTP-Referer' => (string) config('app.url', ''),
+                'X-Title' => 'Avatech Smart-PMIS',
+            ],
+        );
+    }
+
+    /**
+     * @param array<string, string> $headers
+     * @return array{ok: bool, text?: string, error?: string}
+     */
+    private static function callOpenAiCompatible(
+        string $endpoint,
+        string $apiKey,
+        string $model,
+        string $prompt,
+        float $temperature,
+        array $headers = [],
+    ): array {
+        try {
+            $response = Http::timeout(self::timeoutSeconds())
+                ->acceptJson()
+                ->asJson()
+                ->withToken($apiKey)
+                ->withHeaders(array_filter($headers, fn ($value) => trim((string) $value) !== ''))
+                ->post($endpoint, [
+                    'model' => $model,
+                    'messages' => [
+                        [
+                            'role' => 'system',
+                            'content' => 'Return valid JSON only. Do not include markdown fences or commentary.',
+                        ],
+                        [
+                            'role' => 'user',
+                            'content' => $prompt,
+                        ],
+                    ],
+                    'temperature' => $temperature,
+                ]);
+        } catch (Throwable $e) {
+            report($e);
+
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+
+        if (! $response->successful()) {
+            return ['ok' => false, 'error' => self::providerError($response->status(), $response->json('error.message') ?? null)];
+        }
+
+        $text = trim((string) ($response->json('choices.0.message.content') ?? ''));
+
+        return $text !== ''
+            ? ['ok' => true, 'text' => $text]
+            : ['ok' => false, 'error' => 'Respons kosong.'];
+    }
+
+    private static function providerError(int $status, mixed $message): string
+    {
+        $message = is_string($message) ? trim($message) : '';
+
+        return $message !== '' ? ('HTTP ' . $status . ': ' . $message) : ('HTTP ' . $status);
+    }
 
     public static function buildWbsPrompt(array $context): string
     {
