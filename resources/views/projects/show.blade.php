@@ -293,14 +293,16 @@
         <p class="mt-4 text-[14px] text-slate-500 max-w-3xl leading-relaxed">{{ $desc }}</p>
 
         <div class="mt-5 flex flex-wrap items-center gap-2">
-            <button type="button" disabled aria-disabled="true" title="Export PDF WBS segera tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-100 bg-slate-50 text-[13px] font-semibold text-slate-400 transition cursor-not-allowed">
+            <a href="{{ route('projects.export.wbs', $project) }}" title="Unduh WBS sebagai PDF"
+               class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer no-underline">
                 <x-heroicon-o-document-text class="w-4 h-4" />
-                Export WBS (PDF) — segera tersedia
-            </button>
-            <button type="button" disabled aria-disabled="true" title="Export PDF test case segera tersedia." class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-100 bg-slate-50 text-[13px] font-semibold text-slate-400 transition cursor-not-allowed">
+                Export WBS (PDF)
+            </a>
+            <a href="{{ route('projects.export.test-cases', $project) }}" title="Unduh Test Case QC sebagai PDF"
+               class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer no-underline">
                 <x-heroicon-o-beaker class="w-4 h-4" />
-                Export Test Case (PDF) — segera tersedia
-            </button>
+                Export Test Case (PDF)
+            </a>
             @if ($project->archived_at)
                 <form method="POST" action="{{ route('projects.restore', $project) }}">
                     @csrf

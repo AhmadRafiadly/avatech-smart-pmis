@@ -44,6 +44,8 @@ class AuditController extends Controller
         'ai_test_cases_generated'  => 'AI TEST CASE DIBUAT',
         'qc_created'               => 'QC BARU',
         'qc_status_updated'        => 'QC DIPERBARUI',
+        'wbs_pdf_exported'         => 'WBS PDF DIEKSPOR',
+        'test_case_pdf_exported'   => 'TEST CASE PDF DIEKSPOR',
     ];
 
     public function index(Request $request)

@@ -80,6 +80,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{project}/ai-test-cases/generate', [ProjectController::class, 'generateTestCases'])->name('projects.ai-test-cases.generate');
     Route::post('/projects/{project}/qc', [ProjectController::class, 'storeQcTest'])->name('projects.qc.store');
     Route::patch('/projects/{project}/qc/{qc}', [ProjectController::class, 'updateQcTest'])->name('projects.qc.update');
+    Route::get('/projects/{project}/export/wbs.pdf',       [ProjectController::class, 'exportWbsPdf'])->name('projects.export.wbs');
+    Route::get('/projects/{project}/export/test-cases.pdf',[ProjectController::class, 'exportTestCasesPdf'])->name('projects.export.test-cases');
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
     Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
     Route::get('/audit/export.csv', [AuditController::class, 'exportCsv'])->name('audit.export');

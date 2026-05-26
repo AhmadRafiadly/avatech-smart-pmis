@@ -12,7 +12,9 @@ use App\Models\ProjectTask;
 use App\Models\User;
 use App\Services\AiPlanner;
 use App\Services\AuditLogger;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -1148,6 +1150,151 @@ class ProjectController extends Controller
         return redirect()
             ->to(route('projects.show', $project) . '#qc')
             ->with('status', 'Status QC "' . $qc->title . '" diperbarui ke ' . self::QC_STATUS_LABELS[$newStatus] . '.');
+    }
+
+    /* ===================== PDF Exports ===================== */
+
+    public function exportWbsPdf(Request $request, Project $project)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $project->load([
+            'client:id,name',
+            'modules' => fn ($q) => $q->orderBy('sort_order')->orderBy('id'),
+            'tasks'   => fn ($q) => $q->with(['assignee:id,name'])->orderBy('sort_order')->orderBy('id'),
+        ]);
+
+        $tasksByModule = $project->tasks->groupBy('project_module_id');
+
+        $modules = $project->modules->map(function (ProjectModule $module) use ($tasksByModule) {
+            $tasks = ($tasksByModule[$module->id] ?? collect())->map(fn (ProjectTask $task) => [
+                'title'          => $task->title,
+                'status'         => $task->status,
+                'priority'       => $task->priority,
+                'assignee'       => $task->assignee?->name,
+                'estimate_hours' => (int) $task->estimate_hours,
+                'due_date'       => $task->due_date?->format('d M Y'),
+                'description'    => $task->description,
+            ])->all();
+
+            return [
+                'title'          => $module->title,
+                'description'    => $module->description,
+                'status'         => $module->status,
+                'estimate_hours' => (int) $module->estimate_hours,
+                'tasks'          => $tasks,
+            ];
+        })->all();
+
+        // Include any orphaned tasks (no module) as a synthetic "Tanpa Modul" bucket
+        $orphans = ($tasksByModule[null] ?? collect())->map(fn (ProjectTask $task) => [
+            'title'          => $task->title,
+            'status'         => $task->status,
+            'priority'       => $task->priority,
+            'assignee'       => $task->assignee?->name,
+            'estimate_hours' => (int) $task->estimate_hours,
+            'due_date'       => $task->due_date?->format('d M Y'),
+            'description'    => $task->description,
+        ])->all();
+        if (! empty($orphans)) {
+            $modules[] = [
+                'title' => 'Tanpa Modul',
+                'description' => 'Task yang belum terikat ke modul WBS manapun.',
+                'status' => 'pending_design',
+                'estimate_hours' => 0,
+                'tasks' => $orphans,
+            ];
+        }
+
+        $totalModules = count($modules);
+        $totalTasks   = $project->tasks->count();
+        $totalEstimateHours = (int) $project->modules->sum('estimate_hours') + (int) $project->tasks->sum('estimate_hours');
+
+        $generatedAt = Carbon::now();
+        $filename = 'wbs-' . $project->code . '-' . $generatedAt->format('Ymd-His') . '.pdf';
+
+        $pdf = Pdf::loadView('projects.exports.wbs-pdf', [
+            'project'             => $project,
+            'modules'             => $modules,
+            'totalModules'        => $totalModules,
+            'totalTasks'          => $totalTasks,
+            'totalEstimateHours'  => $totalEstimateHours,
+            'generatedAt'         => $generatedAt,
+        ])->setPaper('a4', 'portrait');
+
+        AuditLogger::log(
+            'wbs_pdf_exported',
+            'Project Master',
+            'Mengekspor WBS PDF untuk proyek <strong>' . e($project->name) . '</strong>',
+            $project,
+            null,
+            ['project_id' => $project->id, 'modules' => $totalModules, 'tasks' => $totalTasks],
+        );
+
+        return $pdf->download($filename);
+    }
+
+    public function exportTestCasesPdf(Request $request, Project $project)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $project->load([
+            'client:id,name',
+            'qcTests' => fn ($q) => $q->with(['module:id,title', 'creator:id,name'])
+                ->orderByRaw("FIELD(status, 'failed', 'retest', 'pending', 'passed')")
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id'),
+        ]);
+
+        $testCases = $project->qcTests->map(function (ProjectQcTest $qc) {
+            return [
+                'id'              => $qc->id,
+                'code'            => 'QC-' . str_pad((string) $qc->id, 4, '0', STR_PAD_LEFT),
+                'title'           => $qc->title,
+                'scenario'        => $qc->scenario,
+                'expected_result' => $qc->expected_result,
+                'actual_result'   => $qc->actual_result,
+                'notes'           => $qc->notes,
+                'module'          => $qc->module?->title,
+                'priority'        => $qc->priority ?: 'medium',
+                'status'          => $qc->status ?: 'pending',
+                'tested_at'       => $qc->tested_at?->format('d M Y H:i'),
+            ];
+        })->all();
+
+        $byStatus = $project->qcTests->countBy('status');
+        $summary = [
+            'total'   => $project->qcTests->count(),
+            'passed'  => (int) ($byStatus['passed'] ?? 0),
+            'failed'  => (int) ($byStatus['failed'] ?? 0),
+            'pending' => (int) ($byStatus['pending'] ?? 0),
+            'retest'  => (int) ($byStatus['retest'] ?? 0),
+        ];
+
+        $generatedAt = Carbon::now();
+        $filename = 'test-cases-' . $project->code . '-' . $generatedAt->format('Ymd-His') . '.pdf';
+
+        $pdf = Pdf::loadView('projects.exports.test-cases-pdf', [
+            'project'     => $project,
+            'testCases'   => $testCases,
+            'summary'     => $summary,
+            'generatedAt' => $generatedAt,
+        ])->setPaper('a4', 'portrait');
+
+        AuditLogger::log(
+            'test_case_pdf_exported',
+            'Project Master',
+            'Mengekspor Test Case PDF untuk proyek <strong>' . e($project->name) . '</strong>',
+            $project,
+            null,
+            ['project_id' => $project->id, 'total' => $summary['total']],
+        );
+
+        return $pdf->download($filename);
     }
 
     private function validateProject(Request $request, ?Project $project = null): array
