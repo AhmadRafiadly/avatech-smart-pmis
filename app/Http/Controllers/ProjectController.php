@@ -486,18 +486,20 @@ class ProjectController extends Controller
 
         $project->loadMissing('client');
         $existingModuleTitles = $project->modules()->pluck('title')->all();
+        $existingTaskTitles = $project->tasks()->pluck('title')->all();
 
         $context = [
             'project_name'        => $project->name,
             'project_code'        => $project->code,
-            'project_description' => trim(implode("\n", array_filter([
-                (string) ($project->description ?: ''),
-                'Klien: ' . ($project->client?->name ?: '-'),
-                'Modul yang sudah ada: ' . (! empty($existingModuleTitles) ? implode(', ', $existingModuleTitles) : '-'),
-            ]))),
-            'mom_date'    => optional($latestMom->meeting_date)->format('Y-m-d'),
-            'mom_summary' => (string) ($latestMom->summary ?: ''),
-            'mom_notes'   => (string) $latestMom->notes,
+            'project_description' => (string) ($project->description ?: ''),
+            'project_client'      => (string) ($project->client?->name ?: ''),
+            'project_phase'       => (string) ($project->phase ?: ''),
+            'project_status'      => (string) ($project->status ?: ''),
+            'existing_module_titles' => $existingModuleTitles,
+            'existing_task_titles'   => $existingTaskTitles,
+            'mom_date'           => optional($latestMom->meeting_date)->format('Y-m-d'),
+            'mom_summary'        => (string) ($latestMom->summary ?: ''),
+            'mom_notes'          => (string) $latestMom->notes,
         ];
 
         $result = AiPlanner::generateWbsDraft($context);
@@ -507,10 +509,17 @@ class ProjectController extends Controller
                 ->with('status', 'Generator AI gagal: ' . ($result['error'] ?? 'tidak diketahui.'));
         }
 
-        $existingModuleByLower = [];
-        foreach ($project->modules()->get(['id', 'title']) as $existing) {
-            $existingModuleByLower[mb_strtolower($existing->title)] = $existing->id;
-        }
+        $existingModuleByLower = $project->modules()
+            ->get(['id', 'title'])
+            ->mapWithKeys(fn (ProjectModule $module) => [mb_strtolower($module->title) => $module->id])
+            ->all();
+
+        $existingTasksByModule = $project->tasks()
+            ->get(['id', 'project_module_id', 'title'])
+            ->groupBy('project_module_id')
+            ->map(fn ($tasks) => $tasks->pluck('title')->map(fn ($title) => mb_strtolower((string) $title))->flip()->all())
+            ->all();
+
         $maxModuleSort = (int) $project->modules()->max('sort_order');
         $maxTaskSort   = (int) $project->tasks()->max('sort_order');
 
@@ -522,6 +531,7 @@ class ProjectController extends Controller
                 $project,
                 $result,
                 &$existingModuleByLower,
+                &$existingTasksByModule,
                 &$maxModuleSort,
                 &$maxTaskSort,
                 &$createdModules,
@@ -530,22 +540,30 @@ class ProjectController extends Controller
                 $drafts = $result['data']['modules'] ?? [];
                 foreach ($drafts as $modDraft) {
                     $titleLower = mb_strtolower((string) ($modDraft['title'] ?? ''));
-                    if ($titleLower === '' || isset($existingModuleByLower[$titleLower])) {
+                    if ($titleLower === '') {
                         continue;
                     }
 
-                    $maxModuleSort++;
-                    $module = $project->modules()->create([
-                        'title'          => $modDraft['title'],
-                        'description'    => $modDraft['description'] ?? null,
-                        'status'         => $modDraft['status'] ?? AiPlanner::DEFAULT_MODULE_STATUS,
-                        'estimate_hours' => (int) ($modDraft['estimate_hours'] ?? 0),
-                        'sort_order'     => $maxModuleSort,
-                    ]);
-                    $createdModules++;
-                    $existingModuleByLower[$titleLower] = $module->id;
+                    $moduleId = $existingModuleByLower[$titleLower] ?? null;
+                    if ($moduleId) {
+                        $module = ProjectModule::find($moduleId);
+                        if (! $module || $module->project_id !== $project->id) {
+                            continue;
+                        }
+                    } else {
+                        $maxModuleSort++;
+                        $module = $project->modules()->create([
+                            'title'          => $modDraft['title'],
+                            'description'    => $modDraft['description'] ?? null,
+                            'status'         => $modDraft['status'] ?? AiPlanner::DEFAULT_MODULE_STATUS,
+                            'estimate_hours' => (int) ($modDraft['estimate_hours'] ?? 0),
+                            'sort_order'     => $maxModuleSort,
+                        ]);
+                        $createdModules++;
+                        $existingModuleByLower[$titleLower] = $module->id;
+                    }
 
-                    $existingTaskByLower = [];
+                    $existingTaskByLower = $existingTasksByModule[$module->id] ?? [];
                     foreach (($modDraft['tasks'] ?? []) as $taskDraft) {
                         $tTitleLower = mb_strtolower((string) ($taskDraft['title'] ?? ''));
                         if ($tTitleLower === '' || isset($existingTaskByLower[$tTitleLower])) {
@@ -565,6 +583,7 @@ class ProjectController extends Controller
                         $createdTasks++;
                         $existingTaskByLower[$tTitleLower] = true;
                     }
+                    $existingTasksByModule[$module->id] = $existingTaskByLower;
                 }
             });
         } catch (\Throwable $e) {
@@ -585,9 +604,10 @@ class ProjectController extends Controller
             $project,
             null,
             [
-                'modules_created' => $createdModules,
-                'tasks_created'   => $createdTasks,
-                'source_mom_id'   => $latestMom->id,
+                'project_id'    => $project->id,
+                'module_count'  => $createdModules,
+                'task_count'    => $createdTasks,
+                'source_mom_id' => $latestMom->id,
             ],
         );
 

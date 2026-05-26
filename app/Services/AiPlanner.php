@@ -80,7 +80,7 @@ class AiPlanner
 
         $model  = (string) (config('ai.gemini.model') ?: 'gemini-1.5-flash');
         $apiKey = (string) config('ai.gemini.api_key');
-        $prompt = self::buildPrompt($context);
+        $prompt = self::buildWbsPrompt($context);
 
         try {
             $response = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
@@ -174,44 +174,103 @@ class AiPlanner
 
     /* ===================== Internals ===================== */
 
-    private static function buildPrompt(array $context): string
+    public static function buildWbsPrompt(array $context): string
     {
         $projectName = self::str($context['project_name'] ?? '');
         $projectCode = self::str($context['project_code'] ?? '');
         $projectDesc = self::str($context['project_description'] ?? '');
+        $projectClient = self::str($context['project_client'] ?? '');
+        $projectPhase = self::str($context['project_phase'] ?? '');
+        $projectStatus = self::str($context['project_status'] ?? '');
         $momDate     = self::str($context['mom_date'] ?? '');
         $momSummary  = self::str($context['mom_summary'] ?? '');
         $momNotes    = self::str($context['mom_notes'] ?? '');
+        $existingModules = self::listContext($context['existing_module_titles'] ?? []);
+        $existingTasks = self::listContext($context['existing_task_titles'] ?? []);
 
         $moduleStatuses = implode('|', self::ALLOWED_MODULE_STATUS);
-        $taskStatuses   = implode('|', self::ALLOWED_TASK_STATUS);
+        $taskStatuses   = implode('|', array_merge(['todo'], self::ALLOWED_TASK_STATUS));
         $taskPriorities = implode('|', self::ALLOWED_TASK_PRIORITY);
 
-        $intro = "Kamu adalah Smart-PMIS planning assistant. Berdasarkan MoM rapat berikut, buat draft WBS"
-            . " (Work Breakdown Structure) berupa daftar modul dan task untuk proyek perangkat lunak.";
+        $intro = 'Kamu adalah Smart-PMIS planning assistant untuk proyek perangkat lunak. '
+            . 'Ubah MoM menjadi draft WBS yang praktis: modul kerja dan task implementasi yang bisa langsung dimasukkan ke project_modules dan project_tasks.';
 
         $rules = [
             'Jawab HANYA dengan JSON murni. Jangan tambahkan teks lain di luar JSON.',
-            'Struktur: { "modules": [ { "title", "description", "status", "estimated_hours", "tasks": [ { "title", "description", "status", "priority", "estimate_hours" } ] } ] }.',
+            'Struktur: { "modules": [ { "title", "description", "status", "estimated_hours", "tasks": [ { "title", "description", "status", "priority", "estimated_hours" } ] } ] }.',
             'Maksimum ' . self::MAX_MODULES . ' modul, maksimum ' . self::MAX_TASKS_PER_MODULE . ' task per modul.',
             'status modul harus salah satu dari: ' . $moduleStatuses . '.',
-            'status task harus salah satu dari: ' . $taskStatuses . '. Default planned.',
+            'status task harus salah satu dari: ' . $taskStatuses . '. Gunakan todo untuk task baru yang belum dimulai.',
             'priority task harus salah satu dari: ' . $taskPriorities . '. Default medium.',
-            'estimated_hours dan estimate_hours: bilangan bulat 0–999 jam.',
-            'Gunakan Bahasa Indonesia natural untuk title + description. Singkat dan padat (≤ 160 karakter).',
+            'estimated_hours: bilangan bulat 0-999 jam.',
+            'Gunakan Bahasa Indonesia natural untuk title dan description. Singkat dan padat.',
+            'Fokus pada kebutuhan software project dari MoM. Hindari task generik yang tidak relevan.',
+            'Hindari duplikasi dengan judul modul/task yang sudah ada pada konteks aktual.',
             'Tidak boleh ada properti tambahan di luar yang disebut.',
         ];
 
-        $contextBlock = "Konteks proyek:\n"
+        $exampleInput = "Contoh input:\n"
+            . "Project: Sistem Booking Ruang Meeting\n"
+            . 'MoM: User membutuhkan login role-based, kalender booking, approval admin, dan laporan penggunaan ruangan.';
+
+        $exampleOutput = <<<'JSON'
+Contoh output JSON:
+{
+  "modules": [
+    {
+      "title": "Autentikasi dan Manajemen Role",
+      "description": "Modul login, role pengguna, dan pembatasan akses.",
+      "status": "pending_design",
+      "estimated_hours": 8,
+      "tasks": [
+        {
+          "title": "Implementasi login role-based",
+          "description": "Membuat autentikasi dan redirect berdasarkan role pengguna.",
+          "status": "todo",
+          "priority": "high",
+          "estimated_hours": 4
+        }
+      ]
+    },
+    {
+      "title": "Manajemen Booking Ruangan",
+      "description": "Modul kalender booking, validasi jadwal, dan approval admin.",
+      "status": "pending_design",
+      "estimated_hours": 12,
+      "tasks": [
+        {
+          "title": "Membuat form booking ruangan",
+          "description": "Membuat input tanggal, waktu, ruangan, dan kebutuhan meeting.",
+          "status": "todo",
+          "priority": "medium",
+          "estimated_hours": 4
+        }
+      ]
+    }
+  ]
+}
+JSON;
+
+        $contextBlock = "Input aktual:\n"
             . '- Nama: ' . ($projectName !== '' ? $projectName : '-') . "\n"
             . '- Kode: ' . ($projectCode !== '' ? $projectCode : '-') . "\n"
-            . '- Deskripsi: ' . ($projectDesc !== '' ? $projectDesc : '-') . "\n\n"
-            . "MoM:\n"
+            . '- Client: ' . ($projectClient !== '' ? $projectClient : '-') . "\n"
+            . '- Phase: ' . ($projectPhase !== '' ? $projectPhase : '-') . "\n"
+            . '- Status: ' . ($projectStatus !== '' ? $projectStatus : '-') . "\n"
+            . '- Deskripsi: ' . ($projectDesc !== '' ? $projectDesc : '-') . "\n"
+            . '- Modul yang sudah ada: ' . $existingModules . "\n"
+            . '- Task yang sudah ada: ' . $existingTasks . "\n\n"
+            . "MoM aktual:\n"
             . '- Tanggal: ' . ($momDate !== '' ? $momDate : '-') . "\n"
             . '- Ringkasan: ' . ($momSummary !== '' ? $momSummary : '-') . "\n"
             . '- Catatan mentah: ' . ($momNotes !== '' ? $momNotes : '-');
 
-        return $intro . "\n\nAturan:\n- " . implode("\n- ", $rules) . "\n\n" . $contextBlock;
+        return $intro
+            . "\n\nInstruksi output:\n- " . implode("\n- ", $rules)
+            . "\n\n" . $exampleInput
+            . "\n\n" . $exampleOutput
+            . "\n\nSekarang buat output JSON untuk input aktual berikut. Ingat: output akhir hanya JSON, tanpa markdown, tanpa komentar.\n\n"
+            . $contextBlock;
     }
 
     private static function stripFences(string $raw): string
@@ -287,7 +346,7 @@ class AiPlanner
         return [
             'title'          => self::clip($title, 180),
             'description'    => self::clipNullable(self::str($raw['description'] ?? ''), 2000),
-            'status'         => self::pickEnum($raw['status'] ?? null, self::ALLOWED_TASK_STATUS, self::DEFAULT_TASK_STATUS),
+            'status'         => self::normalizeTaskStatus($raw['status'] ?? null),
             'priority'       => self::pickEnum($raw['priority'] ?? null, self::ALLOWED_TASK_PRIORITY, self::DEFAULT_TASK_PRIORITY),
             'estimate_hours' => self::intInRange(
                 $raw['estimate_hours'] ?? ($raw['estimated_hours'] ?? 0),
@@ -307,6 +366,36 @@ class AiPlanner
         $normalized = str_replace([' ', '-'], '_', $normalized);
 
         return in_array($normalized, $allowed, true) ? $normalized : $default;
+    }
+
+    private static function normalizeTaskStatus($value): string
+    {
+        if (! is_string($value)) {
+            return self::DEFAULT_TASK_STATUS;
+        }
+
+        $normalized = strtolower(trim($value));
+        $normalized = str_replace([' ', '-'], '_', $normalized);
+        if (in_array($normalized, ['todo', 'backlog'], true)) {
+            return self::DEFAULT_TASK_STATUS;
+        }
+
+        return in_array($normalized, self::ALLOWED_TASK_STATUS, true)
+            ? $normalized
+            : self::DEFAULT_TASK_STATUS;
+    }
+
+    private static function listContext($value): string
+    {
+        if (is_array($value)) {
+            $items = array_values(array_filter(array_map(fn ($item) => self::str($item), $value)));
+
+            return $items ? implode(', ', $items) : '-';
+        }
+
+        $text = self::str($value);
+
+        return $text !== '' ? $text : '-';
     }
 
     private static function intInRange($value, int $min, int $max): int
