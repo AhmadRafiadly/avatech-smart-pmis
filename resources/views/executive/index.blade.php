@@ -11,9 +11,18 @@
     ];
 
     $loadStyle = function ($load) {
-        if ($load >= 85) return ['fill' => 'bg-rose-500',    'pill' => 'bg-rose-50 text-rose-700',     'dot' => 'bg-rose-500',    'label' => 'Overloaded'];
+        if ($load >= 95) return ['fill' => 'bg-rose-500',    'pill' => 'bg-rose-50 text-rose-700',     'dot' => 'bg-rose-500',    'label' => 'Overloaded'];
+        if ($load >= 85) return ['fill' => 'bg-amber-500',   'pill' => 'bg-amber-50 text-amber-700',   'dot' => 'bg-amber-500',   'label' => 'Near Capacity'];
         if ($load >= 60) return ['fill' => 'bg-amber-500',   'pill' => 'bg-amber-50 text-amber-700',   'dot' => 'bg-amber-500',   'label' => 'Near Capacity'];
         return                  ['fill' => 'bg-emerald-500', 'pill' => 'bg-emerald-50 text-emerald-700','dot' => 'bg-emerald-500','label' => 'Optimal'];
+    };
+    $insightStyle = function ($severity) {
+        return match ($severity) {
+            'critical' => ['color' => '#E11D48', 'badge_bg' => '#FFE4E6'],
+            'warning' => ['color' => '#D97706', 'badge_bg' => '#FEF3C7'],
+            'success' => ['color' => '#059669', 'badge_bg' => '#D1FAE5'],
+            default => ['color' => '#7C3AED', 'badge_bg' => '#EDE9FE'],
+        };
     };
 
     $user = auth()->user();
@@ -81,13 +90,13 @@
                 <div class="flex items-end justify-between mb-5">
                     <div class="flex items-center gap-3 flex-wrap">
                         <span class="w-2.5 h-2.5 rounded-full bg-violet-600 animate-pulse"></span>
-                        <h2 class="text-[22px] font-bold tracking-tight text-[#1E1B4B]">Aktivitas Terbaru</h2>
+                        <h2 class="text-[22px] font-bold tracking-tight text-[#1E1B4B]">Pengingat Cerdas</h2>
                         <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-full bg-violet-100 text-violet-700">
-                            <x-heroicon-o-circle-stack class="w-3 h-3" />
-                            audit_logs
+                            <x-heroicon-o-sparkles class="w-3 h-3" />
+                            Saran AI
                         </span>
                     </div>
-                    <a href="{{ route('audit.index') }}" class="text-[14px] font-semibold text-violet-700 hover:text-violet-900 transition flex items-center gap-1.5 cursor-pointer">
+                    <a href="{{ route('executive.insights') }}" class="text-[14px] font-semibold text-violet-700 hover:text-violet-900 transition flex items-center gap-1.5 cursor-pointer">
                         Lihat Semua
                         <x-heroicon-o-arrow-right class="w-4 h-4" />
                     </a>
@@ -95,31 +104,37 @@
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     @forelse ($recentActivities as $r)
+                        @php $rs = $insightStyle($r['severity'] ?? 'info'); @endphp
                         <article class="relative bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:shadow-[0_8px_24px_rgba(124,58,237,0.12)] transition p-7 flex flex-col">
-                            <span class="absolute left-5 right-5 top-0 h-[3px] rounded-b-[4px]" style="background: {{ $r['color'] }};"></span>
+                            <span class="absolute left-5 right-5 top-0 h-[3px] rounded-b-[4px]" style="background: {{ $rs['color'] }};"></span>
 
                             <div class="mb-4">
-                                <span class="inline-flex items-center gap-1.5 text-[10.5px] font-bold tracking-[0.08em] uppercase px-2.5 py-1.5 rounded-md" style="background: {{ $r['badge_bg'] }}; color: {{ $r['color'] }};">
+                                <span class="inline-flex items-center gap-1.5 text-[10.5px] font-bold tracking-[0.08em] uppercase px-2.5 py-1.5 rounded-md" style="background: {{ $rs['badge_bg'] }}; color: {{ $rs['color'] }};">
                                     <x-dynamic-component :component="'heroicon-o-' . $r['icon']" class="w-3.5 h-3.5" />
-                                    <span>{{ $r['badge'] }}</span>
+                                    <span>{{ $r['category'] }}</span>
                                 </span>
                             </div>
 
                             <h3 class="text-[17px] font-bold text-[#1E1B4B] leading-tight mb-2.5">{{ $r['title'] }}</h3>
-                            <p class="text-[13.5px] text-slate-500 leading-relaxed flex-1">{{ $r['body'] }}</p>
+                            <p class="text-[13.5px] text-slate-500 leading-relaxed flex-1">{{ $r['description'] }}</p>
 
                             <div class="mt-4 flex items-center gap-1.5 text-[11px] text-violet-500/80">
                                 <x-heroicon-o-clock class="w-3 h-3" />
-                                <span>DB audit &middot; {{ $r['time'] }}</span>
+                                <span>{{ $r['source'] }} &middot; {{ $r['time'] }}</span>
                             </div>
 
                             <div class="mt-5 pt-5 border-t border-violet-50 flex items-center justify-between">
-                                <a href="{{ $r['href'] }}" class="inline-flex items-center gap-2 text-[13.5px] font-semibold text-violet-700 hover:text-violet-900 transition group cursor-pointer">
+                                <a href="{{ $r['action_url'] }}" class="inline-flex items-center gap-2 text-[13.5px] font-semibold text-violet-700 hover:text-violet-900 transition group cursor-pointer">
                                     <span class="w-7 h-7 rounded-full bg-violet-100 group-hover:bg-violet-200 flex items-center justify-center transition">
                                         <x-heroicon-o-arrow-right class="w-3.5 h-3.5" />
                                     </span>
-                                    <span>{{ $r['action'] }}</span>
+                                    <span>{{ $r['action_label'] }}</span>
                                 </a>
+                                @if ($r['dismissable'] ?? false)
+                                    <button type="button" data-dismiss-card class="w-8 h-8 rounded-full text-slate-300 hover:text-violet-600 hover:bg-violet-50 inline-flex items-center justify-center transition cursor-pointer" aria-label="Sembunyikan">
+                                        <x-heroicon-o-check class="w-4 h-4" />
+                                    </button>
+                                @endif
                             </div>
                         </article>
                     @empty
@@ -127,8 +142,8 @@
                             <div class="w-11 h-11 mx-auto rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center">
                                 <x-heroicon-o-circle-stack class="w-5 h-5" />
                             </div>
-                            <h3 class="mt-4 text-[16px] font-bold text-[#1E1B4B]">Belum ada aktivitas audit bulan ini</h3>
-                            <p class="mt-2 text-[13px] text-slate-500">Aktivitas akan muncul otomatis setelah modul DB-backed mencatat audit log.</p>
+                            <h3 class="mt-4 text-[16px] font-bold text-[#1E1B4B]">Belum ada pengingat cerdas</h3>
+                            <p class="mt-2 text-[13px] text-slate-500">Saat ini tidak ada indikator aktif yang membutuhkan tindakan.</p>
                         </article>
                     @endforelse
                 </div>
@@ -191,14 +206,31 @@
                                             <div>
                                                 <div class="text-[14px] font-semibold text-[#1E1B4B]">{{ $p['name'] }}</div>
                                                 <div class="text-[12px] text-slate-500">{{ $p['phase'] }} &middot; Due {{ $p['due'] }}</div>
+                                                @if (! empty($p['badges']))
+                                                    <div class="mt-1 flex flex-wrap gap-1.5">
+                                                        @foreach ($p['badges'] as $badge)
+                                                            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700">{{ $badge['label'] }}</span>
+                                                        @endforeach
+                                                    </div>
+                                                @endif
                                             </div>
                                         </div>
                                     </td>
                                     <td class="px-4 py-5 text-[13.5px] text-slate-600">{{ $p['client'] }}</td>
                                     <td class="px-4 py-5">
-                                        <div class="flex items-center gap-2">
-                                            <div class="w-7 h-7 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-[11px] font-bold">{{ $p['lead_initials'] }}</div>
-                                            <span class="text-[13.5px] text-slate-600">{{ $p['lead'] }}</span>
+                                        <div class="flex -space-x-2">
+                                            @forelse ($p['team'] as $member)
+                                                <div class="w-7 h-7 rounded-full text-white border-2 border-white flex items-center justify-center text-[10px] font-bold" title="{{ $member['name'] }}" style="background: {{ $member['color'] }};">{{ $member['initials'] }}</div>
+                                            @empty
+                                                <div class="w-7 h-7 rounded-full bg-slate-100 text-slate-400 border-2 border-white flex items-center justify-center text-[10px] font-bold" title="Belum ada assignment">?</div>
+                                            @endforelse
+                                            @if (($p['team_more'] ?? 0) > 0)
+                                                @php $hiddenNames = $p['team_more_names'] ?? []; @endphp
+                                                <div
+                                                    class="w-7 h-7 rounded-full bg-slate-100 text-slate-500 border-2 border-white flex items-center justify-center text-[10px] font-bold cursor-help"
+                                                    @if (! empty($hiddenNames)) title="Anggota lainnya: {{ implode(', ', $hiddenNames) }}" @endif
+                                                >+{{ $p['team_more'] }}</div>
+                                            @endif
                                         </div>
                                     </td>
                                     <td class="px-4 py-5">
@@ -331,7 +363,6 @@
                     @endforelse
                 </div>
 
-                @if ($overloadAlert)
                     <div data-workload-alert class="mt-8 relative rounded-2xl p-5 bg-gradient-to-br from-violet-50 to-fuchsia-50 border border-violet-200">
                         <div class="flex items-start gap-4">
                             <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white flex items-center justify-center flex-shrink-0 shadow-[0_2px_8px_rgba(124,58,237,0.2)]">
@@ -339,16 +370,16 @@
                             </div>
                             <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-[11px] font-bold tracking-[0.1em] uppercase text-violet-700">Workload Alert</span>
+                                    <span class="text-[11px] font-bold tracking-[0.1em] uppercase text-violet-700">{{ $overloadAlert['label'] }}</span>
                                     <span class="w-1 h-1 rounded-full bg-violet-300"></span>
                                     <span class="text-[11.5px] text-slate-500">{{ $selectedMonthLabel }}</span>
                                 </div>
-                                <h4 class="text-[15px] font-bold text-[#1E1B4B] mb-1">{{ $overloadAlert['name'] }} melewati kapasitas aman ({{ $overloadAlert['load'] }}%)</h4>
-                                <p class="text-[13px] text-slate-600 leading-relaxed">Beban aktif tercatat {{ $overloadAlert['hours'] }}h dari kapasitas {{ $overloadAlert['capacity'] }}h berdasarkan estimated_hours di team_assignments.</p>
+                                <h4 class="text-[15px] font-bold text-[#1E1B4B] mb-1">{{ $overloadAlert['title'] }}</h4>
+                                <p class="text-[13px] text-slate-600 leading-relaxed">{{ $overloadAlert['description'] }}</p>
                                 <div class="mt-3 flex gap-2 flex-wrap" data-workload-actions>
                                     <button type="button" data-workload-rebalance class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-lg bg-white border border-violet-200 hover:border-violet-400 text-violet-700 transition cursor-pointer">
                                         <x-heroicon-o-arrows-right-left class="w-3.5 h-3.5" />
-                                        <span data-workload-rebalance-label>Rebalance Sprint</span>
+                                        <span data-workload-rebalance-label>Tinjau Distribusi</span>
                                     </button>
                                     <button type="button" data-workload-acknowledge class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-slate-500 hover:bg-white/70 transition cursor-pointer">
                                         <span data-workload-acknowledge-label>Abaikan</span>
@@ -357,7 +388,6 @@
                             </div>
                         </div>
                     </div>
-                @endif
             </section>
 
             <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -415,11 +445,19 @@
                     });
                 });
 
+                document.querySelectorAll('[data-dismiss-card]').forEach(btn => {
+                    btn.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        btn.closest('article')?.classList.add('hidden');
+                    });
+                });
+
                 /* Workload action is informational until automatic reassignment exists. */
                 const rebalanceBtn = document.querySelector('[data-workload-rebalance]');
                 const ackBtn = document.querySelector('[data-workload-acknowledge]');
                 rebalanceBtn?.addEventListener('click', () => {
-                    if (window.toast) window.toast('Rebalance otomatis belum terhubung. Gunakan Team Management untuk ubah penugasan.');
+                    if (window.toast) window.toast('Tinjau distribusi secara manual melalui Team Management.');
                 });
                 ackBtn?.addEventListener('click', () => {
                     const alert = ackBtn.closest('[data-workload-alert]');

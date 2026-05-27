@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\Project;
+use App\Models\ProjectQcTest;
 use App\Models\ProjectTask;
 use App\Models\TeamAssignment;
 use App\Models\User;
@@ -76,6 +77,7 @@ class DashboardController extends Controller
             ->get();
 
         $rolePresets = $this->rolePresets($role, $user, $assignedProjects->first());
+        $auditUrl = route('audit.index') . '?actor=' . urlencode($user->name);
 
         return view('dashboard.operational', [
             'title'              => 'Dashboard',
@@ -90,16 +92,17 @@ class DashboardController extends Controller
             'focusLine'          => $rolePresets['focusLine'],
             'projects'           => $assignedProjects,
             'tasks'              => $assignedTasks,
-            'metrics'            => $this->metrics($assignedTasks, $assignedProjects, $todayActivityCount, $rolePresets['metricLabels']),
+            'metrics'            => $this->metrics($assignedTasks, $assignedProjects, $todayActivityCount, $rolePresets['metricLabels'], $rolePresets['primaryWorkspace'], $auditUrl),
             'quickActions'       => $rolePresets['quickActions'],
+            'focusHref'          => $rolePresets['focusHref'],
             'insightTitle'       => $rolePresets['insightTitle'],
             'insightSubtitle'    => $rolePresets['insightSubtitle'],
-            'insightItems'       => $this->insightItems($role, $assignedTasks, $assignedProjects),
-            'recentActivities'   => $recentActivities,
+            'insightItems'       => $this->insightItems($role, $assignedTasks, $assignedProjects, $todayActivityCount),
+            'recentActivities'   => $recentActivities->map(fn (AuditLog $log) => $this->activityRow($log)),
         ]);
     }
 
-    private function metrics($tasks, $projects, int $todayActivityCount, array $labels): array
+    private function metrics($tasks, $projects, int $todayActivityCount, array $labels, string $primaryWorkspace, string $auditUrl): array
     {
         $byStatus = $tasks->countBy('status');
 
@@ -116,74 +119,124 @@ class DashboardController extends Controller
                 'label'  => $labels['projects'] ?? 'Proyek Ditugaskan',
                 'value'  => $assignedCount,
                 'sub'    => $assignedCount === 0 ? 'Belum ada penugasan' : 'Aktif minggu ini',
-                'accent' => '#7C3AED', 'tileBg' => '#EDE9FE', 'tileFg' => '#6D28D9', 'icon' => 'folder-open',
+                'accent' => '#7C3AED', 'tileBg' => '#EDE9FE', 'tileFg' => '#6D28D9', 'icon' => 'folder-open', 'href' => route('projects.index'),
             ],
             [
                 'key'    => 'open',
                 'label'  => $labels['open'] ?? 'Task Terbuka',
                 'value'  => $openCount,
                 'sub'    => $blockerCount > 0 ? $blockerCount . ' high priority' : 'Tidak ada blocker',
-                'accent' => '#3B82F6', 'tileBg' => '#DBEAFE', 'tileFg' => '#1E40AF', 'icon' => 'list-bullet',
+                'accent' => '#3B82F6', 'tileBg' => '#DBEAFE', 'tileFg' => '#1E40AF', 'icon' => 'list-bullet', 'href' => $primaryWorkspace,
             ],
             [
                 'key'    => 'progress',
                 'label'  => $labels['progress'] ?? 'Sedang Dikerjakan',
                 'value'  => $inProgressCount + $reviewCount,
                 'sub'    => $reviewCount > 0 ? $reviewCount . ' menunggu review' : 'Belum ada item review',
-                'accent' => '#F59E0B', 'tileBg' => '#FEF3C7', 'tileFg' => '#92400E', 'icon' => 'play-circle',
+                'accent' => '#F59E0B', 'tileBg' => '#FEF3C7', 'tileFg' => '#92400E', 'icon' => 'play-circle', 'href' => $primaryWorkspace,
             ],
             [
                 'key'    => 'activity',
                 'label'  => 'Aktivitas Hari Ini',
                 'value'  => $todayActivityCount,
                 'sub'    => 'Tercatat di audit log Anda',
-                'accent' => '#10B981', 'tileBg' => '#DCFCE7', 'tileFg' => '#166534', 'icon' => 'bolt',
+                'accent' => '#10B981', 'tileBg' => '#DCFCE7', 'tileFg' => '#166534', 'icon' => 'bolt', 'href' => $auditUrl,
             ],
         ];
     }
 
-    private function insightItems(?string $role, $tasks, $projects): array
+    private function insightItems(?string $role, $tasks, $projects, int $todayActivityCount): array
     {
         $items = [];
+        $assignedProjectIds = $projects->pluck('id')->values();
+
+        $overdue = $tasks->filter(fn ($t) => $t->due_date && $t->due_date->isPast() && ! in_array($t->status, self::DONE_STATUSES, true));
+        if ($overdue->isNotEmpty()) {
+            $task = $overdue->first();
+            $items[] = [
+                'tone'   => 'rose',
+                'icon'   => 'clock',
+                'text'   => $overdue->count() . ' task melewati due date. Update status atau koordinasikan jadwal.',
+                'href'   => $task->project ? route('projects.show', $task->project) . '#workspace' : route('projects.index'),
+            ];
+        }
 
         $highOpen = $tasks->whereIn('status', self::OPEN_TASK_STATUSES)->where('priority', 'high');
         if ($highOpen->isNotEmpty()) {
+            $task = $highOpen->first();
             $items[] = [
                 'tone'   => 'amber',
                 'icon'   => 'exclamation-triangle',
                 'text'   => $highOpen->count() . ' task prioritas tinggi masih terbuka. Selesaikan dulu untuk menjaga ritme sprint.',
+                'href'   => $task->project ? route('projects.show', $task->project) . '#workspace' : route('projects.index'),
             ];
         }
 
         $review = $tasks->where('status', 'review');
         if ($review->isNotEmpty()) {
+            $task = $review->first();
             $items[] = [
                 'tone'   => 'violet',
                 'icon'   => 'eye',
                 'text'   => $review->count() . ' task menunggu review. Cek tab Workspace pada proyek terkait.',
+                'href'   => $task->project ? route('projects.show', $task->project) . '#workspace' : route('projects.index'),
             ];
         }
 
-        $overdue = $tasks->filter(fn ($t) => $t->due_date && $t->due_date->isPast() && ! in_array($t->status, self::DONE_STATUSES, true));
-        if ($overdue->isNotEmpty()) {
+        if ($assignedProjectIds->isNotEmpty()) {
+            $qc = ProjectQcTest::with('project')
+                ->whereIn('project_id', $assignedProjectIds)
+                ->whereIn('status', ['failed', 'retest'])
+                ->latest('updated_at')
+                ->first();
+            if ($qc?->project) {
+                $items[] = [
+                    'tone' => 'rose',
+                    'icon' => 'beaker',
+                    'text' => 'QC "' . $qc->title . '" perlu tindak lanjut ' . strtoupper($qc->status) . '.',
+                    'href' => route('projects.show', $qc->project) . '#qc',
+                ];
+            }
+        }
+
+        if ($assignedProjectIds->isNotEmpty()) {
+            $unassigned = ProjectTask::with('project')
+                ->whereIn('project_id', $assignedProjectIds)
+                ->whereNull('assigned_to')
+                ->whereIn('status', self::OPEN_TASK_STATUSES)
+                ->latest('updated_at')
+                ->first();
+            if ($unassigned?->project) {
+                $items[] = [
+                    'tone' => 'amber',
+                    'icon' => 'user-plus',
+                    'text' => 'Ada task belum assigned di proyek ' . $unassigned->project->name . '. Ownership perlu ditinjau manual.',
+                    'href' => route('projects.show', $unassigned->project) . '#workspace',
+                ];
+            }
+        }
+
+        if ($todayActivityCount === 0 && $projects->isNotEmpty()) {
             $items[] = [
-                'tone'   => 'rose',
-                'icon'   => 'clock',
-                'text'   => $overdue->count() . ' task melewati due date. Update status atau geser jadwal.',
+                'tone' => 'violet',
+                'icon' => 'bolt',
+                'text' => 'Belum ada aktivitas tercatat hari ini. Mulai dari task prioritas agar progress tetap terlihat.',
+                'href' => route('projects.index'),
             ];
         }
 
         if (empty($items)) {
             $items[] = [
                 'tone'   => 'slate',
-                'icon'   => 'sparkles',
+                'icon'   => 'check-circle',
                 'text'   => $projects->isEmpty()
                     ? 'Belum ada penugasan aktif. Hubungi PM Anda jika ini terasa kosong.'
-                    : 'Tidak ada catatan mendesak. Lanjutkan eksekusi sesuai antrian Anda.',
+                    : 'Tidak ada blocker mendesak. Lanjutkan pekerjaan sesuai prioritas sprint.',
+                'href'   => $projects->isEmpty() ? route('projects.index') : route('projects.show', $projects->first()) . '#workspace',
             ];
         }
 
-        return $items;
+        return array_slice($items, 0, 4);
     }
 
     private function rolePresets(?string $role, User $user, ?Project $primaryProject): array
@@ -207,7 +260,7 @@ class DashboardController extends Controller
             ? route('projects.show', $primaryProject) . '#aiplanning'
             : $projectsRoute;
 
-        return match ($role) {
+        $base = match ($role) {
             'sa_qa' => [
                 'roleLabel'        => 'SA / QA',
                 'firstName'        => $firstName,
@@ -227,6 +280,8 @@ class DashboardController extends Controller
                     ['label' => 'Activity Log',   'sub' => 'Riwayat aktivitas Anda',       'icon' => 'clock',         'tileBg' => '#EDE9FE', 'tileFg' => '#6D28D9', 'href' => $auditUrl],
                     ['label' => 'Projects',       'sub' => 'Semua proyek yang ditugaskan',  'icon' => 'list-bullet',  'tileBg' => '#FCE7F3', 'tileFg' => '#9D174D', 'href' => $projectsRoute],
                 ],
+                'focusHref' => $primaryKanban,
+                'primaryWorkspace' => $primaryKanban,
             ],
             'uiux_designer', 'ui_ux' => [
                 'roleLabel'        => 'UI/UX Designer',
@@ -247,6 +302,8 @@ class DashboardController extends Controller
                     ['label' => 'Projects',       'sub' => 'Semua proyek yang ditugaskan',  'icon' => 'rectangle-stack','tileBg' => '#DBEAFE', 'tileFg' => '#1E40AF', 'href' => $projectsRoute],
                     ['label' => 'Activity Log',   'sub' => 'Riwayat aktivitas Anda',        'icon' => 'clock',         'tileBg' => '#FEF3C7', 'tileFg' => '#92400E', 'href' => $auditUrl],
                 ],
+                'focusHref' => $primaryShow,
+                'primaryWorkspace' => $primaryShow,
             ],
             'fullstack_dev' => [
                 'roleLabel'        => 'Fullstack Developer',
@@ -267,6 +324,8 @@ class DashboardController extends Controller
                     ['label' => 'Projects',       'sub' => 'Semua proyek yang ditugaskan',  'icon' => 'rectangle-stack','tileBg' => '#DCFCE7', 'tileFg' => '#166534', 'href' => $projectsRoute],
                     ['label' => 'Activity Log',   'sub' => 'Riwayat aktivitas Anda',        'icon' => 'clock',         'tileBg' => '#FEF3C7', 'tileFg' => '#92400E', 'href' => $auditUrl],
                 ],
+                'focusHref' => $primaryKanban,
+                'primaryWorkspace' => $primaryKanban,
             ],
             default => [
                 'roleLabel'        => 'Tim Avatech',
@@ -281,8 +340,22 @@ class DashboardController extends Controller
                     ['label' => 'Projects',     'sub' => 'Semua proyek yang ditugaskan', 'icon' => 'rectangle-stack', 'tileBg' => '#EDE9FE', 'tileFg' => '#6D28D9', 'href' => $projectsRoute],
                     ['label' => 'Activity Log', 'sub' => 'Riwayat aktivitas Anda',       'icon' => 'clock',           'tileBg' => '#FEF3C7', 'tileFg' => '#92400E', 'href' => $auditUrl],
                 ],
+                'focusHref' => $projectsRoute,
+                'primaryWorkspace' => $projectsRoute,
             ],
         };
+
+        return $base;
+    }
+
+    private function activityRow(AuditLog $log): array
+    {
+        return [
+            'description' => $log->description ?: e($log->action),
+            'module' => $log->module,
+            'time' => $log->created_at?->diffForHumans() ?? 'baru saja',
+            'href' => AuditController::deepLinkForLog($log),
+        ];
     }
 
     private function greetingLabel(): string

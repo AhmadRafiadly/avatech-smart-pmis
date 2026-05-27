@@ -88,9 +88,9 @@
              * project_name is also the gate for showing the small context
              * line and for making the row clickable (when null we keep
              * the row static and link to /audit to avoid wrong /projects/{id}). */
-            $entryProjectName = \App\Http\Controllers\AuditController::projectNameForLog($log);
+            $entryProjectName = \App\Http\Controllers\AuditController::contextNameForLog($log);
             $entryDeepLink    = \App\Http\Controllers\AuditController::deepLinkForLog($log);
-            $entryHasProjectLink = $entryProjectName !== null && str_contains($entryDeepLink, '/projects/');
+            $entryHasProjectLink = $entryProjectName !== null && (str_contains($entryDeepLink, '/projects/') || str_contains($entryDeepLink, '/clients'));
 
             $auditEntries[] = [
                 'category'         => $filterKey,
@@ -172,9 +172,9 @@
                  * the wrong /projects/{id} page. */
                 $href = match (true) {
                     $log->module === 'Project Master' => \App\Http\Controllers\AuditController::deepLinkForLog($log),
+                    $log->module === 'Client Directory' && $isFullAuditViewer => \App\Http\Controllers\AuditController::deepLinkForLog($log),
                     $log->module === 'Team Management' && $isOperationalViewer => route('dashboard.index'),
                     $log->module === 'Team Management' => route('team.index'),
-                    $log->module === 'Client Directory' && $isFullAuditViewer => route('clients.index'),
                     $log->module === 'Settings' && $isFullAuditViewer => route('settings.index'),
                     default => route('audit.index'),
                 };
@@ -313,7 +313,7 @@
                     'label'    => $auditTag,
                     'sub'      => 'Activity - ' . $a->module . ' - ' . ($a->created_at?->diffForHumans() ?? 'baru saja'),
                     'haystack' => Illuminate\Support\Str::lower($auditTag . ' ' . $a->module . ' ' . $a->action . ' ' . strip_tags((string) $a->description)),
-                    'href'     => route('audit.index'),
+                    'href'     => \App\Http\Controllers\AuditController::deepLinkForLog($a),
                 ];
             }
         } elseif ($auditViewerAllowed) {
@@ -359,7 +359,9 @@
                     'label'    => $auditTag . ' - ' . $auditActor,
                     'sub'      => 'Audit - ' . $a->module . ' - ' . ($a->created_at?->diffForHumans() ?? 'baru saja'),
                     'haystack' => Illuminate\Support\Str::lower($auditTag . ' ' . $auditActor . ' ' . $a->module . ' ' . $a->action . ' ' . strip_tags((string) $a->description)),
-                    'href'     => $auditChip === 'all' ? route('audit.index') : route('audit.index', ['chip' => $auditChip]),
+                    'href'     => \App\Http\Controllers\AuditController::deepLinkForLog($a) !== route('audit.index')
+                        ? \App\Http\Controllers\AuditController::deepLinkForLog($a)
+                        : ($auditChip === 'all' ? route('audit.index') : route('audit.index', ['chip' => $auditChip])),
                 ];
             }
 
@@ -738,23 +740,16 @@
                  persistent read/unread state on the server yet, and a
                  client-only toggle would only fake the action away. --}}
             <div class="px-5 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-3">
-                @if ($isFullAuditViewer)
-                    <a
-                        href="{{ route('settings.index') }}#notif"
-                        class="text-[12px] font-semibold text-violet-700 hover:text-violet-900 transition inline-flex items-center gap-1"
-                    >
-                        Lihat pengaturan
-                        <x-heroicon-o-chevron-right class="w-3.5 h-3.5" />
-                    </a>
-                @else
-                    <a
-                        href="{{ route('audit.index') }}"
-                        class="text-[12px] font-semibold text-violet-700 hover:text-violet-900 transition inline-flex items-center gap-1"
-                    >
-                        Riwayat lengkap
-                        <x-heroicon-o-chevron-right class="w-3.5 h-3.5" />
-                    </a>
-                @endif
+                {{-- Notifications belong in the activity stream, not Settings.
+                     Both roles get the same destination — operational users
+                     see a self-scoped feed; CEO/PM see the global feed. --}}
+                <a
+                    href="{{ route('audit.index') }}"
+                    class="text-[12px] font-semibold text-violet-700 hover:text-violet-900 transition inline-flex items-center gap-1"
+                >
+                    Lihat Semua
+                    <x-heroicon-o-chevron-right class="w-3.5 h-3.5" />
+                </a>
             </div>
         </div>
     </div>

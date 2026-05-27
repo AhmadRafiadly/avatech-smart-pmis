@@ -34,7 +34,7 @@ class AiPlanner
 
     public const MAX_MODULES         = 5;
     public const MAX_TASKS_PER_MODULE = 3;
-    public const MAX_TEST_CASES       = 20;
+    public const MAX_TEST_CASES       = 10;
 
     private const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent';
     private const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
@@ -69,7 +69,7 @@ class AiPlanner
     public static function generateWbsDraft(array $context): array
     {
         if (! self::isConfigured()) {
-            return self::failure('AI belum dikonfigurasi. Set salah satu provider AI pada .env.');
+            return self::failure('AI belum dikonfigurasi.');
         }
 
         $prompt = self::buildWbsPrompt($context);
@@ -95,7 +95,7 @@ class AiPlanner
     public static function generateTestCaseDraft(array $context): array
     {
         if (! self::isConfigured()) {
-            return self::failure('AI belum dikonfigurasi. Set salah satu provider AI pada .env.', ['test_cases' => []]);
+            return self::failure('AI belum dikonfigurasi.', ['test_cases' => []]);
         }
 
         $prompt = self::buildTestCasePrompt($context);
@@ -121,7 +121,7 @@ class AiPlanner
     public static function generateMomSummary(array $context): array
     {
         if (! self::isConfigured()) {
-            return self::failure('AI belum dikonfigurasi. Set salah satu provider AI pada .env.', ['mom' => [], 'formatted' => '']);
+            return self::failure('AI belum dikonfigurasi.', ['mom' => [], 'formatted' => '']);
         }
 
         $prompt = self::buildMomFixerPrompt($context);
@@ -139,6 +139,45 @@ class AiPlanner
     }
 
     /**
+     * @return array{ok: bool, data: array{text: string}, error: ?string, provider?: ?string}
+     */
+    public static function generateClientWhatsappDraft(array $context): array
+    {
+        if (! self::isConfigured()) {
+            return self::failure('AI belum dikonfigurasi.', ['text' => '']);
+        }
+
+        $providerResult = self::callConfiguredProviders(self::buildClientWhatsappDraftPrompt($context), 0.35);
+        if (! ($providerResult['ok'] ?? false)) {
+            return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR, ['text' => '']);
+        }
+
+        return self::parseClientDraftResponse((string) $providerResult['text'], $providerResult['provider'] ?? null);
+    }
+
+    /**
+     * @return array{ok: bool, data: array{subject: string, body: string}, error: ?string, provider?: ?string}
+     */
+    public static function generateClientEmailDraft(array $context): array
+    {
+        if (! self::isConfigured()) {
+            return self::failure('AI belum dikonfigurasi.', ['subject' => '', 'body' => '']);
+        }
+
+        $providerResult = self::callConfiguredProviders(self::buildClientEmailDraftPrompt($context), 0.35);
+        if (! ($providerResult['ok'] ?? false)) {
+            return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR, ['subject' => '', 'body' => '']);
+        }
+
+        $parsed = self::parseClientEmailResponse((string) $providerResult['text']);
+        if ($parsed['ok'] ?? false) {
+            $parsed['provider'] = $providerResult['provider'] ?? null;
+        }
+
+        return $parsed;
+    }
+
+    /**
      * Pure parser/validator. Public so tests + tinker can exercise the
      * full contract without hitting the network.
      *
@@ -148,23 +187,23 @@ class AiPlanner
     {
         $clean = self::stripFences($raw);
         if ($clean === '') {
-            return self::failure('Respons AI kosong.');
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.');
         }
 
         try {
             $decoded = json_decode($clean, true, 32, JSON_THROW_ON_ERROR);
         } catch (Throwable $e) {
-            return self::failure('Format JSON tidak valid: ' . $e->getMessage());
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.');
         }
 
         if (! is_array($decoded)) {
-            return self::failure('Format JSON tidak sesuai (bukan object).');
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.');
         }
 
         // Accept either {"modules": [...]} or a bare list of modules at root.
         $rawModules = $decoded['modules'] ?? $decoded;
         if (! is_array($rawModules)) {
-            return self::failure('Field "modules" tidak ditemukan.');
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.');
         }
 
         $modules = [];
@@ -182,7 +221,7 @@ class AiPlanner
         }
 
         if (empty($modules)) {
-            return self::failure('Tidak ada modul valid yang bisa diparsing dari respons.');
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.');
         }
 
         return [
@@ -201,23 +240,23 @@ class AiPlanner
     {
         $clean = self::stripFences($raw);
         if ($clean === '') {
-            return self::failure('Respons AI kosong.', ['test_cases' => []]);
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.', ['test_cases' => []]);
         }
 
         try {
             $decoded = json_decode($clean, true, 32, JSON_THROW_ON_ERROR);
         } catch (Throwable $e) {
-            return self::failure('Format JSON tidak valid: ' . $e->getMessage(), ['test_cases' => []]);
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.', ['test_cases' => []]);
         }
 
         if (! is_array($decoded)) {
-            return self::failure('Format JSON tidak sesuai (bukan object).', ['test_cases' => []]);
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.', ['test_cases' => []]);
         }
 
         // Accept either {"test_cases": [...]} or a bare list at root.
         $rawCases = $decoded['test_cases'] ?? $decoded;
         if (! is_array($rawCases)) {
-            return self::failure('Field "test_cases" tidak ditemukan.', ['test_cases' => []]);
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.', ['test_cases' => []]);
         }
 
         $cases = [];
@@ -233,7 +272,7 @@ class AiPlanner
         }
 
         if (empty($cases)) {
-            return self::failure('Tidak ada test case valid yang bisa diparsing dari respons.', ['test_cases' => []]);
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.', ['test_cases' => []]);
         }
 
         return [
@@ -252,28 +291,89 @@ class AiPlanner
     {
         $clean = self::stripFences($raw);
         if ($clean === '') {
-            return self::failure('Respons AI kosong.', ['mom' => [], 'formatted' => '']);
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.', ['mom' => [], 'formatted' => '']);
         }
 
         try {
             $decoded = json_decode($clean, true, 32, JSON_THROW_ON_ERROR);
         } catch (Throwable $e) {
-            return self::failure('Format JSON tidak valid: ' . $e->getMessage(), ['mom' => [], 'formatted' => '']);
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.', ['mom' => [], 'formatted' => '']);
         }
 
         $mom = self::normalizeMomSummary($decoded);
         if ($mom === null) {
-            return self::failure('Tidak ada struktur MoM valid yang bisa diparsing dari respons.', ['mom' => [], 'formatted' => '']);
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.', ['mom' => [], 'formatted' => '']);
         }
 
         $formatted = self::formatMomSummary($mom);
         if ($formatted === '') {
-            return self::failure('MoM hasil AI kosong setelah diformat.', ['mom' => [], 'formatted' => '']);
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.', ['mom' => [], 'formatted' => '']);
         }
 
         return [
             'ok'    => true,
             'data'  => ['mom' => $mom, 'formatted' => $formatted],
+            'error' => null,
+        ];
+    }
+
+    /**
+     * @return array{ok: bool, data: array{text: string}, error: ?string, provider?: ?string}
+     */
+    public static function parseClientDraftResponse(string $raw, ?string $provider = null): array
+    {
+        $clean = self::stripFences($raw);
+        if ($clean === '') {
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.', ['text' => '']);
+        }
+
+        try {
+            $decoded = json_decode($clean, true, 16, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.', ['text' => '']);
+        }
+
+        $text = self::str(is_array($decoded) ? ($decoded['text'] ?? '') : '');
+        if ($text === '') {
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.', ['text' => '']);
+        }
+
+        return [
+            'ok' => true,
+            'data' => ['text' => self::clip($text, 1200)],
+            'error' => null,
+            'provider' => $provider,
+        ];
+    }
+
+    /**
+     * @return array{ok: bool, data: array{subject: string, body: string}, error: ?string}
+     */
+    public static function parseClientEmailResponse(string $raw): array
+    {
+        $clean = self::stripFences($raw);
+        if ($clean === '') {
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.', ['subject' => '', 'body' => '']);
+        }
+
+        try {
+            $decoded = json_decode($clean, true, 16, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return self::failure('Respons AI belum sesuai format. Coba ulangi.', ['subject' => '', 'body' => '']);
+        }
+
+        $subject = self::str(is_array($decoded) ? ($decoded['subject'] ?? '') : '');
+        $body = self::str(is_array($decoded) ? ($decoded['body'] ?? '') : '');
+        if ($body === '') {
+            return self::failure('AI belum menghasilkan data baru yang bisa disimpan.', ['subject' => '', 'body' => '']);
+        }
+
+        return [
+            'ok' => true,
+            'data' => [
+                'subject' => self::clip($subject !== '' ? $subject : 'Follow-up project', 180),
+                'body' => self::clip($body, 2500),
+            ],
             'error' => null,
         ];
     }
@@ -354,7 +454,7 @@ class AiPlanner
     {
         $providers = self::configuredProviders();
         if ($providers === []) {
-            return ['ok' => false, 'error' => 'AI belum dikonfigurasi. Set salah satu provider AI pada .env.'];
+            return ['ok' => false, 'error' => 'AI belum dikonfigurasi.'];
         }
 
         $errors = [];
@@ -635,6 +735,9 @@ JSON;
             'Jika catatan memuat beberapa rekap meeting, pertahankan heading/section meeting yang terpisah.',
             'Gunakan Bahasa Indonesia formal tetapi natural.',
             'Hindari output terlalu panjang.',
+            'Pisahkan isi menjadi Ringkasan, Kebutuhan Utama, Modul/Fitur yang Dibahas, Action Items, Open Questions, dan Catatan Teknis bila informasi tersedia.',
+            'Jika raw MoM singkat, hasil ringkasan juga harus singkat dan tidak bertele-tele.',
+            'Hindari filler generik seperti "user friendly" kecuali memang disebut dalam notulensi.',
             'Jangan menghitung final project fee atau biaya.',
             'Jika menyebut estimasi, tulis bahwa estimasi perlu konfirmasi PM/Fullstack.',
         ];
@@ -733,12 +836,14 @@ JSON;
         $rules = [
             'Jawab HANYA dengan JSON murni. Jangan tambahkan teks lain di luar JSON.',
             'Struktur: { "test_cases": [ { "title", "scenario", "expected_result", "priority", "module_title" } ] }.',
-            'Maksimum ' . self::MAX_TEST_CASES . ' test case.',
+            'Maksimum ' . self::MAX_TEST_CASES . ' test case per generasi.',
             'priority harus salah satu dari: ' . $priorities . '. Default medium.',
             'module_title harus cocok dengan salah satu module_title dari konteks aktual jika relevan.',
             'Gunakan Bahasa Indonesia natural. Title singkat, scenario dan expected_result jelas.',
             'Fokus pada black-box testing: input, aksi user, aturan bisnis, dan hasil yang terlihat.',
             'Hindari test case level kode/internal implementation kecuali memang terlihat sebagai requirement.',
+            'Prioritaskan modul/task core dan priority high/medium. Jika konteks banyak, pilih scope paling penting saja.',
+            'Cover positive dan negative case bila relevan, tetapi jangan repetitif.',
             'Hindari duplikasi dengan judul test case yang sudah ada pada konteks aktual.',
             'Tidak boleh ada properti tambahan di luar yang disebut.',
         ];
@@ -786,6 +891,43 @@ JSON;
             . "\n\n" . $exampleOutput
             . "\n\nSekarang buat output JSON untuk input aktual berikut. Ingat: output akhir hanya JSON, tanpa markdown, tanpa komentar.\n\n"
             . $contextBlock;
+    }
+
+    public static function buildClientWhatsappDraftPrompt(array $context): string
+    {
+        $client = self::str($context['client_name'] ?? '');
+        $pic = self::str($context['pic_name'] ?? '');
+        $projects = self::listContext($context['project_context'] ?? []);
+        $reason = self::str($context['reason'] ?? 'follow-up ringan');
+
+        return "Kamu adalah asisten CRM Smart-PMIS. Buat draft WhatsApp follow-up dalam Bahasa Indonesia.\n"
+            . "Aturan: sopan, natural, singkat, tidak hard selling, tidak mengarang klaim, tidak auto-send, aman untuk dicopy.\n"
+            . "Output JSON saja: {\"text\":\"...\"}.\n\n"
+            . "Contoh input: Client: PT Contoh, PIC: Bu Rani, Reason: konfirmasi prioritas minggu ini.\n"
+            . "Contoh output: {\"text\":\"Halo Bu Rani, izin follow up terkait prioritas minggu ini. Apakah ada update kebutuhan atau kendala yang perlu tim kami tindak lanjuti? Terima kasih.\"}\n\n"
+            . "Input aktual:\n"
+            . "- Client: " . ($client !== '' ? $client : '-') . "\n"
+            . "- PIC: " . ($pic !== '' ? $pic : 'Bapak/Ibu') . "\n"
+            . "- Project context: " . $projects . "\n"
+            . "- Alasan follow-up: " . ($reason !== '' ? $reason : '-');
+    }
+
+    public static function buildClientEmailDraftPrompt(array $context): string
+    {
+        $client = self::str($context['client_name'] ?? '');
+        $pic = self::str($context['pic_name'] ?? '');
+        $projects = self::listContext($context['project_context'] ?? []);
+        $reason = self::str($context['reason'] ?? 'follow-up ringan');
+
+        return "Kamu adalah asisten CRM Smart-PMIS. Buat draft email follow-up dalam Bahasa Indonesia.\n"
+            . "Aturan: sopan, ringkas, business-friendly, tidak mengarang klaim, tidak hard selling, tidak auto-send.\n"
+            . "Output JSON saja: {\"subject\":\"...\",\"body\":\"...\"}.\n\n"
+            . "Contoh output: {\"subject\":\"Follow-up prioritas project\",\"body\":\"Halo Bu Rani,\\n\\nSaya ingin melakukan follow-up terkait prioritas project minggu ini. Apakah ada update kebutuhan atau kendala yang perlu kami tindak lanjuti?\\n\\nTerima kasih.\"}\n\n"
+            . "Input aktual:\n"
+            . "- Client: " . ($client !== '' ? $client : '-') . "\n"
+            . "- PIC: " . ($pic !== '' ? $pic : 'Bapak/Ibu') . "\n"
+            . "- Project context: " . $projects . "\n"
+            . "- Alasan follow-up: " . ($reason !== '' ? $reason : '-');
     }
 
     private static function stripFences(string $raw): string

@@ -12,6 +12,7 @@ use App\Models\ProjectTask;
 use App\Models\User;
 use App\Services\AiPlanner;
 use App\Services\AuditLogger;
+use App\Services\SmartInsightService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -85,6 +86,10 @@ class ProjectController extends Controller
 
     private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
 
+    public function __construct(private readonly SmartInsightService $insights)
+    {
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -100,7 +105,7 @@ class ProjectController extends Controller
             $archiveScope = 'active';
         }
 
-        $projects = Project::with(['client', 'lead'])
+        $projects = Project::with(['client', 'lead', 'modules', 'tasks', 'moms', 'qcTests'])
             ->when($archiveScope === 'active', fn ($query) => $query->whereNull('archived_at'))
             ->when($archiveScope === 'archived', fn ($query) => $query->whereNotNull('archived_at'))
             ->orderByDesc('created_at')
@@ -700,7 +705,7 @@ class ProjectController extends Controller
 
         if (! AiPlanner::isConfigured()) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI belum dikonfigurasi. Set salah satu provider AI pada .env.');
+                ->with('status', 'AI belum dikonfigurasi.');
         }
 
         $project->loadMissing('client');
@@ -771,7 +776,7 @@ class ProjectController extends Controller
 
         if (! AiPlanner::isConfigured()) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI belum dikonfigurasi. Set salah satu provider AI pada .env.');
+                ->with('status', 'AI belum dikonfigurasi.');
         }
 
         $project->loadMissing('client');
@@ -884,7 +889,7 @@ class ProjectController extends Controller
 
         if ($createdModules === 0 && $createdTasks === 0) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI selesai, tapi semua modul/draft sudah ada — tidak ada item baru.');
+                ->with('status', 'Tidak ada draft WBS baru yang ditambahkan karena seluruh judul sudah tersedia.');
         }
 
         AuditLogger::log(
@@ -929,7 +934,7 @@ class ProjectController extends Controller
 
         if (! AiPlanner::isConfigured()) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI belum dikonfigurasi. Set salah satu provider AI pada .env.');
+                ->with('status', 'AI belum dikonfigurasi.');
         }
 
         $moduleContext = $project->modules
@@ -1037,7 +1042,7 @@ class ProjectController extends Controller
 
         if ($createdCases === 0) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI selesai, tapi semua test case sudah ada atau tidak ada item baru.');
+                ->with('status', 'AI belum menghasilkan data baru yang bisa disimpan.');
         }
 
         AuditLogger::log(
@@ -1215,7 +1220,7 @@ class ProjectController extends Controller
         $totalEstimateHours = (int) $project->modules->sum('estimate_hours') + (int) $project->tasks->sum('estimate_hours');
 
         $generatedAt = Carbon::now();
-        $filename = 'wbs-' . $project->code . '-' . $generatedAt->format('Ymd-His') . '.pdf';
+        $filename = 'wbs-' . $this->exportSlug($project) . '-' . $generatedAt->format('Ymd-His') . '.pdf';
 
         $pdf = Pdf::loadView('projects.exports.wbs-pdf', [
             'project'             => $project,
@@ -1278,7 +1283,7 @@ class ProjectController extends Controller
         ];
 
         $generatedAt = Carbon::now();
-        $filename = 'test-cases-' . $project->code . '-' . $generatedAt->format('Ymd-His') . '.pdf';
+        $filename = 'test-cases-' . $this->exportSlug($project) . '-' . $generatedAt->format('Ymd-His') . '.pdf';
 
         $pdf = Pdf::loadView('projects.exports.test-cases-pdf', [
             'project'     => $project,
@@ -1316,6 +1321,15 @@ class ProjectController extends Controller
             'client_id.exists'   => 'Klien tidak valid.',
             'due_at.date'        => 'Due date tidak valid.',
         ]);
+    }
+
+    private function exportSlug(Project $project): string
+    {
+        $base = trim((string) ($project->code ?: $project->name ?: 'project'));
+        $slug = strtolower((string) preg_replace('/[^A-Za-z0-9]+/', '-', $base));
+        $slug = trim($slug, '-');
+
+        return $slug !== '' ? $slug : 'project';
     }
 
     private function usesReferenceProjectData(Project $project): bool
@@ -1668,7 +1682,31 @@ class ProjectController extends Controller
     private function projectRow(Project $project): array
     {
         $meta = self::PROJECT_META[$project->code] ?? null;
-        $team = $meta['team'] ?? ($project->lead ? [$this->initials($project->lead->name)] : []);
+        $avatars = $this->insights->projectAvatars($project);          // deduped, up to 3
+        $memberCount = $this->insights->projectAssignmentCount($project); // distinct user_id
+
+        if (! empty($avatars)) {
+            $team = $avatars;
+        } else {
+            /* No real team assignments yet: fall back to static meta initials
+             * or the project lead. Don't carry the legacy `team_more` from
+             * static meta because the static initials list was inconsistent
+             * with that count (produced "2 avatars + +1" for 3-member rows). */
+            $staticTeam = $meta['team'] ?? ($project->lead ? [$this->initials($project->lead->name)] : []);
+            $team = collect($staticTeam)
+                ->take(3)
+                ->map(fn ($initials) => ['initials' => $initials, 'name' => $initials, 'color' => '#7C3AED'])
+                ->values()
+                ->all();
+            $memberCount = count($staticTeam);
+        }
+
+        $teamMore = max(0, $memberCount - count($team));
+        $teamMoreNames = $teamMore > 0 ? $this->insights->projectHiddenMemberNames($project, count($team)) : [];
+
+        $tasksDone = $project->relationLoaded('tasks') ? $project->tasks->where('status', 'done')->count() : (int) ($meta['tasks_done'] ?? 0);
+        $tasksTotal = $project->relationLoaded('tasks') ? $project->tasks->count() : (int) ($meta['tasks_total'] ?? 0);
+        $momCount = $project->relationLoaded('moms') ? $project->moms->count() : (int) ($meta['mom'] ?? 0);
 
         return [
             'id'           => $project->id,
@@ -1686,12 +1724,14 @@ class ProjectController extends Controller
             'status'       => $project->status,
             'status_label' => $this->statusLabel($project->status),
             'archived'     => (bool) $project->archived_at,
-            'team'         => $team,
-            'team_more'    => (int) ($meta['team_more'] ?? 0),
-            'tasks_done'   => (int) ($meta['tasks_done'] ?? 0),
-            'tasks_total'  => (int) ($meta['tasks_total'] ?? 0),
-            'mom'          => (int) ($meta['mom'] ?? 0),
+            'team'             => $team,
+            'team_more'        => $teamMore,
+            'team_more_names'  => $teamMoreNames,
+            'tasks_done'   => (int) $tasksDone,
+            'tasks_total'  => (int) $tasksTotal,
+            'mom'          => (int) $momCount,
             'ai_flag'      => (bool) $project->ai_wbs_generated,
+            'smart_badges' => $this->insights->projectBadges($project),
         ];
     }
 

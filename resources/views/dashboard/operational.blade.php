@@ -54,7 +54,7 @@
             <p class="mt-3 text-[15px] text-slate-500 max-w-xl">{{ $subtitle }}</p>
         </div>
 
-        <div class="rounded-2xl border border-violet-100 bg-white shadow-[0_2px_8px_rgba(124,58,237,0.08)] px-5 py-4 flex items-center gap-4 min-w-[260px]">
+        <a href="{{ $focusHref }}" class="rounded-2xl border border-violet-100 bg-white shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:shadow-[0_8px_24px_rgba(124,58,237,0.12)] px-5 py-4 flex items-center gap-4 min-w-[260px] transition no-underline">
             <div class="relative">
                 <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#A855F7] text-white flex items-center justify-center font-bold text-[14px]">{{ $initials }}</div>
                 <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_0_3px_#fff]"></span>
@@ -64,13 +64,13 @@
                 <div class="text-[15px] font-bold text-[#1E1B4B] leading-tight truncate">{{ $focusLine }}</div>
                 <div class="text-[11.5px] text-slate-500 mt-0.5">Fokus utama Anda</div>
             </div>
-        </div>
+        </a>
     </section>
 
     {{-- ============== Summary cards ============== --}}
     <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-9">
         @foreach ($metrics as $m)
-            <article class="relative overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
+            <a href="{{ $m['href'] }}" class="relative overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:shadow-[0_8px_24px_rgba(124,58,237,0.12)] p-6 transition no-underline">
                 <span class="absolute top-0 left-6 right-6 h-[3px] rounded-b-full" style="background: {{ $m['accent'] }};"></span>
                 <div class="flex items-start justify-between mb-5">
                     <div class="w-11 h-11 rounded-xl flex items-center justify-center" style="background: {{ $m['tileBg'] }}; color: {{ $m['tileFg'] }};">
@@ -83,7 +83,7 @@
                     <span class="w-1.5 h-1.5 rounded-full" style="background: {{ $m['accent'] }};"></span>
                     <span>{{ $m['sub'] }}</span>
                 </div>
-            </article>
+            </a>
         @endforeach
     </section>
 
@@ -219,14 +219,14 @@
             <div class="mt-4 space-y-3 flex-1">
                 @foreach ($insightItems as $ins)
                     @php $tone = $insightTone[$ins['tone']] ?? $insightTone['slate']; @endphp
-                    <div class="bg-white border {{ $tone['border'] }} rounded-xl p-4">
+                    <a href="{{ $ins['href'] ?? route('projects.index') }}" class="block bg-white border {{ $tone['border'] }} rounded-xl p-4 hover:shadow-sm transition no-underline">
                         <div class="flex items-start gap-3">
                             <div class="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center {{ $tone['bg'] }} {{ $tone['fg'] }}">
                                 <x-dynamic-component :component="'heroicon-o-' . $ins['icon']" class="w-4 h-4" />
                             </div>
                             <p class="text-[13px] text-[#1E1B4B] leading-snug font-medium">{{ $ins['text'] }}</p>
                         </div>
-                    </div>
+                    </a>
                 @endforeach
             </div>
 
@@ -255,19 +255,19 @@
 
         <div class="divide-y divide-violet-50">
             @forelse ($recentActivities as $a)
-                <div class="flex items-start gap-4 px-6 py-4 hover:bg-violet-50/40 transition">
+                <a href="{{ $a['href'] }}" class="flex items-start gap-4 px-6 py-4 hover:bg-violet-50/40 transition no-underline">
                     <div class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-violet-50 text-violet-600">
                         <x-heroicon-o-bolt class="w-4 h-4" />
                     </div>
                     <div class="flex-1 min-w-0">
-                        <p class="text-[13.5px] text-[#1E1B4B] leading-snug">{!! $a->description ?: e($a->action) !!}</p>
+                        <p class="text-[13.5px] text-[#1E1B4B] leading-snug">{!! $a['description'] !!}</p>
                         <div class="text-[11.5px] text-slate-400 mt-1 inline-flex items-center gap-2 flex-wrap">
-                            <span>{{ $a->module }}</span>
+                            <span>{{ $a['module'] }}</span>
                             <span class="w-1 h-1 rounded-full bg-slate-300"></span>
-                            <span>{{ $a->created_at?->diffForHumans() ?? 'baru saja' }}</span>
+                            <span>{{ $a['time'] }}</span>
                         </div>
                     </div>
-                </div>
+                </a>
             @empty
                 <div class="px-6 py-12 text-center">
                     <div class="w-14 h-14 mx-auto rounded-2xl bg-violet-50 text-violet-400 flex items-center justify-center mb-3">

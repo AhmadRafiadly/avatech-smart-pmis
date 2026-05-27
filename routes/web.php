@@ -40,11 +40,14 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('ceo.pm')->group(function () {
         Route::get('/executive', [ExecutiveController::class, 'index'])->name('executive.index');
+        Route::get('/executive/insights', [ExecutiveController::class, 'insights'])->name('executive.insights');
         Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
         Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
         Route::put('/clients/{client}', [ClientController::class, 'update'])->name('clients.update');
         Route::patch('/clients/{client}/archive', [ClientController::class, 'archive'])->name('clients.archive');
         Route::patch('/clients/{client}/restore', [ClientController::class, 'restore'])->name('clients.restore');
+        Route::post('/clients/{client}/draft/whatsapp', [ClientController::class, 'draftWhatsapp'])->name('clients.draft.whatsapp');
+        Route::post('/clients/{client}/draft/email', [ClientController::class, 'draftEmail'])->name('clients.draft.email');
         Route::get('/team', [TeamController::class, 'index'])->name('team.index');
         Route::post('/team/members', [TeamController::class, 'store'])->name('team.members.store');
         Route::put('/team/members/{member}', [TeamController::class, 'update'])->name('team.members.update');

@@ -172,35 +172,61 @@
             </div>
 
             <div data-panel="ai" class="hidden">
+                @php
+                    /* Read provider status straight from config — no UI mutation
+                     * because keys live in .env. The dropdowns we used to show
+                     * for Anthropic/Claude were never wired to a saver. */
+                    $aiProviders = [
+                        ['key' => 'gemini',     'label' => 'Gemini',      'model' => (string) config('ai.gemini.model'),     'configured' => is_string(config('ai.gemini.api_key'))     && trim((string) config('ai.gemini.api_key'))     !== ''],
+                        ['key' => 'groq',       'label' => 'Groq',        'model' => (string) config('ai.groq.model'),       'configured' => is_string(config('ai.groq.api_key'))       && trim((string) config('ai.groq.api_key'))       !== ''],
+                        ['key' => 'openrouter', 'label' => 'OpenRouter',  'model' => (string) config('ai.openrouter.model'), 'configured' => is_string(config('ai.openrouter.api_key')) && trim((string) config('ai.openrouter.api_key')) !== ''],
+                    ];
+                    $aiOrder = (array) (config('ai.provider_order') ?: ['gemini', 'groq', 'openrouter']);
+                    $aiReady = \App\Services\AiPlanner::isConfigured();
+                @endphp
                 <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-7 mb-5">
-                    <h3 class="text-[16px] font-bold text-[#1E1B4B] mb-1">Mesin AI</h3>
-                    <p class="text-[13px] text-slate-500 mb-5">Konfigurasi model dan provider untuk Sekretaris Digital.</p>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                    <div class="flex items-start justify-between gap-4 mb-1 flex-wrap">
                         <div>
-                            <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Provider</label>
-                            <select class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                                <option>Anthropic Claude</option>
-                                <option>OpenAI GPT-4o</option>
-                                <option>Anthropic + OpenAI Fallback</option>
-                            </select>
+                            <h3 class="text-[16px] font-bold text-[#1E1B4B]">Mesin AI</h3>
+                            <p class="text-[13px] text-slate-500 mt-1">Provider AI dikonfigurasi lewat environment variables. Tidak ada pengaturan model di sini.</p>
                         </div>
-                        <div>
-                            <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Model Default</label>
-                            <select class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                                <option>claude-haiku-4-5</option>
-                                <option>claude-sonnet-4-5</option>
-                                <option>gpt-4o</option>
-                            </select>
+                        @if ($aiReady)
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold tracking-wider uppercase">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                AI siap digunakan
+                            </span>
+                        @else
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-[11px] font-bold tracking-wider uppercase">
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                AI belum dikonfigurasi
+                            </span>
+                        @endif
+                    </div>
+
+                    <div class="mt-5">
+                        <div class="text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Urutan Fallback</div>
+                        <div class="flex items-center gap-2 flex-wrap text-[12.5px] text-slate-600">
+                            @foreach ($aiOrder as $idx => $providerKey)
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-violet-50 text-violet-700 text-[11.5px] font-semibold tracking-wide">{{ ucfirst($providerKey) }}</span>
+                                @if ($idx < count($aiOrder) - 1)
+                                    <x-heroicon-o-arrow-right class="w-3.5 h-3.5 text-slate-300" />
+                                @endif
+                            @endforeach
                         </div>
                     </div>
-                    <div class="space-y-1">
-                        @foreach ($aiFlags as $ai)
+
+                    <div class="mt-6 space-y-1">
+                        @foreach ($aiProviders as $p)
                             <div class="flex items-center justify-between py-3 border-b border-violet-50 last:border-0 gap-3">
                                 <div class="min-w-0">
-                                    <div class="text-[13.5px] font-semibold text-[#1E1B4B]">{{ $ai['label'] }}</div>
-                                    <div class="text-[12px] text-slate-500 mt-0.5">{{ $ai['note'] }}</div>
+                                    <div class="text-[13.5px] font-semibold text-[#1E1B4B]">{{ $p['label'] }}</div>
+                                    <div class="text-[12px] text-slate-500 mt-0.5">Model: <span class="font-mono text-[11.5px]">{{ $p['model'] ?: '—' }}</span></div>
                                 </div>
-                                <div class="js-switch {{ $ai['on'] ? 'is-on' : '' }}" data-setting-key="ai_{{ $ai['key'] }}" role="switch" aria-checked="{{ $ai['on'] ? 'true' : 'false' }}"></div>
+                                @if ($p['configured'])
+                                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10.5px] font-bold tracking-wider uppercase">Aktif</span>
+                                @else
+                                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10.5px] font-bold tracking-wider uppercase">Belum dikonfigurasi</span>
+                                @endif
                             </div>
                         @endforeach
                     </div>
@@ -218,15 +244,13 @@
             <div data-panel="notif" class="hidden">
                 <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-7">
                     <h3 class="text-[16px] font-bold text-[#1E1B4B] mb-1">Preferensi Notifikasi</h3>
-                    <p class="text-[13px] text-slate-500 mb-5">Pilih kanal untuk setiap kategori. Email digital dan in-app aktif default.</p>
+                    <p class="text-[13px] text-slate-500 mb-5">Atur kategori notifikasi yang muncul di lonceng Smart-PMIS.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left">
                             <thead>
                                 <tr class="text-[11px] font-bold tracking-[0.1em] uppercase text-slate-400 border-b border-violet-50">
                                     <th class="py-3 pr-4">Kategori</th>
-                                    <th class="py-3 px-3 text-center">In-App</th>
-                                    <th class="py-3 px-3 text-center">Email</th>
-                                    <th class="py-3 px-3 text-center">WhatsApp</th>
+                                    <th class="py-3 px-3 text-center w-[120px]">In-App</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -240,27 +264,27 @@
                                         <td class="py-3 px-3">
                                             <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][app]" value="{{ $row['app'] ? '1' : '0' }}" data-switch-input>
                                             <div class="js-switch {{ $row['app'] ? 'is-on' : '' }} mx-auto" data-backed-switch role="switch" aria-checked="{{ $row['app'] ? 'true' : 'false' }}"></div>
-                                        </td>
-                                        <td class="py-3 px-3">
-                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][email]" value="{{ $row['email'] ? '1' : '0' }}" data-switch-input>
-                                            <div class="js-switch {{ $row['email'] ? 'is-on' : '' }} mx-auto" data-backed-switch role="switch" aria-checked="{{ $row['email'] ? 'true' : 'false' }}"></div>
-                                        </td>
-                                        <td class="py-3 px-3">
-                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][wa]" value="{{ $row['wa'] ? '1' : '0' }}" data-switch-input>
-                                            <div class="js-switch {{ $row['wa'] ? 'is-on' : '' }} mx-auto" data-backed-switch role="switch" aria-checked="{{ $row['wa'] ? 'true' : 'false' }}"></div>
+                                            {{-- Keep Email + WhatsApp keys in the form so the existing controller validation/saver keeps working without further changes. These are off by default until external delivery is wired up. --}}
+                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][email]" value="0">
+                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][wa]"    value="0">
                                         </td>
                                     </tr>
                                 @endforeach
                             </tbody>
                         </table>
                     </div>
+                    <div class="mt-5 rounded-xl border border-violet-100 bg-violet-50/40 px-4 py-3 text-[12.5px] text-slate-600 leading-snug">
+                        Pengiriman lewat <strong>Email</strong> dan <strong>WhatsApp</strong> akan tersedia setelah integrasi resmi diaktifkan. Untuk saat ini hanya notifikasi in-app yang aktif.
+                    </div>
                 </div>
             </div>
 
             <div data-panel="integrations" class="hidden">
+                <div class="mb-5 rounded-xl border border-violet-100 bg-violet-50/40 px-4 py-3 text-[12.5px] text-slate-600 leading-snug">
+                    Integrasi eksternal (WhatsApp Business, Google Calendar, Slack, GitHub, Figma) belum diaktifkan di server ini. Status di bawah hanya informasional. Draft pesan klien tetap tersedia di Client Directory tanpa koneksi resmi.
+                </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     @foreach ($integrations as $ig)
-                        @php $igSlug = $ig['key'] ?? Illuminate\Support\Str::slug($ig['name']); @endphp
                         <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5">
                             <div class="flex items-start gap-3 mb-3">
                                 <div class="w-11 h-11 rounded-xl flex items-center justify-center text-white flex-shrink-0" style="background: {{ $ig['color'] }};">
@@ -269,29 +293,20 @@
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 flex-wrap">
                                         <h4 class="text-[14.5px] font-bold text-[#1E1B4B]">{{ $ig['name'] }}</h4>
-                                        <span data-integration-badge @class([
-                                            'text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md',
-                                            'bg-emerald-100 text-emerald-700' => $ig['connected'],
-                                            'bg-slate-100 text-slate-500' => ! $ig['connected'],
-                                        ])>{{ $ig['connected'] ? 'Terhubung' : 'Belum' }}</span>
+                                        <span class="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">Belum dikonfigurasi</span>
                                     </div>
                                     <p class="text-[12.5px] text-slate-500 mt-1 leading-relaxed">{{ $ig['desc'] }}</p>
                                 </div>
                             </div>
-                            <form method="POST" action="{{ route('settings.integrations.toggle', $igSlug) }}">
-                                @csrf
-                                <button
-                                    type="submit"
-                                    @if($ig['connected']) onclick="return confirm('Putuskan koneksi {{ $ig['name'] }}?')" @endif
-                                    @class([
-                                        'w-full h-9 rounded-lg text-[12.5px] font-semibold transition cursor-pointer',
-                                        'bg-violet-50 text-violet-700 hover:bg-violet-100' => $ig['connected'],
-                                        'bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:-translate-y-0.5' => ! $ig['connected'],
-                                    ])
-                                >
-                                    {{ $ig['connected'] ? 'Putuskan' : 'Hubungkan' }}
-                                </button>
-                            </form>
+                            <button
+                                type="button"
+                                disabled
+                                aria-disabled="true"
+                                title="Integrasi resmi {{ $ig['name'] }} belum aktif."
+                                class="w-full h-9 rounded-lg text-[12.5px] font-semibold bg-slate-100 text-slate-400 cursor-not-allowed"
+                            >
+                                Segera tersedia
+                            </button>
                         </div>
                     @endforeach
                 </div>
@@ -303,28 +318,38 @@
                     <p class="text-[13px] text-slate-500 mb-5">Lindungi akun dan data sensitif Avatech.</p>
                     <div class="space-y-1">
                         @foreach ($security as $s)
+                            @php
+                                /* Persisted-real controls in this release:
+                                 *  - "Login Alert" switch (UserSecurityPreference saver)
+                                 *  - "Ubah Password" button (real password update form)
+                                 * 2FA / IP Allowlist / Recovery Codes are placeholders
+                                 * until those backends are actually wired up. */
+                                $label = (string) $s['label'];
+                                $lower = mb_strtolower($label);
+                                $isLoginAlert  = str_contains($lower, 'login alert');
+                                $isPasswordBtn = str_contains($lower, 'password');
+                                $isRecovery    = str_starts_with($lower, 'recovery');
+                                $isRealSwitch  = $s['kind'] === 'switch' && $isLoginAlert;
+                            @endphp
                             <div class="flex items-center justify-between py-3 border-b border-violet-50 last:border-0 gap-3">
                                 <div class="min-w-0">
                                     <div class="text-[13.5px] font-semibold text-[#1E1B4B]">{{ $s['label'] }}</div>
                                     <div class="text-[12px] text-slate-500 mt-0.5">{{ $s['desc'] }}</div>
                                 </div>
                                 @if ($s['kind'] === 'switch')
-                                    @php $secSlug = $s['key'] ?? Illuminate\Support\Str::slug($s['label']); @endphp
-                                    <input form="settings-preferences-form" type="hidden" name="security[{{ $secSlug }}]" value="{{ $s['on'] ? '1' : '0' }}" data-switch-input>
-                                    <div class="js-switch {{ $s['on'] ? 'is-on' : '' }}" data-backed-switch role="switch" aria-checked="{{ $s['on'] ? 'true' : 'false' }}"></div>
-                                @else
-                                    @if (str_starts_with(Illuminate\Support\Str::lower($s['label']), 'recovery'))
-                                        @if (! empty($recoveryCodes))
-                                            <button type="button" data-show-recovery-codes class="h-9 px-3.5 rounded-lg border border-violet-200 text-[12.5px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer flex-shrink-0">Lihat</button>
-                                        @else
-                                            <form method="POST" action="{{ route('settings.recovery-codes.regenerate') }}">
-                                                @csrf
-                                                <button type="submit" class="h-9 px-3.5 rounded-lg border border-violet-200 text-[12.5px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer flex-shrink-0">{{ $s['btn'] }}</button>
-                                            </form>
-                                        @endif
+                                    @if ($isRealSwitch)
+                                        @php $secSlug = $s['key'] ?? Illuminate\Support\Str::slug($s['label']); @endphp
+                                        <input form="settings-preferences-form" type="hidden" name="security[{{ $secSlug }}]" value="{{ $s['on'] ? '1' : '0' }}" data-switch-input>
+                                        <div class="js-switch {{ $s['on'] ? 'is-on' : '' }}" data-backed-switch role="switch" aria-checked="{{ $s['on'] ? 'true' : 'false' }}"></div>
                                     @else
-                                        <button type="button" data-show-password-modal class="h-9 px-3.5 rounded-lg border border-violet-200 text-[12.5px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer flex-shrink-0">{{ $s['btn'] }}</button>
+                                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10.5px] font-bold tracking-wider uppercase flex-shrink-0">Segera tersedia</span>
                                     @endif
+                                @elseif ($isPasswordBtn)
+                                    <button type="button" data-show-password-modal class="h-9 px-3.5 rounded-lg border border-violet-200 text-[12.5px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer flex-shrink-0">{{ $s['btn'] }}</button>
+                                @elseif ($isRecovery)
+                                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10.5px] font-bold tracking-wider uppercase flex-shrink-0">Segera tersedia</span>
+                                @else
+                                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10.5px] font-bold tracking-wider uppercase flex-shrink-0">Segera tersedia</span>
                                 @endif
                             </div>
                         @endforeach
@@ -362,19 +387,8 @@
                     </div>
                 </div>
 
-                <div class="rounded-2xl border border-rose-200 bg-rose-50/40 p-6 flex items-start gap-4 flex-wrap">
-                    <x-heroicon-o-exclamation-triangle class="w-5 h-5 text-rose-700 mt-0.5 flex-shrink-0" />
-                    <div class="flex-1 min-w-[240px]">
-                        <h4 class="text-[14px] font-bold text-rose-900">Hapus Akun</h4>
-                        <p class="text-[12.5px] text-rose-700 mt-1">Tindakan ini permanen. Semua data audit Anda akan tetap tersimpan untuk kepatuhan.</p>
-                    </div>
-                    <form method="POST" action="{{ route('settings.account-deletion.request') }}" onsubmit="return confirm('Ajukan permintaan hapus akun? Akun tidak akan dihapus otomatis.')">
-                        @csrf
-                        <button type="submit" class="h-9 px-4 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[12.5px] font-semibold transition cursor-pointer flex-shrink-0">
-                            {{ ($deletionPending ?? false) ? 'Permintaan Tercatat' : 'Hapus Akun' }}
-                        </button>
-                    </form>
-                </div>
+                {{-- "Hapus Akun" was a fake destructive control: the request was logged
+                     but no deletion pipeline exists. Hidden until the flow is real. --}}
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-4 border-t border-violet-100">

@@ -171,6 +171,13 @@ class AuditController extends Controller
             }
         }
 
+        if ($log->module === 'Client Directory') {
+            $clientId = self::resolveClientIdForLog($log);
+            if ($clientId) {
+                return route('clients.index', ['open' => 'client:' . $clientId, 'client' => $clientId]);
+            }
+        }
+
         return route('audit.index');
     }
 
@@ -209,6 +216,29 @@ class AuditController extends Controller
             }
         }
         return $cache[$pid];
+    }
+
+    public static function contextNameForLog(AuditLog $log): ?string
+    {
+        if ($projectName = self::projectNameForLog($log)) {
+            return $projectName;
+        }
+
+        $clientId = self::resolveClientIdForLog($log);
+        if (! $clientId) {
+            return null;
+        }
+
+        static $cache = [];
+        if (! array_key_exists($clientId, $cache)) {
+            try {
+                $cache[$clientId] = (string) (\App\Models\Client::query()->whereKey($clientId)->value('name') ?? '') ?: null;
+            } catch (\Throwable $e) {
+                $cache[$clientId] = null;
+            }
+        }
+
+        return $cache[$clientId];
     }
 
     /**
@@ -253,6 +283,27 @@ class AuditController extends Controller
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    public static function resolveClientIdForLog(AuditLog $log): ?int
+    {
+        foreach ([(array) ($log->new_values ?? []), (array) ($log->old_values ?? [])] as $vals) {
+            if (isset($vals['client_id']) && (int) $vals['client_id'] > 0) {
+                return (int) $vals['client_id'];
+            }
+        }
+
+        $type = (string) $log->auditable_type;
+        $id = (int) $log->auditable_id;
+        if ($id <= 0 || $type === '') {
+            return null;
+        }
+
+        if ($type === \App\Models\Client::class || str_ends_with($type, '\\Client')) {
+            return $id;
+        }
+
+        return null;
     }
 
     public static function categoryForModule(string $module, string $action = ''): string
@@ -392,9 +443,9 @@ class AuditController extends Controller
          * if it's null we don't render a project context line and (on
          * /audit) we keep the row non-clickable to avoid sending the
          * user back to /audit in a loop. */
-        $projectName = self::projectNameForLog($log);
+        $projectName = self::contextNameForLog($log);
         $deepLink    = self::deepLinkForLog($log);
-        $hasProjectLink = $projectName !== null && str_contains($deepLink, '/projects/');
+        $hasDeepLink = $projectName !== null && (str_contains($deepLink, '/projects/') || str_contains($deepLink, '/clients'));
 
         return [
             'id'           => $log->id,
@@ -407,7 +458,7 @@ class AuditController extends Controller
             'module'       => $log->module,
             'text'         => $log->description ?: $this->fallbackDescription($log, $actor),
             'days'         => (int) $logDay->diffInDays($today),
-            'deep_link'    => $hasProjectLink ? $deepLink : null,
+            'deep_link'    => $hasDeepLink ? $deepLink : null,
             'project_name' => $projectName,
         ];
     }

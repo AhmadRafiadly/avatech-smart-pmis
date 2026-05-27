@@ -70,7 +70,7 @@
                 <span class="bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#A855F7]">Master</span>
             </h1>
             <p class="mt-3 text-[15px] text-slate-500 max-w-2xl">
-                Kelola semua proyek Avatech dari satu tempat. AI Sekretaris membantu generate WBS &amp; deteksi risiko otomatis.
+                Kelola semua proyek Avatech dari satu tempat. Smart-PMIS membantu membaca kesiapan WBS, assignment, dan QC.
             </p>
         </div>
         <button
@@ -197,12 +197,12 @@
                         <x-heroicon-o-calendar class="w-3 h-3" />
                         Due {{ $p['due'] }}
                     </span>
-                    @if ($p['ai_flag'])
+                    @foreach (($p['smart_badges'] ?? []) as $badge)
                         <span class="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-fuchsia-50 text-fuchsia-700 inline-flex items-center gap-1">
-                            <x-heroicon-o-sparkles class="w-3 h-3" />
-                            AI WBS ready
+                            <x-dynamic-component :component="'heroicon-o-' . $badge['icon']" class="w-3 h-3" />
+                            {{ $badge['label'] }}
                         </span>
-                    @endif
+                    @endforeach
                     @if ($p['archived'])
                         <span class="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 inline-flex items-center gap-1">
                             <x-heroicon-o-archive-box class="w-3 h-3" />
@@ -262,10 +262,14 @@
                     <div class="mt-4 pt-4 border-t border-violet-50 flex items-center justify-between gap-3">
                         <div class="flex -space-x-2">
                             @foreach ($p['team'] as $m)
-                                <div class="w-8 h-8 rounded-full bg-violet-100 text-violet-700 border-2 border-white flex items-center justify-center text-[10.5px] font-bold">{{ $m }}</div>
+                                <div class="w-8 h-8 rounded-full text-white border-2 border-white flex items-center justify-center text-[10.5px] font-bold" title="{{ $m['name'] }}" style="background: {{ $m['color'] }};">{{ $m['initials'] }}</div>
                             @endforeach
                             @if ($p['team_more'] > 0)
-                                <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 border-2 border-white flex items-center justify-center text-[10px] font-bold">+{{ $p['team_more'] }}</div>
+                                @php $hiddenNames = $p['team_more_names'] ?? []; @endphp
+                                <div
+                                    class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 border-2 border-white flex items-center justify-center text-[10px] font-bold cursor-help"
+                                    @if (! empty($hiddenNames)) title="Anggota lainnya: {{ implode(', ', $hiddenNames) }}" @endif
+                                >+{{ $p['team_more'] }}</div>
                             @endif
                         </div>
                         <div class="text-[11.5px] text-slate-500 flex items-center gap-3 flex-shrink-0">
@@ -334,8 +338,15 @@
                             <td class="px-4 py-4">
                                 <div class="flex -space-x-2">
                                     @foreach ($p['team'] as $m)
-                                        <div class="w-7 h-7 rounded-full bg-violet-100 text-violet-700 border-2 border-white flex items-center justify-center text-[10px] font-bold">{{ $m }}</div>
+                                        <div class="w-7 h-7 rounded-full text-white border-2 border-white flex items-center justify-center text-[10px] font-bold" title="{{ $m['name'] }}" style="background: {{ $m['color'] }};">{{ $m['initials'] }}</div>
                                     @endforeach
+                                    @if ($p['team_more'] > 0)
+                                        @php $hiddenNamesList = $p['team_more_names'] ?? []; @endphp
+                                        <div
+                                            class="w-7 h-7 rounded-full bg-slate-100 text-slate-500 border-2 border-white flex items-center justify-center text-[10px] font-bold cursor-help"
+                                            @if (! empty($hiddenNamesList)) title="Anggota lainnya: {{ implode(', ', $hiddenNamesList) }}" @endif
+                                        >+{{ $p['team_more'] }}</div>
+                                    @endif
                                 </div>
                             </td>
                             <td class="px-4 py-4 w-[220px]">

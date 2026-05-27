@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Project;
+use App\Services\AiPlanner;
 use App\Services\AuditLogger;
+use App\Services\SmartInsightService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -16,6 +18,10 @@ class ClientController extends Controller
         'standard' => 'Standard',
         'prospect' => 'Prospect',
     ];
+
+    public function __construct(private readonly SmartInsightService $insights)
+    {
+    }
 
     public function index(Request $request)
     {
@@ -117,6 +123,57 @@ class ClientController extends Controller
             ->with('status', 'Klien "' . $client->name . '" berhasil dipulihkan.');
     }
 
+    public function draftWhatsapp(Client $client)
+    {
+        $client->load('projects');
+
+        if (! AiPlanner::isConfigured()) {
+            return response()->json([
+                'message' => 'AI belum dikonfigurasi.',
+                'fallback' => $this->insights->clientWhatsappDraft($client),
+            ], 422);
+        }
+
+        $result = AiPlanner::generateClientWhatsappDraft($this->clientDraftContext($client));
+        if (! ($result['ok'] ?? false)) {
+            return response()->json([
+                'message' => $result['error'] ?? 'AI gagal menghasilkan respons. Coba ulangi beberapa saat lagi.',
+                'fallback' => $this->insights->clientWhatsappDraft($client),
+            ], 422);
+        }
+
+        return response()->json([
+            'text' => $result['data']['text'] ?? '',
+            'provider' => $result['provider'] ?? null,
+        ]);
+    }
+
+    public function draftEmail(Client $client)
+    {
+        $client->load('projects');
+
+        if (! AiPlanner::isConfigured()) {
+            return response()->json([
+                'message' => 'AI belum dikonfigurasi.',
+                'fallback' => $this->insights->clientEmailDraft($client),
+            ], 422);
+        }
+
+        $result = AiPlanner::generateClientEmailDraft($this->clientDraftContext($client));
+        if (! ($result['ok'] ?? false)) {
+            return response()->json([
+                'message' => $result['error'] ?? 'AI gagal menghasilkan respons. Coba ulangi beberapa saat lagi.',
+                'fallback' => $this->insights->clientEmailDraft($client),
+            ], 422);
+        }
+
+        return response()->json([
+            'subject' => $result['data']['subject'] ?? '',
+            'body' => $result['data']['body'] ?? '',
+            'provider' => $result['provider'] ?? null,
+        ]);
+    }
+
     private function validateClient(Request $request, ?Client $client = null): array
     {
         $codeRule = Rule::unique('clients', 'code');
@@ -151,7 +208,9 @@ class ClientController extends Controller
     private function clientRow(Client $client): array
     {
         $projects = $client->projects;
-        $activeProjects = $projects->where('phase', '!=', 'Done')->count();
+        $activeProjects = $projects
+            ->filter(fn (Project $project) => $project->archived_at === null && $project->phase !== 'Done')
+            ->count();
         $totalProjects = max((int) ($client->total_engagement ?? 0), $projects->count());
         $health = (int) ($client->relationship_health ?? 50);
         $picName = $client->pic_name ?: 'Belum ada PIC';
@@ -188,6 +247,11 @@ class ClientController extends Controller
             'wa_link' => $this->whatsAppLink($client->phone),
             'email_link' => $this->gmailLink($client->email),
             'desc' => $client->description ?: 'Profil klien belum dilengkapi.',
+            'smart_insights' => $this->insights->clientInsights($client),
+            'wa_draft_url' => route('clients.draft.whatsapp', $client),
+            'email_draft_url' => route('clients.draft.email', $client),
+            'wa_draft_fallback' => $this->insights->clientWhatsappDraft($client),
+            'email_draft_fallback' => $this->insights->clientEmailDraft($client),
             'projects' => $projects->map(fn (Project $project) => [
                 'id' => $project->id,
                 'code' => $project->code,
@@ -260,5 +324,22 @@ class ClientController extends Controller
             'critical' => 'Critical',
             default => 'On Track',
         };
+    }
+
+    private function clientDraftContext(Client $client): array
+    {
+        return [
+            'client_name' => $client->name,
+            'pic_name' => $client->pic_name,
+            'pic_role' => $client->pic_role,
+            'industry' => $client->industry,
+            'reason' => 'follow-up relationship dan status project aktif',
+            'project_context' => $client->projects
+                ->filter(fn (Project $project) => $project->archived_at === null)
+                ->take(4)
+                ->map(fn (Project $project) => $project->name . ' (' . $project->phase . ', ' . (int) $project->progress . '%)')
+                ->values()
+                ->all(),
+        ];
     }
 }

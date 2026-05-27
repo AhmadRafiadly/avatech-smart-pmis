@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\Project;
 use App\Models\TeamAssignment;
 use App\Models\User;
+use App\Services\SmartInsightService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -23,6 +24,10 @@ class ExecutiveController extends Controller
     private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
 
     private const CLOSED_ASSIGNMENT_STATUSES = ['done', 'completed', 'cancelled', 'canceled', 'archived'];
+
+    public function __construct(private readonly SmartInsightService $insights)
+    {
+    }
 
     public function index(Request $request)
     {
@@ -77,7 +82,7 @@ class ExecutiveController extends Controller
             ['key' => 'clients', 'icon' => 'building-office', 'label' => 'Active Clients', 'value' => (string) $totalClients, 'foot' => $archivedClients . ' archived excluded', 'foot_icon' => 'information-circle', 'foot_color' => 'text-slate-500', 'progress' => null],
         ];
 
-        $projects = Project::with(['client', 'lead'])
+        $projects = Project::with(['client', 'lead', 'modules', 'tasks', 'moms', 'qcTests'])
             ->whereNull('archived_at')
             ->orderByDesc('is_featured')
             ->orderBy('id')
@@ -98,6 +103,10 @@ class ExecutiveController extends Controller
                     'progress' => (int) $project->progress,
                     'status' => $project->status,
                     'status_label' => self::STATUS_LABEL[$project->status] ?? $project->status,
+                    'badges' => $this->insights->projectBadges($project),
+                    'team' => $team = $this->insights->projectAvatars($project),
+                    'team_more' => $teamMore = max(0, $this->insights->projectAssignmentCount($project) - count($team)),
+                    'team_more_names' => $teamMore > 0 ? $this->insights->projectHiddenMemberNames($project, count($team)) : [],
                 ];
             })
             ->all();
@@ -130,14 +139,7 @@ class ExecutiveController extends Controller
             ];
         })->all();
 
-        $recentActivities = AuditLog::with('user')
-            ->whereBetween('created_at', [$monthStart, $monthEnd])
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit(3)
-            ->get()
-            ->map(fn (AuditLog $log) => $this->activityCard($log))
-            ->all();
+        $smartInsights = $this->insights->executiveInsights(3);
 
         return view('executive.index', [
             'title' => 'Executive Monitor',
@@ -146,11 +148,24 @@ class ExecutiveController extends Controller
             'projectStats' => $projectStats,
             'teamLoad' => $teamLoad,
             'pools' => $pools,
-            'recentActivities' => $recentActivities,
-            'overloadAlert' => collect($teamLoad)->first(fn (array $row) => $row['load'] >= 85),
+            'recentActivities' => $smartInsights,
+            'overloadAlert' => $this->workloadAlert($teamLoad),
             'monthOptions' => $this->monthOptions($selectedMonth),
             'selectedMonth' => $selectedMonth->format('Y-m'),
             'selectedMonthLabel' => $this->formatMonthYearId($selectedMonth),
+        ]);
+    }
+
+    public function insights(Request $request)
+    {
+        $role = $request->user()?->roles()->first()?->name;
+        if ($role && $role !== 'ceo_pm' && ! in_array($role, ['admin', 'super_admin', 'developer'], true)) {
+            return redirect()->route('dashboard.index');
+        }
+
+        return view('executive.insights', [
+            'title' => 'Pengingat Cerdas',
+            'insights' => $this->insights->executiveInsights(24),
         ]);
     }
 
@@ -188,6 +203,53 @@ class ExecutiveController extends Controller
             'hours' => $hours,
             'capacity' => $capacity,
             'tasks' => $assignments->count(),
+        ];
+    }
+
+    private function workloadAlert(array $teamLoad): array
+    {
+        $top = collect($teamLoad)->sortByDesc('load')->first();
+
+        if (! $top) {
+            return [
+                'severity' => 'info',
+                'label' => 'Beban Tim Aman',
+                'title' => 'Belum ada beban kerja operasional aktif',
+                'description' => 'Belum ada assignment aktif pada bulan ini untuk dihitung. Tinjau Team Management saat mulai membagi pekerjaan.',
+                'load' => 0,
+                'name' => null,
+            ];
+        }
+
+        if ($top['load'] >= 95) {
+            return [
+                'severity' => 'critical',
+                'label' => 'Risiko Overload',
+                'title' => 'Beban tim melewati kapasitas',
+                'description' => $top['name'] . ' berada di ' . $top['load'] . '% kapasitas. Tinjau distribusi task secara manual sebelum sprint makin padat.',
+                'load' => $top['load'],
+                'name' => $top['name'],
+            ];
+        }
+
+        if ($top['load'] >= 85) {
+            return [
+                'severity' => 'warning',
+                'label' => 'Risiko Overload',
+                'title' => 'Ada anggota mendekati kapasitas',
+                'description' => $top['name'] . ' berada di ' . $top['load'] . '% kapasitas. Pertimbangkan review assignment, tanpa auto-rebalance.',
+                'load' => $top['load'],
+                'name' => $top['name'],
+            ];
+        }
+
+        return [
+            'severity' => 'success',
+            'label' => 'Beban Tim Aman',
+            'title' => 'Beban tim aman',
+            'description' => 'Seluruh anggota masih berada dalam kapasitas aman. Distribusi task saat ini belum membutuhkan penyesuaian.',
+            'load' => $top['load'],
+            'name' => $top['name'],
         ];
     }
 

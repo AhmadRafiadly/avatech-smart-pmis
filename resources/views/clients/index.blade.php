@@ -31,12 +31,15 @@
     $editClientId = old('_form') === 'edit' ? old('_client_id') : null;
     $editAction = $editClientId ? route('clients.update', $editClientId) : '#';
 
+    $attentionClient = $col->first(fn ($client) => ! empty($client['smart_insights']));
+    $attentionInsight = $attentionClient['smart_insights'][0] ?? null;
+
     $stats = [
-        ['label' => 'Total Klien',  'value' => count($clients),                                        'note' => '+2 kuartal ini',  'color' => '#7C3AED'],
-        ['label' => 'Strategic',    'value' => $col->where('tier', 'Strategic')->count(),             'note' => 'kontrak >12 bln', 'color' => '#A855F7'],
-        ['label' => 'Proyek Aktif', 'value' => $col->sum('active_projects'),                          'note' => 'tersebar 8 klien','color' => '#3B82F6'],
-        ['label' => 'Avg Health',   'value' => round($col->avg('health')) . '%',                       'note' => 'baik',            'color' => '#10B981'],
-        ['label' => 'Perlu Atensi', 'value' => $col->where('attention', true)->count(),               'note' => 'AI flagged',      'color' => '#F59E0B'],
+        ['label' => 'Total Klien',  'value' => count($clients),                            'note' => $archiveScope === 'active' ? 'aktif ditampilkan' : 'sesuai filter', 'color' => '#7C3AED'],
+        ['label' => 'Strategic',    'value' => $col->where('tier', 'Strategic')->count(), 'note' => 'tier strategic',          'color' => '#A855F7'],
+        ['label' => 'Proyek Aktif', 'value' => $col->sum('active_projects'),              'note' => 'relasi project',          'color' => '#3B82F6'],
+        ['label' => 'Avg Health',   'value' => round($col->avg('health') ?: 0) . '%',      'note' => 'rata-rata',              'color' => '#10B981'],
+        ['label' => 'Perlu Atensi', 'value' => $col->filter(fn ($client) => ! empty($client['smart_insights']))->count(), 'note' => 'rule-based', 'color' => '#F59E0B'],
     ];
 
     $tierGradient = [
@@ -86,6 +89,13 @@
         return                ['label' => 'At Risk',   'class' => 'text-rose-600'];
     };
 
+    $insightPill = [
+        'critical' => 'bg-rose-50 text-rose-700 border-rose-100',
+        'warning' => 'bg-amber-50 text-amber-700 border-amber-100',
+        'info' => 'bg-violet-50 text-violet-700 border-violet-100',
+        'success' => 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    ];
+
 @endphp
 
 <x-layouts.authenticated :title="$title">
@@ -133,20 +143,36 @@
             </div>
             <div class="flex-1 min-w-[280px]">
                 <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <span class="text-[10.5px] font-bold tracking-[0.12em] uppercase text-violet-700">AI Sekretaris &middot; Outreach Saran</span>
+                    <span class="text-[10.5px] font-bold tracking-[0.12em] uppercase text-violet-700">Pengingat Cerdas &middot; Outreach</span>
                     <span class="w-1 h-1 rounded-full bg-violet-300"></span>
-                    <span class="text-[11.5px] text-slate-500">baru saja</span>
+                    <span class="text-[11.5px] text-slate-500">berdasarkan data aktif</span>
                 </div>
-                <h3 class="text-[16.5px] font-bold text-[#1E1B4B] mb-1">3 klien butuh perhatian minggu ini</h3>
+                <h3 class="text-[16.5px] font-bold text-[#1E1B4B] mb-1">
+                    {{ $attentionClient ? $attentionClient['name'] . ' perlu follow-up ringan' : 'Semua klien aktif stabil' }}
+                </h3>
                 <p class="text-[13px] text-slate-600 leading-relaxed">
-                    <strong>PT Global Prima</strong> kontrak habis 7 hari &middot; <strong>PT Maju Jaya</strong> belum follow-up 30 hari &middot; <strong>CV Berkah Digital</strong> minta proposal revisi.
-                    Saya bisa drafting WhatsApp dengan tone konteks-aware untuk masing-masing.
+                    @if ($attentionClient && $attentionInsight)
+                        <strong>{{ $attentionInsight['title'] }}</strong> &middot; {{ $attentionInsight['description'] }}
+                    @else
+                        Belum ada sinyal relationship health, project risk, atau last touch yang membutuhkan tindakan cepat.
+                    @endif
                 </p>
                 <div class="mt-3 flex gap-2 flex-wrap">
-                    <button type="button" data-toast="AI Drafting WhatsApp untuk semua klien segera tersedia." class="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-white border border-violet-200 hover:border-violet-400 text-[12.5px] font-semibold text-violet-700 transition cursor-pointer">
-                        <x-heroicon-o-chat-bubble-left-right class="w-3.5 h-3.5" />
-                        Drafting WhatsApp Semua
-                    </button>
+                    @if ($attentionClient)
+                        <button
+                            type="button"
+                            data-open-draft
+                            data-draft-type="whatsapp"
+                            data-client-id="{{ $attentionClient['id'] }}"
+                            data-url="{{ $attentionClient['wa_draft_url'] }}"
+                            data-fallback="{{ $attentionClient['wa_draft_fallback'] }}"
+                            data-client-name="{{ $attentionClient['name'] }}"
+                            class="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-white border border-violet-200 hover:border-violet-400 text-[12.5px] font-semibold text-violet-700 transition cursor-pointer"
+                        >
+                            <x-heroicon-o-chat-bubble-left-right class="w-3.5 h-3.5" />
+                            Draft WhatsApp
+                        </button>
+                    @endif
                     <button type="button" data-cycle-attention class="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:bg-white/70 transition cursor-pointer">
                         Tampilkan satu per satu
                     </button>
@@ -279,6 +305,14 @@
                     </div>
                     <x-heroicon-o-phone class="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                 </div>
+
+                @if (! empty($c['smart_insights']))
+                    @php $cardInsight = $c['smart_insights'][0]; @endphp
+                    <div class="mb-4 rounded-xl border {{ $insightPill[$cardInsight['severity']] ?? $insightPill['info'] }} px-3 py-2">
+                        <div class="text-[10px] font-bold uppercase tracking-wider">{{ $cardInsight['category'] }}</div>
+                        <div class="text-[12px] font-semibold mt-0.5">{{ $cardInsight['title'] }}</div>
+                    </div>
+                @endif
 
                 <div class="grid grid-cols-3 gap-3 mb-4">
                     <div>
@@ -553,6 +587,35 @@
                                         Email
                                     </a>
                                 </div>
+                                <div class="mt-2 grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        data-open-draft
+                                        data-draft-type="whatsapp"
+                                        data-client-id="{{ $c['id'] }}"
+                                        data-url="{{ $c['wa_draft_url'] }}"
+                                        data-fallback="{{ $c['wa_draft_fallback'] }}"
+                                        data-client-name="{{ $c['name'] }}"
+                                        class="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-[12px] font-semibold transition cursor-pointer"
+                                    >
+                                        <x-heroicon-o-sparkles class="w-3.5 h-3.5" />
+                                        Draft WA
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-open-draft
+                                        data-draft-type="email"
+                                        data-client-id="{{ $c['id'] }}"
+                                        data-url="{{ $c['email_draft_url'] }}"
+                                        data-subject="{{ $c['email_draft_fallback']['subject'] ?? '' }}"
+                                        data-fallback="{{ $c['email_draft_fallback']['body'] ?? '' }}"
+                                        data-client-name="{{ $c['name'] }}"
+                                        class="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-white border border-violet-100 hover:border-violet-300 text-slate-600 hover:text-violet-700 text-[12px] font-semibold transition cursor-pointer"
+                                    >
+                                        <x-heroicon-o-envelope class="w-3.5 h-3.5" />
+                                        Draft Email
+                                    </button>
+                                </div>
                             </div>
 
                             {{-- Health --}}
@@ -581,6 +644,23 @@
                                 </div>
                             </div>
                         </div>
+
+                        @if (! empty($c['smart_insights']))
+                            <div class="mb-6">
+                                <h4 class="text-[12px] font-bold tracking-[0.12em] uppercase text-violet-600 mb-3 inline-flex items-center gap-2">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span> Saran Smart CRM
+                                </h4>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    @foreach ($c['smart_insights'] as $insight)
+                                        <div class="rounded-xl border {{ $insightPill[$insight['severity']] ?? $insightPill['info'] }} p-3">
+                                            <div class="text-[10px] font-bold uppercase tracking-wider">{{ $insight['category'] }}</div>
+                                            <div class="text-[13px] font-bold mt-1">{{ $insight['title'] }}</div>
+                                            <p class="text-[12px] leading-relaxed mt-1 opacity-90">{{ $insight['description'] }}</p>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
 
                         {{-- Proyek Terkait --}}
                         <div class="mb-6">
@@ -643,15 +723,59 @@
             <div data-client-footer class="px-7 py-4 border-t border-violet-100 bg-violet-50/30 flex items-center justify-between flex-wrap gap-3">
                 <p class="text-[12.5px] text-slate-500 inline-flex items-center gap-1.5">
                     <x-heroicon-o-sparkles class="w-3.5 h-3.5 text-violet-500" />
-                    AI Sekretaris siap drafting WA dengan konteks proyek aktif.
+                    Draft outreach hanya saran. Tinjau dan edit sebelum dikirim.
                 </p>
                 <div class="flex gap-2">
                     <button type="button" data-modal-close class="px-5 h-9 rounded-xl bg-white border border-violet-200 text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">Tutup</button>
-                    <button type="button" data-toast="AI Drafting WhatsApp segera tersedia." class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-violet-600 text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                    <button type="button" data-footer-draft="email" class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-white border border-violet-200 text-violet-700 text-[13px] font-semibold hover:border-violet-400 transition cursor-pointer">
+                        <x-heroicon-o-envelope class="w-4 h-4" />
+                        Draft Email
+                    </button>
+                    <button type="button" data-footer-draft="whatsapp" class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-violet-600 text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                         <x-heroicon-o-sparkles class="w-4 h-4" />
-                        Drafting WhatsApp
+                        Draft WhatsApp
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div data-draft-modal class="hidden fixed inset-0 z-[60] items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+        <div data-draft-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+        <div data-draft-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-xl flex flex-col overflow-hidden border border-violet-100">
+            <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
+                <div>
+                    <div data-draft-kicker class="text-[10.5px] font-bold tracking-[0.12em] uppercase text-violet-600">Draft AI</div>
+                    <h3 data-draft-title class="text-[16px] font-bold text-[#1E1B4B]">Draft Follow-up</h3>
+                </div>
+                <button type="button" data-draft-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
+                    <x-heroicon-o-x-mark class="w-5 h-5" />
+                </button>
+            </div>
+            <div class="px-6 py-5 space-y-3">
+                <p data-draft-message class="hidden text-[12.5px] rounded-xl border border-amber-100 bg-amber-50 text-amber-700 px-3 py-2"></p>
+                <div data-draft-subject-wrap class="hidden">
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Subject</label>
+                    <input data-draft-subject class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Draft bisa diedit sebelum dikirim</label>
+                    <textarea data-draft-text rows="8" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-violet-300"></textarea>
+                </div>
+                <div class="flex items-start gap-2.5 p-3 rounded-lg bg-violet-50/70 border border-violet-100 text-[12px] text-slate-600">
+                    <x-heroicon-o-shield-check class="w-4 h-4 text-violet-600 flex-shrink-0 mt-0.5" />
+                    <span>Smart-PMIS tidak mengirim WhatsApp atau email otomatis. Draft ini hanya untuk disalin dan ditinjau manual.</span>
+                </div>
+            </div>
+            <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2">
+                <button type="button" data-draft-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Tutup</button>
+                <button type="button" data-draft-regenerate class="h-9 px-4 rounded-lg bg-white border border-violet-200 text-[12.5px] font-semibold text-violet-700 hover:border-violet-400 transition cursor-pointer">
+                    Regenerate
+                </button>
+                <button type="button" data-draft-copy class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                    <x-heroicon-o-clipboard-document class="w-4 h-4" />
+                    Copy
+                </button>
             </div>
         </div>
     </div>
@@ -783,6 +907,7 @@
                 const modal    = document.querySelector('[data-modal]');
                 const overlay  = modal?.querySelector('[data-modal-overlay]');
                 const panel    = modal?.querySelector('[data-modal-panel]');
+                let activeClientId = null;
                 const openModal = (id) => {
                     if (! modal) return;
                     /* live query — content blocks may be injected dynamically by renderCard */
@@ -795,6 +920,7 @@
                         if (isThis) matched = true;
                     });
                     if (! matched) return;
+                    activeClientId = String(id);
                     modal.classList.remove('hidden');
                     modal.classList.add('flex');
                     document.body.style.overflow = 'hidden';
@@ -806,6 +932,136 @@
                     modal.classList.remove('flex');
                     document.body.style.overflow = '';
                 };
+
+                const draftModal = document.querySelector('[data-draft-modal]');
+                const draftText = draftModal?.querySelector('[data-draft-text]');
+                const draftSubject = draftModal?.querySelector('[data-draft-subject]');
+                const draftSubjectWrap = draftModal?.querySelector('[data-draft-subject-wrap]');
+                const draftMessage = draftModal?.querySelector('[data-draft-message]');
+                const draftTitle = draftModal?.querySelector('[data-draft-title]');
+                const draftKicker = draftModal?.querySelector('[data-draft-kicker]');
+                let draftState = null;
+
+                const showDraftMessage = (message, tone = 'info') => {
+                    if (! draftMessage) return;
+                    draftMessage.textContent = message || '';
+                    draftMessage.classList.toggle('hidden', ! message);
+                    draftMessage.classList.toggle('border-amber-100', tone !== 'success');
+                    draftMessage.classList.toggle('bg-amber-50', tone !== 'success');
+                    draftMessage.classList.toggle('text-amber-700', tone !== 'success');
+                    draftMessage.classList.toggle('border-emerald-100', tone === 'success');
+                    draftMessage.classList.toggle('bg-emerald-50', tone === 'success');
+                    draftMessage.classList.toggle('text-emerald-700', tone === 'success');
+                };
+
+                const openDraftModal = (state) => {
+                    if (! draftModal || ! draftText) return;
+                    draftState = state;
+                    const isEmail = state.type === 'email';
+                    draftTitle.textContent = (isEmail ? 'Draft Email untuk ' : 'Draft WhatsApp untuk ') + (state.clientName || 'Klien');
+                    draftKicker.textContent = isEmail ? 'Draft AI · Email' : 'Draft AI · WhatsApp';
+                    draftSubjectWrap?.classList.toggle('hidden', ! isEmail);
+                    if (draftSubject) draftSubject.value = isEmail ? (state.subject || '') : '';
+                    draftText.value = state.fallback || '';
+                    showDraftMessage('Membuat draft dari konteks klien. Jika AI belum tersedia, draft aturan dasar tetap bisa dipakai.');
+                    draftModal.classList.remove('hidden');
+                    draftModal.classList.add('flex');
+                    document.body.style.overflow = 'hidden';
+                    fetchDraft(state);
+                };
+
+                const closeDraftModal = () => {
+                    if (! draftModal) return;
+                    draftModal.classList.add('hidden');
+                    draftModal.classList.remove('flex');
+                    document.body.style.overflow = modal && ! modal.classList.contains('hidden') ? 'hidden' : '';
+                };
+
+                const fetchDraft = async (state) => {
+                    if (! state?.url || ! draftText) return;
+                    const regenerate = draftModal?.querySelector('[data-draft-regenerate]');
+                    regenerate && (regenerate.disabled = true);
+                    try {
+                        const res = await fetch(state.url, {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                            },
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (! res.ok) {
+                            if (state.type === 'email' && data.fallback) {
+                                draftSubject.value = data.fallback.subject || state.subject || '';
+                                draftText.value = data.fallback.body || state.fallback || '';
+                            } else {
+                                draftText.value = data.fallback || state.fallback || '';
+                            }
+                            showDraftMessage(data.message ? data.message + ' Draft rule-based ditampilkan.' : 'Draft rule-based ditampilkan.');
+                            return;
+                        }
+                        if (state.type === 'email') {
+                            draftSubject.value = data.subject || state.subject || '';
+                            draftText.value = data.body || state.fallback || '';
+                        } else {
+                            draftText.value = data.text || state.fallback || '';
+                        }
+                        showDraftMessage('Draft AI siap ditinjau manual sebelum dikirim.', 'success');
+                    } catch (error) {
+                        draftText.value = state.fallback || '';
+                        showDraftMessage('AI gagal menghasilkan respons. Draft rule-based ditampilkan.');
+                    } finally {
+                        regenerate && (regenerate.disabled = false);
+                    }
+                };
+
+                const stateFromButton = (btn) => ({
+                    type: btn.dataset.draftType || 'whatsapp',
+                    url: btn.dataset.url || '',
+                    fallback: btn.dataset.fallback || '',
+                    subject: btn.dataset.subject || '',
+                    clientName: btn.dataset.clientName || '',
+                });
+
+                document.querySelectorAll('[data-open-draft]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openDraftModal(stateFromButton(btn));
+                    });
+                });
+
+                document.querySelectorAll('[data-footer-draft]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const data = window.__clientsCsvMap?.[activeClientId];
+                        if (! data) return;
+                        const isEmail = btn.dataset.footerDraft === 'email';
+                        openDraftModal({
+                            type: isEmail ? 'email' : 'whatsapp',
+                            url: isEmail ? data.email_draft_url : data.wa_draft_url,
+                            fallback: isEmail ? (data.email_draft_fallback?.body || '') : (data.wa_draft_fallback || ''),
+                            subject: isEmail ? (data.email_draft_fallback?.subject || '') : '',
+                            clientName: data.name || '',
+                        });
+                    });
+                });
+
+                draftModal?.querySelector('[data-draft-overlay]')?.addEventListener('click', closeDraftModal);
+                draftModal?.querySelectorAll('[data-draft-close]').forEach(btn => btn.addEventListener('click', closeDraftModal));
+                draftModal?.querySelector('[data-draft-regenerate]')?.addEventListener('click', () => draftState && fetchDraft(draftState));
+                draftModal?.querySelector('[data-draft-copy]')?.addEventListener('click', async () => {
+                    const subject = draftSubject && ! draftSubjectWrap?.classList.contains('hidden') ? draftSubject.value.trim() + "\n\n" : '';
+                    const text = subject + (draftText?.value || '');
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        window.toast && window.toast('Draft disalin.');
+                    } catch (error) {
+                        draftText?.select();
+                        document.execCommand('copy');
+                        window.toast && window.toast('Draft disalin.');
+                    }
+                });
 
                 document.querySelectorAll('[data-modal-trigger]').forEach(trigger => {
                     trigger.addEventListener('click', (e) => {
@@ -822,6 +1078,8 @@
                     if (op && op.startsWith('client:')) {
                         const id = op.split(':')[1];
                         if (id) openModal(id);
+                    } else if (params.get('client')) {
+                        openModal(params.get('client'));
                     }
                 } catch (e) {}
 
@@ -844,7 +1102,12 @@
                     btn.addEventListener('click', closeModal);
                 });
                 document.addEventListener('keydown', (e) => {
-                    if (e.key === 'Escape' && modal && ! modal.classList.contains('hidden')) closeModal();
+                    if (e.key !== 'Escape') return;
+                    if (draftModal && ! draftModal.classList.contains('hidden')) {
+                        closeDraftModal();
+                    } else if (modal && ! modal.classList.contains('hidden')) {
+                        closeModal();
+                    }
                 });
             };
 
