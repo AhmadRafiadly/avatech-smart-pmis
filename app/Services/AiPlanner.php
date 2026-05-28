@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AiRequestLog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -54,6 +55,34 @@ class AiPlanner
     }
 
     /**
+     * Safe provider metadata for status pages. API keys never leave config.
+     *
+     * @return array<int, array{key: string, label: string, model: string, configured: bool, role: string}>
+     */
+    public static function providerStatuses(): array
+    {
+        $order = self::providerOrder();
+
+        return array_values(array_map(function (string $provider, int $idx) {
+            return [
+                'key' => $provider,
+                'label' => match ($provider) {
+                    'groq' => 'Groq',
+                    'openrouter' => 'OpenRouter',
+                    default => 'Gemini',
+                },
+                'model' => self::providerModel($provider),
+                'configured' => self::providerApiKey($provider) !== '',
+                'role' => match ($idx) {
+                    0 => 'Primary',
+                    1 => 'Fallback 1',
+                    default => 'Fallback ' . $idx,
+                },
+            ];
+        }, $order, array_keys($order)));
+    }
+
+    /**
      * Generate a WBS draft from MoM context. Provider fallback call; no DB writes.
      *
      * Expected $context keys (all optional, all coerced to string):
@@ -75,12 +104,18 @@ class AiPlanner
         $prompt = self::buildWbsPrompt($context);
         $providerResult = self::callConfiguredProviders($prompt, 0.4);
         if (! ($providerResult['ok'] ?? false)) {
+            self::logAiRequest('wbs_generator', $context, 'failed', $providerResult, $providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR);
             return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR);
         }
 
         $parsed = self::parseResponse((string) $providerResult['text']);
         if ($parsed['ok'] ?? false) {
             $parsed['provider'] = $providerResult['provider'] ?? null;
+            $parsed['model'] = $providerResult['model'] ?? null;
+            $parsed['fallback_path'] = $providerResult['fallback_path'] ?? null;
+            self::logAiRequest('wbs_generator', $context, 'success', $providerResult);
+        } else {
+            self::logAiRequest('wbs_generator', $context, 'failed', $providerResult, $parsed['error'] ?? 'Respons AI belum sesuai format.');
         }
 
         return $parsed;
@@ -101,12 +136,18 @@ class AiPlanner
         $prompt = self::buildTestCasePrompt($context);
         $providerResult = self::callConfiguredProviders($prompt, 0.35);
         if (! ($providerResult['ok'] ?? false)) {
+            self::logAiRequest('test_case_generator', $context, 'failed', $providerResult, $providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR);
             return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR, ['test_cases' => []]);
         }
 
         $parsed = self::parseTestCaseResponse((string) $providerResult['text']);
         if ($parsed['ok'] ?? false) {
             $parsed['provider'] = $providerResult['provider'] ?? null;
+            $parsed['model'] = $providerResult['model'] ?? null;
+            $parsed['fallback_path'] = $providerResult['fallback_path'] ?? null;
+            self::logAiRequest('test_case_generator', $context, 'success', $providerResult);
+        } else {
+            self::logAiRequest('test_case_generator', $context, 'failed', $providerResult, $parsed['error'] ?? 'Respons AI belum sesuai format.');
         }
 
         return $parsed;
@@ -127,12 +168,18 @@ class AiPlanner
         $prompt = self::buildMomFixerPrompt($context);
         $providerResult = self::callConfiguredProviders($prompt, 0.25);
         if (! ($providerResult['ok'] ?? false)) {
+            self::logAiRequest('mom_fixer', $context, 'failed', $providerResult, $providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR);
             return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR, ['mom' => [], 'formatted' => '']);
         }
 
         $parsed = self::parseMomSummaryResponse((string) $providerResult['text']);
         if ($parsed['ok'] ?? false) {
             $parsed['provider'] = $providerResult['provider'] ?? null;
+            $parsed['model'] = $providerResult['model'] ?? null;
+            $parsed['fallback_path'] = $providerResult['fallback_path'] ?? null;
+            self::logAiRequest('mom_fixer', $context, 'success', $providerResult);
+        } else {
+            self::logAiRequest('mom_fixer', $context, 'failed', $providerResult, $parsed['error'] ?? 'Respons AI belum sesuai format.');
         }
 
         return $parsed;
@@ -149,10 +196,20 @@ class AiPlanner
 
         $providerResult = self::callConfiguredProviders(self::buildClientWhatsappDraftPrompt($context), 0.35);
         if (! ($providerResult['ok'] ?? false)) {
+            self::logAiRequest('client_whatsapp_draft', $context, 'failed', $providerResult, $providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR);
             return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR, ['text' => '']);
         }
 
-        return self::parseClientDraftResponse((string) $providerResult['text'], $providerResult['provider'] ?? null);
+        $parsed = self::parseClientDraftResponse((string) $providerResult['text'], $providerResult['provider'] ?? null);
+        if ($parsed['ok'] ?? false) {
+            $parsed['model'] = $providerResult['model'] ?? null;
+            $parsed['fallback_path'] = $providerResult['fallback_path'] ?? null;
+            self::logAiRequest('client_whatsapp_draft', $context, 'success', $providerResult);
+        } else {
+            self::logAiRequest('client_whatsapp_draft', $context, 'failed', $providerResult, $parsed['error'] ?? 'Respons AI belum sesuai format.');
+        }
+
+        return $parsed;
     }
 
     /**
@@ -166,12 +223,18 @@ class AiPlanner
 
         $providerResult = self::callConfiguredProviders(self::buildClientEmailDraftPrompt($context), 0.35);
         if (! ($providerResult['ok'] ?? false)) {
+            self::logAiRequest('client_email_draft', $context, 'failed', $providerResult, $providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR);
             return self::failure($providerResult['error'] ?? self::FRIENDLY_PROVIDER_ERROR, ['subject' => '', 'body' => '']);
         }
 
         $parsed = self::parseClientEmailResponse((string) $providerResult['text']);
         if ($parsed['ok'] ?? false) {
             $parsed['provider'] = $providerResult['provider'] ?? null;
+            $parsed['model'] = $providerResult['model'] ?? null;
+            $parsed['fallback_path'] = $providerResult['fallback_path'] ?? null;
+            self::logAiRequest('client_email_draft', $context, 'success', $providerResult);
+        } else {
+            self::logAiRequest('client_email_draft', $context, 'failed', $providerResult, $parsed['error'] ?? 'Respons AI belum sesuai format.');
         }
 
         return $parsed;
@@ -448,7 +511,7 @@ class AiPlanner
     /**
      * Calls configured providers in order and returns raw response text.
      *
-     * @return array{ok: bool, text?: string, provider?: string, error?: string}
+     * @return array{ok: bool, text?: string, provider?: string, model?: string, fallback_path?: array<int, string>, prompt_tokens?: ?int, completion_tokens?: ?int, total_tokens?: ?int, latency_ms?: int, error?: string}
      */
     private static function callConfiguredProviders(string $prompt, float $temperature): array
     {
@@ -458,6 +521,8 @@ class AiPlanner
         }
 
         $errors = [];
+        $fallbackPath = [];
+        $startedAt = microtime(true);
         foreach ($providers as $provider) {
             $result = match ($provider) {
                 'gemini' => self::callGemini($prompt, $temperature),
@@ -467,14 +532,23 @@ class AiPlanner
             };
 
             if (($result['ok'] ?? false) && trim((string) ($result['text'] ?? '')) !== '') {
+                $fallbackPath[] = $provider;
+
                 return [
                     'ok' => true,
                     'provider' => $provider,
+                    'model' => self::providerModel($provider),
                     'text' => (string) $result['text'],
+                    'fallback_path' => $fallbackPath,
+                    'prompt_tokens' => $result['prompt_tokens'] ?? null,
+                    'completion_tokens' => $result['completion_tokens'] ?? null,
+                    'total_tokens' => $result['total_tokens'] ?? null,
+                    'latency_ms' => self::elapsedMs($startedAt),
                 ];
             }
 
             $errors[$provider] = (string) ($result['error'] ?? 'Respons kosong.');
+            $fallbackPath[] = $provider . '_failed';
         }
 
         Log::warning('AI provider fallback exhausted.', [
@@ -482,7 +556,12 @@ class AiPlanner
             'errors' => $errors,
         ]);
 
-        return ['ok' => false, 'error' => self::FRIENDLY_PROVIDER_ERROR];
+        return [
+            'ok' => false,
+            'error' => self::FRIENDLY_PROVIDER_ERROR,
+            'fallback_path' => $fallbackPath,
+            'latency_ms' => self::elapsedMs($startedAt),
+        ];
     }
 
     /**
@@ -518,7 +597,13 @@ class AiPlanner
         $text = trim((string) ($response->json('candidates.0.content.parts.0.text') ?? ''));
 
         return $text !== ''
-            ? ['ok' => true, 'text' => $text]
+            ? [
+                'ok' => true,
+                'text' => $text,
+                'prompt_tokens' => self::intOrNull($response->json('usageMetadata.promptTokenCount')),
+                'completion_tokens' => self::intOrNull($response->json('usageMetadata.candidatesTokenCount')),
+                'total_tokens' => self::intOrNull($response->json('usageMetadata.totalTokenCount')),
+            ]
             : ['ok' => false, 'error' => 'Respons kosong.'];
     }
 
@@ -599,7 +684,13 @@ class AiPlanner
         $text = trim((string) ($response->json('choices.0.message.content') ?? ''));
 
         return $text !== ''
-            ? ['ok' => true, 'text' => $text]
+            ? [
+                'ok' => true,
+                'text' => $text,
+                'prompt_tokens' => self::intOrNull($response->json('usage.prompt_tokens')),
+                'completion_tokens' => self::intOrNull($response->json('usage.completion_tokens')),
+                'total_tokens' => self::intOrNull($response->json('usage.total_tokens')),
+            ]
             : ['ok' => false, 'error' => 'Respons kosong.'];
     }
 
@@ -608,6 +699,78 @@ class AiPlanner
         $message = is_string($message) ? trim($message) : '';
 
         return $message !== '' ? ('HTTP ' . $status . ': ' . $message) : ('HTTP ' . $status);
+    }
+
+    private static function elapsedMs(float $startedAt): int
+    {
+        return max(0, (int) round((microtime(true) - $startedAt) * 1000));
+    }
+
+    private static function intOrNull(mixed $value): ?int
+    {
+        return is_numeric($value) ? max(0, (int) $value) : null;
+    }
+
+    private static function logAiRequest(string $feature, array $context, string $status, ?array $providerResult = null, ?string $error = null): void
+    {
+        try {
+            AiRequestLog::create([
+                'user_id' => self::contextId($context['user_id'] ?? auth()->id()),
+                'project_id' => self::contextId($context['project_id'] ?? null),
+                'client_id' => self::contextId($context['client_id'] ?? null),
+                'feature' => $feature,
+                'provider' => self::nullableStr($providerResult['provider'] ?? null),
+                'model' => self::nullableStr($providerResult['model'] ?? null),
+                'status' => $status === 'success' ? 'success' : 'failed',
+                'fallback_path' => self::fallbackPath($providerResult['fallback_path'] ?? null),
+                'prompt_tokens' => self::intOrNull($providerResult['prompt_tokens'] ?? null),
+                'completion_tokens' => self::intOrNull($providerResult['completion_tokens'] ?? null),
+                'total_tokens' => self::intOrNull($providerResult['total_tokens'] ?? null),
+                'latency_ms' => self::intOrNull($providerResult['latency_ms'] ?? null),
+                'error_message' => $status === 'success' ? null : self::sanitizeAiError($error),
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('AI request metadata logging failed.', ['message' => $e->getMessage()]);
+        }
+    }
+
+    private static function contextId(mixed $value): ?int
+    {
+        return is_numeric($value) && (int) $value > 0 ? (int) $value : null;
+    }
+
+    private static function nullableStr(mixed $value): ?string
+    {
+        $value = is_string($value) ? trim($value) : '';
+
+        return $value !== '' ? self::clip($value, 120) : null;
+    }
+
+    /**
+     * @return array<int, string>|null
+     */
+    private static function fallbackPath(mixed $path): ?array
+    {
+        if (! is_array($path)) {
+            return null;
+        }
+
+        $clean = array_values(array_filter(array_map(fn ($item) => self::nullableStr($item), $path)));
+
+        return $clean !== [] ? $clean : null;
+    }
+
+    private static function sanitizeAiError(?string $message): ?string
+    {
+        $message = trim((string) $message);
+        if ($message === '') {
+            return null;
+        }
+
+        $message = preg_replace('/(AIza|sk-|gsk_|or-)[A-Za-z0-9._\-]+/', '[redacted]', $message) ?: $message;
+        $message = preg_replace('/key=([^&\s]+)/i', 'key=[redacted]', $message) ?: $message;
+
+        return self::clip($message, 500);
     }
 
     public static function buildWbsPrompt(array $context): string

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuditController;
+use App\Http\Controllers\AiMonitorController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExecutiveController;
@@ -41,6 +42,7 @@ Route::middleware('auth')->group(function () {
     Route::middleware('ceo.pm')->group(function () {
         Route::get('/executive', [ExecutiveController::class, 'index'])->name('executive.index');
         Route::get('/executive/insights', [ExecutiveController::class, 'insights'])->name('executive.insights');
+        Route::get('/ai-monitor', [AiMonitorController::class, 'index'])->name('ai-monitor.index');
         Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
         Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
         Route::put('/clients/{client}', [ClientController::class, 'update'])->name('clients.update');

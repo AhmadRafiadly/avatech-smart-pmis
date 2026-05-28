@@ -329,6 +329,8 @@ class ClientController extends Controller
     private function clientDraftContext(Client $client): array
     {
         return [
+            'user_id' => auth()->id(),
+            'client_id' => $client->id,
             'client_name' => $client->name,
             'pic_name' => $client->pic_name,
             'pic_role' => $client->pic_role,

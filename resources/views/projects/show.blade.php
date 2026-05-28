@@ -293,15 +293,15 @@
         <p class="mt-4 text-[14px] text-slate-500 max-w-3xl leading-relaxed">{{ $desc }}</p>
 
         <div class="mt-5 flex flex-wrap items-center gap-2">
-            <a href="{{ route('projects.export.wbs', $project) }}" title="Unduh WBS sebagai PDF"
+            <a href="{{ route('projects.export.wbs', $project) }}" title="Unduh WBS sebagai PDF" data-loading-link data-loading-label="Menyiapkan PDF..."
                class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer no-underline">
                 <x-heroicon-o-document-text class="w-4 h-4" />
-                Export WBS (PDF)
+                <span data-loading-text>Export WBS (PDF)</span>
             </a>
-            <a href="{{ route('projects.export.test-cases', $project) }}" title="Unduh Test Case QC sebagai PDF"
+            <a href="{{ route('projects.export.test-cases', $project) }}" title="Unduh Test Case QC sebagai PDF" data-loading-link data-loading-label="Menyiapkan PDF..."
                class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer no-underline">
                 <x-heroicon-o-beaker class="w-4 h-4" />
-                Export Test Case (PDF)
+                <span data-loading-text>Export Test Case (PDF)</span>
             </a>
             @if ($project->archived_at)
                 <form method="POST" action="{{ route('projects.restore', $project) }}">
@@ -1021,7 +1021,7 @@
                         Otomatis rapikan MoM mentah Anda menggunakan AI agar siap diproses.
                     </p>
                     @if (($momFixerState['tone'] ?? 'muted') === 'ready' && $canEdit && ! $useReferenceProjectData)
-                        <form method="POST" action="{{ route('projects.ai-mom.fix', $project) }}" class="w-full" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                        <form method="POST" action="{{ route('projects.ai-mom.fix', $project) }}" class="w-full" data-loading-form data-loading-label="Merapikan MoM...">
                             @csrf
                             <button
                                 type="submit"
@@ -1029,7 +1029,7 @@
                                 class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition bg-gradient-to-r from-violet-500 to-pink-500 text-white shadow-lg shadow-violet-500/20 hover:scale-[1.02] cursor-pointer disabled:opacity-70 disabled:cursor-wait"
                             >
                                 <x-heroicon-o-sparkles class="w-4 h-4" />
-                                {{ $momFixerState['label'] }}
+                                <span data-loading-text>{{ $momFixerState['label'] }}</span>
                             </button>
                         </form>
                     @else
@@ -1177,7 +1177,7 @@
                     </p>
 
                     @if ($wbsBtnState['tone'] === 'ready' && $canEdit && ! $useReferenceProjectData)
-                        <form method="POST" action="{{ route('projects.ai-wbs.generate', $project) }}" class="w-full" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                        <form method="POST" action="{{ route('projects.ai-wbs.generate', $project) }}" class="w-full" data-loading-form data-loading-label="Menyusun WBS...">
                             @csrf
                             <button
                                 type="submit"
@@ -1185,7 +1185,7 @@
                                 class="w-full py-3 rounded-xl font-bold text-[13px] inline-flex items-center justify-center gap-2 transition bg-gradient-to-r from-violet-500 to-pink-500 text-white shadow-lg shadow-violet-500/20 hover:scale-[1.02] cursor-pointer disabled:opacity-70 disabled:cursor-wait"
                             >
                                 <x-heroicon-o-sparkles class="w-4 h-4" />
-                                {{ $wbsBtnState['label'] }}
+                                <span data-loading-text>{{ $wbsBtnState['label'] }}</span>
                             </button>
                         </form>
                         <p class="text-[11px] text-violet-600 italic text-center leading-relaxed">
@@ -1428,7 +1428,7 @@
 
                 <div class="flex flex-col items-end gap-1.5">
                     @if ($qcAiState['tone'] === 'ready')
-                        <form method="POST" action="{{ route('projects.ai-test-cases.generate', $project) }}" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                        <form method="POST" action="{{ route('projects.ai-test-cases.generate', $project) }}" data-loading-form data-loading-label="Membuat Test Case...">
                             @csrf
                             <button
                                 type="submit"
@@ -1436,7 +1436,7 @@
                                 class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer disabled:opacity-70 disabled:cursor-wait"
                             >
                                 <x-heroicon-o-sparkles class="w-4 h-4" />
-                                {{ $qcAiState['label'] }}
+                                <span data-loading-text>{{ $qcAiState['label'] }}</span>
                             </button>
                         </form>
                     @else
@@ -1460,6 +1460,45 @@
     <script>
         (function () {
             const wire = () => {
+                const spinner = '<span data-loading-spinner class="inline-block w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin"></span>';
+                const setLoading = (button, label) => {
+                    if (! button || button.dataset.loading === '1') return false;
+                    const text = button.querySelector('[data-loading-text]');
+                    button.dataset.loading = '1';
+                    button.disabled = true;
+                    button.setAttribute('aria-disabled', 'true');
+                    button.classList.add('opacity-70', 'cursor-wait');
+                    if (text) text.textContent = label;
+                    button.insertAdjacentHTML('afterbegin', spinner);
+                    return true;
+                };
+
+                document.querySelectorAll('[data-loading-form]').forEach(form => {
+                    form.addEventListener('submit', (event) => {
+                        const button = form.querySelector('button[type="submit"]');
+                        if (button?.dataset.loading === '1') {
+                            event.preventDefault();
+                            return;
+                        }
+                        setLoading(button, form.dataset.loadingLabel || 'Memproses...');
+                    });
+                });
+
+                document.querySelectorAll('[data-loading-link]').forEach(link => {
+                    link.addEventListener('click', (event) => {
+                        if (link.dataset.loading === '1') {
+                            event.preventDefault();
+                            return;
+                        }
+                        link.dataset.loading = '1';
+                        link.setAttribute('aria-disabled', 'true');
+                        link.classList.add('opacity-70', 'cursor-wait', 'pointer-events-none');
+                        const text = link.querySelector('[data-loading-text]');
+                        if (text) text.textContent = link.dataset.loadingLabel || 'Menyiapkan...';
+                        link.insertAdjacentHTML('afterbegin', spinner);
+                    });
+                });
+
                 const tabs       = document.querySelectorAll('.pd-tab');
                 const sideLinks  = document.querySelectorAll('[data-pd-nav]');
                 const panels     = document.querySelectorAll('[data-panel]');

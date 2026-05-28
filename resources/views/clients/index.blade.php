@@ -170,7 +170,7 @@
                             class="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-white border border-violet-200 hover:border-violet-400 text-[12.5px] font-semibold text-violet-700 transition cursor-pointer"
                         >
                             <x-heroicon-o-chat-bubble-left-right class="w-3.5 h-3.5" />
-                            Draft WhatsApp
+                            <span data-draft-button-text>Draft WhatsApp</span>
                         </button>
                     @endif
                     <button type="button" data-cycle-attention class="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:bg-white/70 transition cursor-pointer">
@@ -308,9 +308,11 @@
 
                 @if (! empty($c['smart_insights']))
                     @php $cardInsight = $c['smart_insights'][0]; @endphp
-                    <div class="mb-4 rounded-xl border {{ $insightPill[$cardInsight['severity']] ?? $insightPill['info'] }} px-3 py-2">
-                        <div class="text-[10px] font-bold uppercase tracking-wider">{{ $cardInsight['category'] }}</div>
-                        <div class="text-[12px] font-semibold mt-0.5">{{ $cardInsight['title'] }}</div>
+                    <div class="mb-4">
+                        <span class="inline-flex items-center gap-1.5 rounded-full border {{ $insightPill[$cardInsight['severity']] ?? $insightPill['info'] }} px-2.5 py-1 text-[10.5px] font-bold tracking-wide uppercase">
+                            <x-heroicon-o-sparkles class="w-3 h-3" />
+                            {{ ($cardInsight['category'] ?? '') === 'Follow-up Klien' ? 'Follow-up disarankan' : 'Perlu perhatian' }}
+                        </span>
                     </div>
                 @endif
 
@@ -599,7 +601,7 @@
                                         class="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-[12px] font-semibold transition cursor-pointer"
                                     >
                                         <x-heroicon-o-sparkles class="w-3.5 h-3.5" />
-                                        Draft WA
+                                        <span data-draft-button-text>Draft WA</span>
                                     </button>
                                     <button
                                         type="button"
@@ -613,7 +615,7 @@
                                         class="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-white border border-violet-100 hover:border-violet-300 text-slate-600 hover:text-violet-700 text-[12px] font-semibold transition cursor-pointer"
                                     >
                                         <x-heroicon-o-envelope class="w-3.5 h-3.5" />
-                                        Draft Email
+                                        <span data-draft-button-text>Draft Email</span>
                                     </button>
                                 </div>
                             </div>
@@ -650,7 +652,7 @@
                                 <h4 class="text-[12px] font-bold tracking-[0.12em] uppercase text-violet-600 mb-3 inline-flex items-center gap-2">
                                     <span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span> Saran Smart CRM
                                 </h4>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     @foreach ($c['smart_insights'] as $insight)
                                         <div class="rounded-xl border {{ $insightPill[$insight['severity']] ?? $insightPill['info'] }} p-3">
                                             <div class="text-[10px] font-bold uppercase tracking-wider">{{ $insight['category'] }}</div>
@@ -720,20 +722,20 @@
             @endforeach
 
             {{-- Static footer (shared across clients) --}}
-            <div data-client-footer class="px-7 py-4 border-t border-violet-100 bg-violet-50/30 flex items-center justify-between flex-wrap gap-3">
-                <p class="text-[12.5px] text-slate-500 inline-flex items-center gap-1.5">
-                    <x-heroicon-o-sparkles class="w-3.5 h-3.5 text-violet-500" />
-                    Draft outreach hanya saran. Tinjau dan edit sebelum dikirim.
-                </p>
-                <div class="flex gap-2">
+            <div data-client-footer class="px-7 py-4 border-t border-violet-100 bg-violet-50/30">
+                <div class="mb-3 rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-[12.5px] text-slate-500 flex items-start gap-2">
+                    <x-heroicon-o-sparkles class="w-3.5 h-3.5 text-violet-500 flex-shrink-0 mt-0.5" />
+                    <span>Draft outreach hanya saran. Tinjau dan edit sebelum dikirim.</span>
+                </div>
+                <div class="flex justify-end gap-2 flex-wrap">
                     <button type="button" data-modal-close class="px-5 h-9 rounded-xl bg-white border border-violet-200 text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">Tutup</button>
                     <button type="button" data-footer-draft="email" class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-white border border-violet-200 text-violet-700 text-[13px] font-semibold hover:border-violet-400 transition cursor-pointer">
                         <x-heroicon-o-envelope class="w-4 h-4" />
-                        Draft Email
+                        <span data-draft-button-text>Draft Email</span>
                     </button>
                     <button type="button" data-footer-draft="whatsapp" class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-violet-600 text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                         <x-heroicon-o-sparkles class="w-4 h-4" />
-                        Draft WhatsApp
+                        <span data-draft-button-text>Draft WhatsApp</span>
                     </button>
                 </div>
             </div>
@@ -770,7 +772,7 @@
             <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2">
                 <button type="button" data-draft-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Tutup</button>
                 <button type="button" data-draft-regenerate class="h-9 px-4 rounded-lg bg-white border border-violet-200 text-[12.5px] font-semibold text-violet-700 hover:border-violet-400 transition cursor-pointer">
-                    Regenerate
+                    <span data-draft-button-text>Regenerate</span>
                 </button>
                 <button type="button" data-draft-copy class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                     <x-heroicon-o-clipboard-document class="w-4 h-4" />
@@ -941,6 +943,30 @@
                 const draftTitle = draftModal?.querySelector('[data-draft-title]');
                 const draftKicker = draftModal?.querySelector('[data-draft-kicker]');
                 let draftState = null;
+                const draftSpinner = '<span data-draft-spinner class="inline-block w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin"></span>';
+
+                const setDraftButtonLoading = (button, label) => {
+                    if (! button || button.dataset.loading === '1') return false;
+                    button.dataset.loading = '1';
+                    button.disabled = true;
+                    button.setAttribute('aria-disabled', 'true');
+                    button.classList.add('opacity-70', 'cursor-wait');
+                    const text = button.querySelector('[data-draft-button-text]');
+                    if (text) text.textContent = label;
+                    button.insertAdjacentHTML('afterbegin', draftSpinner);
+                    return true;
+                };
+
+                const restoreDraftButton = (button) => {
+                    if (! button) return;
+                    const text = button.querySelector('[data-draft-button-text]');
+                    button.querySelector('[data-draft-spinner]')?.remove();
+                    if (text && button.dataset.originalLabel) text.textContent = button.dataset.originalLabel;
+                    button.disabled = false;
+                    button.removeAttribute('aria-disabled');
+                    button.classList.remove('opacity-70', 'cursor-wait');
+                    delete button.dataset.loading;
+                };
 
                 const showDraftMessage = (message, tone = 'info') => {
                     if (! draftMessage) return;
@@ -967,7 +993,7 @@
                     draftModal.classList.remove('hidden');
                     draftModal.classList.add('flex');
                     document.body.style.overflow = 'hidden';
-                    fetchDraft(state);
+                    fetchDraft(state, state.trigger, state.type === 'email' ? 'Membuat Draft...' : 'Membuat Draft...');
                 };
 
                 const closeDraftModal = () => {
@@ -977,10 +1003,12 @@
                     document.body.style.overflow = modal && ! modal.classList.contains('hidden') ? 'hidden' : '';
                 };
 
-                const fetchDraft = async (state) => {
+                const fetchDraft = async (state, sourceButton = null, loadingLabel = 'Membuat Draft...') => {
                     if (! state?.url || ! draftText) return;
-                    const regenerate = draftModal?.querySelector('[data-draft-regenerate]');
-                    regenerate && (regenerate.disabled = true);
+                    if (sourceButton && ! sourceButton.dataset.originalLabel) {
+                        sourceButton.dataset.originalLabel = sourceButton.querySelector('[data-draft-button-text]')?.textContent?.trim() || sourceButton.textContent.trim();
+                    }
+                    if (sourceButton && ! setDraftButtonLoading(sourceButton, loadingLabel)) return;
                     try {
                         const res = await fetch(state.url, {
                             method: 'POST',
@@ -1011,7 +1039,7 @@
                         draftText.value = state.fallback || '';
                         showDraftMessage('AI gagal menghasilkan respons. Draft rule-based ditampilkan.');
                     } finally {
-                        regenerate && (regenerate.disabled = false);
+                        restoreDraftButton(sourceButton);
                     }
                 };
 
@@ -1021,6 +1049,7 @@
                     fallback: btn.dataset.fallback || '',
                     subject: btn.dataset.subject || '',
                     clientName: btn.dataset.clientName || '',
+                    trigger: btn,
                 });
 
                 document.querySelectorAll('[data-open-draft]').forEach(btn => {
@@ -1043,13 +1072,14 @@
                             fallback: isEmail ? (data.email_draft_fallback?.body || '') : (data.wa_draft_fallback || ''),
                             subject: isEmail ? (data.email_draft_fallback?.subject || '') : '',
                             clientName: data.name || '',
+                            trigger: btn,
                         });
                     });
                 });
 
                 draftModal?.querySelector('[data-draft-overlay]')?.addEventListener('click', closeDraftModal);
                 draftModal?.querySelectorAll('[data-draft-close]').forEach(btn => btn.addEventListener('click', closeDraftModal));
-                draftModal?.querySelector('[data-draft-regenerate]')?.addEventListener('click', () => draftState && fetchDraft(draftState));
+                draftModal?.querySelector('[data-draft-regenerate]')?.addEventListener('click', (e) => draftState && fetchDraft(draftState, e.currentTarget, 'Membuat Ulang...'));
                 draftModal?.querySelector('[data-draft-copy]')?.addEventListener('click', async () => {
                     const subject = draftSubject && ! draftSubjectWrap?.classList.contains('hidden') ? draftSubject.value.trim() + "\n\n" : '';
                     const text = subject + (draftText?.value || '');

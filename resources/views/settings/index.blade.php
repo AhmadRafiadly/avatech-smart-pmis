@@ -190,17 +190,25 @@
                             <h3 class="text-[16px] font-bold text-[#1E1B4B]">Mesin AI</h3>
                             <p class="text-[13px] text-slate-500 mt-1">Provider AI dikonfigurasi lewat environment variables. Tidak ada pengaturan model di sini.</p>
                         </div>
-                        @if ($aiReady)
-                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold tracking-wider uppercase">
-                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                AI siap digunakan
-                            </span>
-                        @else
-                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-[11px] font-bold tracking-wider uppercase">
-                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                                AI belum dikonfigurasi
-                            </span>
-                        @endif
+                        <div class="flex items-center gap-2 flex-wrap">
+                            @if (\Illuminate\Support\Facades\Route::has('ai-monitor.index'))
+                                <a href="{{ route('ai-monitor.index') }}" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-100 bg-white text-violet-700 text-[12px] font-semibold hover:border-violet-300 transition">
+                                    <x-heroicon-o-cpu-chip class="w-4 h-4" />
+                                    Buka AI Monitor
+                                </a>
+                            @endif
+                            @if ($aiReady)
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold tracking-wider uppercase">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                    AI siap digunakan
+                                </span>
+                            @else
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-[11px] font-bold tracking-wider uppercase">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                    AI belum dikonfigurasi
+                                </span>
+                            @endif
+                        </div>
                     </div>
 
                     <div class="mt-5">

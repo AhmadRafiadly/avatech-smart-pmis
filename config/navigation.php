@@ -11,6 +11,7 @@ return [
             ['label' => 'SYSTEM CONTROL', 'items' => [
                 ['label' => 'Team Management',   'route' => 'team.index',      'icon' => 'users'],
                 ['label' => 'Audit Trail',       'route' => 'audit.index',     'icon' => 'clock'],
+                ['label' => 'AI Monitor',        'route' => 'ai-monitor.index','icon' => 'cpu-chip'],
             ]],
         ],
 
@@ -27,6 +28,9 @@ return [
 
     'role_to_group' => [
         'ceo_pm'        => 'ceo',
+        'admin'         => 'ceo',
+        'super_admin'   => 'ceo',
+        'developer'     => 'ceo',
         'sa_qa'         => 'operational',
         'fullstack_dev' => 'operational',
         'uiux_designer' => 'operational',

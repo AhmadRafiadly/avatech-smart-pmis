@@ -711,6 +711,8 @@ class ProjectController extends Controller
         $project->loadMissing('client');
 
         $result = AiPlanner::generateMomSummary([
+            'user_id'             => $request->user()?->id,
+            'project_id'          => $project->id,
             'project_name'        => $project->name,
             'project_code'        => $project->code,
             'project_description' => (string) ($project->description ?: ''),
@@ -784,6 +786,8 @@ class ProjectController extends Controller
         $existingTaskTitles = $project->tasks()->pluck('title')->all();
 
         $context = [
+            'user_id'             => $request->user()?->id,
+            'project_id'          => $project->id,
             'project_name'        => $project->name,
             'project_code'        => $project->code,
             'project_description' => (string) ($project->description ?: ''),
@@ -967,6 +971,8 @@ class ProjectController extends Controller
             ->all();
 
         $context = [
+            'user_id'             => $request->user()?->id,
+            'project_id'          => $project->id,
             'project_name'        => $project->name,
             'project_code'        => $project->code,
             'project_description' => (string) ($project->description ?: ''),
