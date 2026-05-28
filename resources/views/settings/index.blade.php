@@ -147,6 +147,26 @@
                     </div>
                 </div>
 
+                @if (\Illuminate\Support\Facades\Route::has('system-health.index'))
+                    <div class="bg-violet-50/70 border border-violet-200 rounded-2xl p-6 mb-5 flex items-start justify-between gap-4 flex-wrap">
+                        <div class="flex items-start gap-4 min-w-0">
+                            <div class="w-11 h-11 rounded-xl bg-white text-violet-700 flex items-center justify-center border border-violet-100 flex-shrink-0">
+                                <x-heroicon-o-server-stack class="w-5 h-5" />
+                            </div>
+                            <div class="min-w-0">
+                                <h3 class="text-[15px] font-bold text-[#1E1B4B]">System Health</h3>
+                                <p class="text-[12.5px] text-slate-500 mt-1 max-w-xl">
+                                    Cek kesiapan database, storage, PDF export, AI provider, dan environment sistem.
+                                </p>
+                            </div>
+                        </div>
+                        <a href="{{ route('system-health.index') }}" class="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-white border border-violet-200 text-violet-700 text-[12.5px] font-semibold hover:border-violet-400 transition">
+                            <x-heroicon-o-arrow-top-right-on-square class="w-4 h-4" />
+                            Buka System Health
+                        </a>
+                    </div>
+                @endif
+
                 <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-7">
                     <h3 class="text-[16px] font-bold text-[#1E1B4B] mb-1">Tampilan</h3>
                     <p class="text-[13px] text-slate-500 mb-5">Personalisasi tampilan dan kepadatan layout.</p>
@@ -195,6 +215,12 @@
                                 <a href="{{ route('ai-monitor.index') }}" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-100 bg-white text-violet-700 text-[12px] font-semibold hover:border-violet-300 transition">
                                     <x-heroicon-o-cpu-chip class="w-4 h-4" />
                                     Buka AI Monitor
+                                </a>
+                            @endif
+                            @if (\Illuminate\Support\Facades\Route::has('system-health.index'))
+                                <a href="{{ route('system-health.index') }}" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-100 bg-white text-violet-700 text-[12px] font-semibold hover:border-violet-300 transition">
+                                    <x-heroicon-o-server-stack class="w-4 h-4" />
+                                    Buka System Health
                                 </a>
                             @endif
                             @if ($aiReady)

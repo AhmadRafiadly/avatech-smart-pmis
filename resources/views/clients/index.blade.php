@@ -154,7 +154,7 @@
                     @if ($attentionClient && $attentionInsight)
                         <strong>{{ $attentionInsight['title'] }}</strong> &middot; {{ $attentionInsight['description'] }}
                     @else
-                        Belum ada sinyal relationship health, project risk, atau last touch yang membutuhkan tindakan cepat.
+                        Relasi client dalam kondisi stabil.
                     @endif
                 </p>
                 <div class="mt-3 flex gap-2 flex-wrap">
@@ -381,8 +381,8 @@
             <div class="w-14 h-14 mx-auto rounded-2xl bg-violet-50 text-violet-400 flex items-center justify-center mb-3">
                 <x-heroicon-o-user-group class="w-6 h-6" />
             </div>
-            <h3 class="text-[15px] font-semibold text-[#1E1B4B]">Tidak ada klien</h3>
-            <p class="text-[13px] text-slate-500 mt-1">Coba ubah filter atau tambah klien baru.</p>
+            <h3 class="text-[15px] font-semibold text-[#1E1B4B]">Belum ada client</h3>
+            <p class="text-[13px] text-slate-500 mt-1">Coba ubah filter atau tambah client baru.</p>
         </div>
     </section>
 

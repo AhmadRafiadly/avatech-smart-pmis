@@ -104,7 +104,7 @@
                 <h2 class="text-[17px] font-bold text-[#1E1B4B]">Riwayat Pemrosesan AI</h2>
                 <p class="mt-1 text-[12.5px] text-slate-500">Metadata aman dari pemrosesan AI terbaru. Prompt dan respons penuh tidak disimpan.</p>
             </div>
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto max-h-[620px] overflow-y-auto">
                 <table class="w-full text-left">
                     <thead class="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-400">
                         <tr>
@@ -138,7 +138,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-5 py-12 text-center text-slate-500">Belum ada riwayat pemrosesan AI.</td>
+                                <td colspan="7" class="px-5 py-12 text-center text-slate-500">Belum ada aktivitas AI. Jalankan fitur AI untuk melihat riwayat pemrosesan.</td>
                             </tr>
                         @endforelse
                     </tbody>

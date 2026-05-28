@@ -8,6 +8,7 @@ use App\Http\Controllers\ExecutiveController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SystemHealthController;
 use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Route;
 
@@ -43,6 +44,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/executive', [ExecutiveController::class, 'index'])->name('executive.index');
         Route::get('/executive/insights', [ExecutiveController::class, 'insights'])->name('executive.insights');
         Route::get('/ai-monitor', [AiMonitorController::class, 'index'])->name('ai-monitor.index');
+        Route::get('/system-health', [SystemHealthController::class, 'index'])->name('system-health.index');
         Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
         Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
         Route::put('/clients/{client}', [ClientController::class, 'update'])->name('clients.update');

@@ -587,7 +587,7 @@
                         </div>
                     @empty
                         <div class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
-                            Belum ada modul WBS untuk project ini.
+                            Belum ada WBS. Generate draf dari MoM atau tambahkan modul manual.
                         </div>
                     @endforelse
                 </div>
@@ -850,7 +850,7 @@
                                 @endif
                             </div>
                         @empty
-                            <div data-col-empty class="text-[12.5px] text-slate-400 text-center py-8">Tidak ada task</div>
+                            <div data-col-empty class="text-[12.5px] text-slate-400 text-center py-8">Belum ada task di workspace.</div>
                         @endforelse
                         <div data-col-filtered-empty class="hidden text-[12.5px] text-slate-400 text-center py-8 italic">Tidak ada task untuk anggota ini</div>
                     </div>
@@ -984,7 +984,7 @@
                         </div>
                     @empty
                         <div data-mom-empty class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
-                            Belum ada MoM untuk project ini.
+                            Belum ada MoM. Tambahkan notulensi untuk memulai perencanaan.
                         </div>
                     @endforelse
                 </div>
@@ -1132,7 +1132,7 @@
                         </div>
                     @empty
                         <div class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
-                            Belum ada WBS terbentuk.
+                            Belum ada WBS. Generate draf dari MoM atau tambahkan modul manual.
                         </div>
                     @endforelse
                 </div>
@@ -1342,7 +1342,7 @@
                     @empty
                         <tr>
                             <td colspan="{{ $canEdit && ! $useReferenceProjectData ? 6 : 5 }}" class="px-7 py-10 text-center text-[13px] font-medium text-slate-400">
-                                Belum ada test case untuk project ini.
+                                Belum ada test case. Generate dari WBS/task atau tambahkan manual.
                             </td>
                         </tr>
                     @endforelse

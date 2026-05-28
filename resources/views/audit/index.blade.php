@@ -221,7 +221,7 @@
                 <div class="w-14 h-14 mx-auto rounded-2xl bg-violet-50 text-violet-400 flex items-center justify-center mb-3">
                     <x-heroicon-o-inbox class="w-6 h-6" />
                 </div>
-                <h3 class="text-[15px] font-semibold text-[#1E1B4B]">Belum ada aktivitas</h3>
+                <h3 class="text-[15px] font-semibold text-[#1E1B4B]">Belum ada aktivitas yang tercatat</h3>
                 <p class="text-[13px] text-slate-500 mt-1">Aksi pada Proyek, Klien, Tim, atau Settings akan tampil di sini.</p>
             </div>
         @endforelse
@@ -230,7 +230,7 @@
             <div class="w-14 h-14 mx-auto rounded-2xl bg-violet-50 text-violet-400 flex items-center justify-center mb-3">
                 <x-heroicon-o-inbox class="w-6 h-6" />
             </div>
-            <h3 class="text-[15px] font-semibold text-[#1E1B4B]">Tidak ada aktivitas</h3>
+            <h3 class="text-[15px] font-semibold text-[#1E1B4B]">Belum ada aktivitas yang tercatat</h3>
             <p class="text-[13px] text-slate-500 mt-1">Coba ubah filter atau rentang waktu.</p>
         </div>
     </section>

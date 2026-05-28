@@ -10,8 +10,8 @@ return [
             ]],
             ['label' => 'SYSTEM CONTROL', 'items' => [
                 ['label' => 'Team Management',   'route' => 'team.index',      'icon' => 'users'],
-                ['label' => 'Audit Trail',       'route' => 'audit.index',     'icon' => 'clock'],
                 ['label' => 'AI Monitor',        'route' => 'ai-monitor.index','icon' => 'cpu-chip'],
+                ['label' => 'Audit Trail',       'route' => 'audit.index',     'icon' => 'clock'],
             ]],
         ],
 

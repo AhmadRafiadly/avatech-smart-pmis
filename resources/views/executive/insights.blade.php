@@ -53,8 +53,8 @@
                 <div class="w-14 h-14 mx-auto rounded-2xl bg-violet-50 text-violet-400 flex items-center justify-center mb-3">
                     <x-heroicon-o-check-circle class="w-6 h-6" />
                 </div>
-                <h3 class="text-[15px] font-semibold text-[#1E1B4B]">Belum ada pengingat</h3>
-                <p class="text-[13px] text-slate-500 mt-1">Semua indikator utama sedang stabil.</p>
+                <h3 class="text-[15px] font-semibold text-[#1E1B4B]">Tidak ada perhatian mendesak</h3>
+                <p class="text-[13px] text-slate-500 mt-1">Sistem berada dalam kondisi aman.</p>
             </div>
         @endforelse
     </section>
