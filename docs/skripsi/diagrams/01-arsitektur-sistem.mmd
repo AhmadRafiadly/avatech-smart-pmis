@@ -1,0 +1,52 @@
+%% Gambar 3.x Arsitektur Sistem Avatech Smart-PMIS
+%% Sumber: Diolah Peneliti, 2026.
+flowchart TD
+    subgraph U["Lapisan Pengguna (Peran)"]
+        A1["CEO / Project Manager"]
+        A2["System Analyst / QA"]
+        A3["Fullstack Developer"]
+        A4["UI/UX Designer"]
+    end
+
+    subgraph W["Antarmuka Web (Blade + Tailwind)"]
+        W1["Halaman Eksekutif & Operasional"]
+    end
+
+    subgraph L["Lapisan Aplikasi Laravel"]
+        R["Routing + Middleware Auth & Peran (ceo.pm)"]
+        C["Controllers"]
+        S["Services: AiPlanner, AuditLogger, SmartInsightService"]
+    end
+
+    subgraph D["Lapisan Basis Data (MySQL)"]
+        DB["Tabel: users, clients, projects, team_assignments,<br/>project_modules, project_tasks, project_moms,<br/>project_qc_tests, audit_logs, ai_request_logs"]
+    end
+
+    subgraph EXT["Layanan Pendukung"]
+        AI["AI Service Layer"]
+        PDF["PDF Export (dompdf)"]
+        AUD["Audit Trail"]
+        MON["AI Monitor"]
+        HEALTH["System Health"]
+        INS["Smart Insights / Reminders"]
+    end
+
+    subgraph LLM["Provider LLM (Eksternal)"]
+        G["Gemini"]
+        GR["Groq"]
+        OR["OpenRouter"]
+    end
+
+    U --> W --> R --> C --> S
+    C --> DB
+    S --> DB
+    S --> AI
+    AI --> G
+    AI -. fallback .-> GR
+    AI -. fallback .-> OR
+    C --> PDF
+    S --> AUD --> DB
+    AI --> MON --> DB
+    C --> HEALTH
+    S --> INS
+    INS --> DB

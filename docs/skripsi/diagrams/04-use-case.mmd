@@ -1,0 +1,31 @@
+%% Gambar 3.x Use Case Diagram Avatech Smart-PMIS
+%% Sumber: Diolah Peneliti, 2026.
+flowchart LR
+    CEO(("CEO / PM"))
+    SAQA(("System Analyst / QA"))
+    DEV(("Fullstack Developer"))
+    UIUX(("UI/UX Designer"))
+
+    UC1["Login"]
+    UC2["Kelola Project"]
+    UC3["Kelola Client"]
+    UC4["Kelola Team Assignment"]
+    UC5["Pantau Executive Monitor"]
+    UC6["Kelola MoM"]
+    UC7["Generate AI MoM (Fixer)"]
+    UC8["Generate AI WBS"]
+    UC9["Kelola WBS / Task"]
+    UC10["Kelola Kanban Workspace"]
+    UC11["Kelola QC / Test Case"]
+    UC12["Generate AI Test Case"]
+    UC13["Export PDF (WBS / Test Case)"]
+    UC14["Draft WhatsApp / Email Client"]
+    UC15["Lihat Audit Trail / Activity Log"]
+    UC16["Lihat AI Monitor"]
+    UC17["Lihat System Health"]
+    UC18["Kelola Settings"]
+
+    CEO --- UC1 & UC2 & UC3 & UC4 & UC5 & UC13 & UC14 & UC15 & UC16 & UC17 & UC18
+    SAQA --- UC1 & UC6 & UC7 & UC8 & UC9 & UC11 & UC12 & UC13 & UC15
+    DEV --- UC1 & UC9 & UC10 & UC13 & UC15
+    UIUX --- UC1 & UC10 & UC15

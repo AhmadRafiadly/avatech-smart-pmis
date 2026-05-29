@@ -1,0 +1,24 @@
+%% Gambar 3.x Activity Diagram Sistem Usulan Avatech Smart-PMIS
+%% Sumber: Diolah Peneliti, 2026.
+flowchart TD
+    ST([Mulai]) --> LOGIN["Login"]
+    LOGIN --> ROLE{"Peran pengguna"}
+    ROLE -- "CEO/PM" --> EXE["Executive Monitor"]
+    ROLE -- "Operasional" --> DASH["Operational Dashboard"]
+    EXE --> PRJ["Buat / Kelola Project"]
+    DASH --> PRJ
+    PRJ --> MOM["Tambah MoM"]
+    MOM --> FIX["AI MoM Fixer (draf ringkasan)"]
+    FIX --> RV1{"Tinjau & setujui MoM?"}
+    RV1 -- "Revisi" --> MOM
+    RV1 -- "Setuju" --> WBS["AI WBS Generator (draf modul & task)"]
+    WBS --> RV2{"Tinjau / edit WBS?"}
+    RV2 -- "Revisi" --> WBS
+    RV2 -- "Setuju" --> TASK["Assignment Task / Kanban Workspace"]
+    TASK --> QC["Kelola QC / Test Case"]
+    QC --> ATC["AI Test Case Generator (draf)"]
+    ATC --> RV3{"Validasi test case?"}
+    RV3 -- "Revisi" --> QC
+    RV3 -- "Setuju" --> PDF["Export PDF (WBS / Test Case)"]
+    PDF --> LOG["Audit Trail & AI Monitor mencatat aktivitas"]
+    LOG --> EN([Selesai])

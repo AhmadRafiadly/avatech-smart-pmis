@@ -1,0 +1,26 @@
+%% Gambar 3.x Sequence Diagram Alur Asistensi AI MoM, WBS, dan Test Case
+%% Sumber: Diolah Peneliti, 2026.
+sequenceDiagram
+    actor SAQA as SA/QA
+    participant UI as Project Detail UI
+    participant PC as ProjectController
+    participant AI as AiPlanner
+    participant LLM as LLM Provider
+    participant DB as Database
+    participant MON as AI Monitor / Audit Log
+
+    SAQA->>UI: Input MoM / minta generate WBS
+    UI->>PC: POST ai-wbs/generate
+    PC->>AI: generateWbsDraft(context)
+    AI->>AI: isConfigured()? + susun prompt
+    AI->>LLM: kirim prompt (urutan provider)
+    LLM-->>AI: respons JSON
+    AI->>AI: parse & validasi format
+    AI-->>PC: draf WBS (modul + task)
+    PC-->>UI: tampilkan draf untuk ditinjau
+    SAQA->>UI: tinjau / edit / setujui
+    UI->>PC: simpan WBS yang disetujui
+    PC->>DB: simpan project_modules & project_tasks
+    AI->>MON: catat metadata (ai_request_logs)
+    PC->>MON: catat aktivitas (audit_logs)
+    Note over SAQA,UI: Alur serupa berlaku untuk AI Test Case Generator (HITL)

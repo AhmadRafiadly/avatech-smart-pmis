@@ -1,0 +1,19 @@
+%% Gambar 3.x Alur Integrasi API LLM Multi-Provider
+%% Sumber: Diolah Peneliti, 2026.
+flowchart TD
+    REQ["Permintaan fitur AI<br/>(WBS / Test Case / MoM / Draft Client)"] --> CFG{"isConfigured()?<br/>ada provider terkonfigurasi"}
+    CFG -- "Tidak" --> ERRC["Tampilkan: AI belum dikonfigurasi"]
+    CFG -- "Ya" --> ORD["Baca urutan provider<br/>(config/ai.php)"]
+    ORD --> G{"Coba Gemini"}
+    G -- "Sukses" --> PARSE["Parse & validasi respons"]
+    G -- "Gagal" --> GR{"Coba Groq"}
+    GR -- "Sukses" --> PARSE
+    GR -- "Gagal" --> OR{"Coba OpenRouter"}
+    OR -- "Sukses" --> PARSE
+    OR -- "Gagal" --> FAIL["Semua provider gagal"]
+    PARSE -- "Valid" --> SAVE["Kembalikan draf + simpan metadata<br/>(provider, model, token, latensi, fallback_path)"]
+    PARSE -- "Tidak valid" --> FAIL
+    FAIL --> ERRF["Tampilkan pesan ramah +<br/>catat status gagal (metadata aman)"]
+    SAVE --> DONE([Selesai])
+    ERRF --> DONE
+    ERRC --> DONE

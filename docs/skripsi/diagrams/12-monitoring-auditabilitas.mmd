@@ -1,0 +1,19 @@
+%% Gambar 3.x Perancangan Monitoring, Auditabilitas, dan Kesiapan Sistem
+%% Sumber: Diolah Peneliti, 2026.
+flowchart TD
+    SYS["Aktivitas Sistem & Pengguna"] --> AUD["Audit Trail<br/>(audit_logs)"]
+    AIP["Pemrosesan AI"] --> MON["AI Monitor<br/>(ai_request_logs: metadata aman)"]
+    INFRA["Infrastruktur (DB, cache, storage,<br/>PDF, provider AI, environment)"] --> HEALTH["System Health<br/>(pengecekan kesiapan)"]
+    DATA["Data sistem (assignment, task, jadwal)"] --> INS["Smart Insights / Reminders<br/>(berbasis aturan)"]
+
+    AUD --> SET["Settings<br/>(titik konfigurasi & dukungan)"]
+    MON --> SET
+    HEALTH --> SET
+    INS --> DASH["Dashboard / Topbar Notifikasi"]
+
+    subgraph DESC["Peran tiap komponen"]
+        D1["Audit Trail = jejak aktivitas pengguna/sistem"]
+        D2["AI Monitor = metadata pemrosesan AI"]
+        D3["System Health = pengecekan kesiapan"]
+        D4["Smart Insights = pengingat berbasis aturan dari data sistem"]
+    end

@@ -1,0 +1,10 @@
+%% Gambar 3.x Titik Validasi Human-in-the-Loop pada Keluaran AI
+%% Sumber: Diolah Peneliti, 2026.
+flowchart LR
+    IN["Input pengguna<br/>(MoM / konteks proyek / konteks client)"] --> AI["AiPlanner memanggil LLM"]
+    AI --> DRAFT["Keluaran berstatus DRAFT"]
+    DRAFT --> REVIEW{"Pengguna meninjau & menyunting?"}
+    REVIEW -- "Setuju" --> SAVE["Simpan/terapkan oleh pengguna"]
+    REVIEW -- "Revisi" --> EDIT["Pengguna mengedit manual"] --> SAVE
+    REVIEW -- "Tolak" --> DROP["Draf diabaikan"]
+    SAVE --> LOG["Metadata dicatat ke ai_request_logs & audit_logs"]

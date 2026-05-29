@@ -1,0 +1,21 @@
+%% Gambar 3.x Sequence Diagram Draft Komunikasi Client Berbantuan AI
+%% Sumber: Diolah Peneliti, 2026.
+sequenceDiagram
+    actor CEO as CEO / PM
+    participant UI as Client Directory UI
+    participant CC as ClientController
+    participant AI as AiPlanner
+    participant LLM as LLM Provider
+    participant DB as Database
+    participant MON as AI Monitor
+
+    CEO->>UI: Minta draf WhatsApp/Email untuk client
+    UI->>CC: POST clients/{client}/draft/whatsapp (atau /email)
+    CC->>AI: generateClientWhatsappDraft(context)
+    AI->>LLM: kirim prompt (urutan provider)
+    LLM-->>AI: respons teks draf
+    AI-->>CC: teks draf
+    AI->>MON: catat metadata (ai_request_logs)
+    CC-->>UI: tampilkan draf (salin / edit manual)
+    CEO->>CEO: kirim sendiri via kanal eksternal
+    Note over UI,CEO: Tidak ada auto-send. Sistem berhenti pada draf.

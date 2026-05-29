@@ -1,0 +1,128 @@
+%% Gambar 3.x Class Diagram Avatech Smart-PMIS
+%% Sumber: Diolah Peneliti, 2026.
+classDiagram
+    class User {
+        +id
+        +name
+        +email
+        +phone
+        +position
+        +department
+        +level
+        +skills
+        +avatar_color
+        +archived_at
+    }
+    class Client {
+        +id
+        +name
+        +code
+        +tier
+        +industry
+        +pic_name
+        +email
+        +relationship_health
+        +archived_at
+    }
+    class Project {
+        +id
+        +code
+        +name
+        +client_id
+        +lead_user_id
+        +phase
+        +progress
+        +status
+        +ai_wbs_generated
+        +archived_at
+    }
+    class TeamAssignment {
+        +id
+        +user_id
+        +project_id
+        +title
+        +type
+        +status
+        +estimated_hours
+        +due_date
+    }
+    class ProjectModule {
+        +id
+        +project_id
+        +title
+        +status
+        +estimate_hours
+        +sort_order
+    }
+    class ProjectTask {
+        +id
+        +project_id
+        +project_module_id
+        +assigned_to
+        +title
+        +status
+        +priority
+        +estimate_hours
+    }
+    class ProjectMom {
+        +id
+        +project_id
+        +created_by
+        +meeting_date
+        +notes
+        +summary
+        +status
+    }
+    class ProjectQcTest {
+        +id
+        +project_id
+        +project_module_id
+        +project_task_id
+        +created_by
+        +title
+        +scenario
+        +expected_result
+        +actual_result
+        +status
+        +priority
+    }
+    class AuditLog {
+        +id
+        +user_id
+        +action
+        +module
+        +auditable_type
+        +auditable_id
+        +old_values
+        +new_values
+    }
+    class AiRequestLog {
+        +id
+        +user_id
+        +project_id
+        +client_id
+        +feature
+        +provider
+        +model
+        +status
+        +fallback_path
+        +latency_ms
+    }
+
+    Client "1" --> "*" Project : memiliki
+    User "1" --> "*" Project : memimpin (lead_user_id)
+    Project "1" --> "*" TeamAssignment : penugasan
+    User "1" --> "*" TeamAssignment : ditugaskan
+    Project "1" --> "*" ProjectModule : modul WBS
+    Project "1" --> "*" ProjectTask : task
+    ProjectModule "1" --> "*" ProjectTask : berisi
+    User "1" --> "*" ProjectTask : assignee (assigned_to)
+    Project "1" --> "*" ProjectMom : notulen
+    User "1" --> "*" ProjectMom : pembuat
+    Project "1" --> "*" ProjectQcTest : uji QC
+    ProjectModule "1" --> "*" ProjectQcTest : terkait
+    ProjectTask "1" --> "*" ProjectQcTest : terkait
+    User "1" --> "*" AuditLog : pelaku
+    User "1" --> "*" AiRequestLog : pemohon
+    Project "1" --> "*" AiRequestLog : konteks
+    Client "1" --> "*" AiRequestLog : konteks

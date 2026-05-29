@@ -1,0 +1,120 @@
+%% Gambar 3.x Entity Relationship Diagram Avatech Smart-PMIS
+%% Sumber: Diolah Peneliti, 2026.
+erDiagram
+    USERS ||--o{ PROJECTS : "memimpin"
+    CLIENTS ||--o{ PROJECTS : "memiliki"
+    USERS ||--o{ TEAM_ASSIGNMENTS : "ditugaskan"
+    PROJECTS ||--o{ TEAM_ASSIGNMENTS : "penugasan"
+    PROJECTS ||--o{ PROJECT_MODULES : "modul"
+    PROJECTS ||--o{ PROJECT_TASKS : "task"
+    PROJECT_MODULES ||--o{ PROJECT_TASKS : "berisi"
+    USERS ||--o{ PROJECT_TASKS : "assignee"
+    PROJECTS ||--o{ PROJECT_MOMS : "notulen"
+    USERS ||--o{ PROJECT_MOMS : "pembuat"
+    PROJECTS ||--o{ PROJECT_QC_TESTS : "uji QC"
+    PROJECT_MODULES ||--o{ PROJECT_QC_TESTS : "terkait"
+    PROJECT_TASKS ||--o{ PROJECT_QC_TESTS : "terkait"
+    USERS ||--o{ AUDIT_LOGS : "pelaku"
+    USERS ||--o{ AI_REQUEST_LOGS : "pemohon"
+    PROJECTS ||--o{ AI_REQUEST_LOGS : "konteks"
+    CLIENTS ||--o{ AI_REQUEST_LOGS : "konteks"
+
+    USERS {
+        bigint id PK
+        string name
+        string email
+        string position
+        string department
+        timestamp archived_at
+    }
+    CLIENTS {
+        bigint id PK
+        string name
+        string code
+        enum tier
+        string industry
+        tinyint relationship_health
+        timestamp archived_at
+    }
+    PROJECTS {
+        bigint id PK
+        string code
+        string name
+        bigint client_id FK
+        bigint lead_user_id FK
+        string phase
+        tinyint progress
+        enum status
+        boolean ai_wbs_generated
+    }
+    TEAM_ASSIGNMENTS {
+        bigint id PK
+        bigint user_id FK
+        bigint project_id FK
+        string title
+        string status
+        smallint estimated_hours
+        date due_date
+    }
+    PROJECT_MODULES {
+        bigint id PK
+        bigint project_id FK
+        string title
+        string status
+        smallint estimate_hours
+        int sort_order
+    }
+    PROJECT_TASKS {
+        bigint id PK
+        bigint project_id FK
+        bigint project_module_id FK
+        bigint assigned_to FK
+        string title
+        string status
+        string priority
+        smallint estimate_hours
+    }
+    PROJECT_MOMS {
+        bigint id PK
+        bigint project_id FK
+        bigint created_by FK
+        date meeting_date
+        text notes
+        text summary
+        string status
+    }
+    PROJECT_QC_TESTS {
+        bigint id PK
+        bigint project_id FK
+        bigint project_module_id FK
+        bigint project_task_id FK
+        bigint created_by FK
+        string title
+        text scenario
+        text expected_result
+        text actual_result
+        string status
+        string priority
+    }
+    AUDIT_LOGS {
+        bigint id PK
+        bigint user_id FK
+        string action
+        string module
+        string auditable_type
+        bigint auditable_id
+        json old_values
+        json new_values
+    }
+    AI_REQUEST_LOGS {
+        bigint id PK
+        bigint user_id FK
+        bigint project_id FK
+        bigint client_id FK
+        string feature
+        string provider
+        string model
+        string status
+        json fallback_path
+        int latency_ms
+    }

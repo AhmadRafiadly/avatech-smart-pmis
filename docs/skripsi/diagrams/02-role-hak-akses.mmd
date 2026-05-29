@@ -1,0 +1,9 @@
+%% Gambar 3.x Pemetaan Peran ke Kelompok Navigasi dan Hak Akses
+%% Sumber: Diolah Peneliti, 2026.
+flowchart LR
+    R1["ceo_pm / admin / super_admin / developer"] --> G1["Grup CEO<br/>(Executive)"]
+    R2["sa_qa / fullstack_dev / uiux_designer"] --> G2["Grup Operational"]
+    G1 --> M1["Middleware ceo.pm: lolos"]
+    G2 --> M2["Middleware ceo.pm: redirect ke /dashboard"]
+    M1 --> P1["/executive, /clients, /team, /ai-monitor,<br/>/settings, /audit"]
+    M2 --> P2["/dashboard, /projects (hanya yang ditugaskan)"]

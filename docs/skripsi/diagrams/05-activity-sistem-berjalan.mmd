@@ -1,0 +1,12 @@
+%% Gambar 3.x Activity Diagram Sistem Berjalan
+%% Sumber: Diolah Peneliti, 2026.
+flowchart TD
+    ST([Mulai]) --> RG["Requirement Gathering<br/>(notulen rapat manual)"]
+    RG --> PL["Planning & WBS<br/>(penyusunan manual)"]
+    PL --> DS["Design"]
+    DS --> DV["Development"]
+    DV --> QA["QA / Testing"]
+    QA --> REV{"Ada revisi?"}
+    REV -- "Ya" --> DV
+    REV -- "Tidak" --> FN["Final / Handover"]
+    FN --> EN([Selesai])
