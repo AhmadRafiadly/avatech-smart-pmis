@@ -1,0 +1,94 @@
+<mxfile host="app.diagrams.net" modified="2026-05-30T00:00:00.000Z" agent="thesis-artifact" version="24.0.0" type="device">
+  <diagram id="actusulan" name="Activity Sistem Usulan">
+    <mxGraphModel dx="800" dy="1400" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1550" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Activity Diagram Sistem Usulan Avatech Smart-PMIS" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="140" y="20" width="560" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="start" value="Mulai" style="ellipse;whiteSpace=wrap;html=1;fillColor=#333333;fontColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="355" y="70" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="login" value="Login" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="140" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="role" value="Peran pengguna" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f0f7f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="340" y="210" width="150" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="exe" value="Executive Monitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="140" y="320" width="170" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="dash" value="Operational Dashboard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="520" y="320" width="170" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="prj" value="Buat / Kelola Project" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="410" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="mom" value="Tambah MoM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="480" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="fix" value="AI MoM Fixer&lt;br&gt;(draf ringkasan)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="550" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="rv1" value="Tinjau &amp;amp; setujui MoM?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f0f7f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="340" y="620" width="150" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="wbs" value="AI WBS Generator&lt;br&gt;(draf modul &amp;amp; task)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="730" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="rv2" value="Tinjau / edit WBS?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f0f7f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="340" y="800" width="150" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="task" value="Assignment Task /&lt;br&gt;Kanban Workspace" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="910" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="qc" value="Kelola QC / Test Case" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="980" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="atc" value="AI Test Case Generator&lt;br&gt;(draf)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="1050" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="rv3" value="Validasi test case?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f0f7f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="340" y="1120" width="150" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pdf" value="Export PDF (WBS / Test Case)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="1230" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="log" value="Audit Trail &amp;amp; AI Monitor&lt;br&gt;mencatat aktivitas" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="1300" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="end" value="Selesai" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;strokeWidth=3;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="355" y="1380" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="start" target="login"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="login" target="role"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a3" value="CEO/PM" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="role" target="exe"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a4" value="Operasional" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="role" target="dash"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="exe" target="prj"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="dash" target="prj"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="prj" target="mom"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="mom" target="fix"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="fix" target="rv1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a10" value="Setuju" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="rv1" target="wbs"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a11" value="Revisi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="rv1" target="mom">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="280" y="660" /><mxPoint x="280" y="502" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="a12" value="Setuju" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="rv2" target="task"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="wbs" target="rv2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a14" value="Revisi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="rv2" target="wbs">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="290" y="840" /><mxPoint x="290" y="752" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="a15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="task" target="qc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="qc" target="atc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="atc" target="rv3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a18" value="Setuju" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="rv3" target="pdf"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a19" value="Revisi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="rv3" target="qc">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="290" y="1160" /><mxPoint x="290" y="1002" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="a20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="pdf" target="log"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="a21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="log" target="end"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

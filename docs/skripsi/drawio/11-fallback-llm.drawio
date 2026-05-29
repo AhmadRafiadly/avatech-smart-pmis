@@ -1,0 +1,65 @@
+<mxfile host="app.diagrams.net" modified="2026-05-30T00:00:00.000Z" agent="thesis-artifact" version="24.0.0" type="device">
+  <diagram id="fallback" name="Fallback LLM">
+    <mxGraphModel dx="1100" dy="780" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Alur Integrasi API LLM Multi-Provider (Gemini &#8594; Groq &#8594; OpenRouter)" style="text;html=1;align=center;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="15" width="760" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="req" value="Permintaan fitur AI&lt;br&gt;(WBS / Test Case / MoM / Draft Client)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="70" width="240" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="cfg" value="isConfigured()?&lt;br&gt;ada provider terkonfigurasi" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f0f7f0;strokeColor=#333333;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="80" y="160" width="160" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="errc" value="Tampilkan:&lt;br&gt;AI belum dikonfigurasi" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdf0f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="320" y="180" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ord" value="Baca urutan provider&lt;br&gt;(config/ai.php)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="300" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="g" value="Coba Gemini" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="390" width="160" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="gr" value="Coba Groq" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="520" width="160" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="or" value="Coba OpenRouter" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="650" width="160" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="parse" value="Parse &amp;amp;&lt;br&gt;validasi respons" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f0f7f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="430" y="430" width="170" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="save" value="Kembalikan draf + simpan metadata&lt;br&gt;(provider, model, token, latensi, fallback_path)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="700" y="440" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="fail" value="Semua provider gagal" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdf0f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="440" y="650" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="errf" value="Tampilkan pesan ramah +&lt;br&gt;catat status gagal (metadata aman)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdf0f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="700" y="650" width="240" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="done" value="Selesai" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;strokeWidth=3;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="540" width="110" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="f1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="req" target="cfg"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f2" value="Tidak" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="cfg" target="errc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f3" value="Ya" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="cfg" target="ord"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="ord" target="g"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f5" value="Sukses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="g" target="parse"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f6" value="Gagal (fallback)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="g" target="gr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f7" value="Sukses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="gr" target="parse"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f8" value="Gagal (fallback)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="gr" target="or"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f9" value="Sukses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="or" target="parse"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f10" value="Gagal" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="or" target="fail"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f11" value="Valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="parse" target="save"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f12" value="Tidak valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="parse" target="fail"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="fail" target="errf"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="save" target="done"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="errf" target="done"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="errc" target="done"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

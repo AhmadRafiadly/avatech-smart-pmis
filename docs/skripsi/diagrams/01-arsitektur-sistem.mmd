@@ -1,52 +1,64 @@
 %% Gambar 3.x Arsitektur Sistem Avatech Smart-PMIS
 %% Sumber: Diolah Peneliti, 2026.
 flowchart TD
-    subgraph U["Lapisan Pengguna (Peran)"]
+    %% ============ Lapisan Pengguna (atas) ============
+    subgraph U["Pengguna (Peran)"]
+        direction LR
         A1["CEO / Project Manager"]
         A2["System Analyst / QA"]
         A3["Fullstack Developer"]
         A4["UI/UX Designer"]
     end
 
-    subgraph W["Antarmuka Web (Blade + Tailwind)"]
-        W1["Halaman Eksekutif & Operasional"]
-    end
+    %% ============ Antarmuka Web ============
+    W["Antarmuka Web (Blade + Tailwind)<br/>Halaman Eksekutif & Operasional"]
 
+    %% ============ Lapisan Aplikasi (tengah) ============
     subgraph L["Lapisan Aplikasi Laravel"]
-        R["Routing + Middleware Auth & Peran (ceo.pm)"]
+        R["Routing + Middleware<br/>Auth & Peran (ceo.pm)"]
         C["Controllers"]
-        S["Services: AiPlanner, AuditLogger, SmartInsightService"]
     end
 
-    subgraph D["Lapisan Basis Data (MySQL)"]
-        DB["Tabel: users, clients, projects, team_assignments,<br/>project_modules, project_tasks, project_moms,<br/>project_qc_tests, audit_logs, ai_request_logs"]
-    end
-
-    subgraph EXT["Layanan Pendukung"]
-        AI["AI Service Layer"]
-        PDF["PDF Export (dompdf)"]
-        AUD["Audit Trail"]
-        MON["AI Monitor"]
+    %% ============ Layanan Pendukung (kiri-bawah/tengah) ============
+    subgraph SVC["Layanan Pendukung"]
+        AI["AI Service Layer (AiPlanner)"]
+        AUD["Audit Trail (AuditLogger)"]
+        INS["Smart Insights / Reminders<br/>(berbasis aturan)"]
+        MON["AI Monitor (metadata)"]
         HEALTH["System Health"]
-        INS["Smart Insights / Reminders"]
+        PDF["PDF Export (dompdf)"]
     end
 
+    %% ============ Basis Data (kanan/bawah-kanan) ============
+    DB[("Lapisan Basis Data (MySQL)<br/>users, clients, projects, team_assignments,<br/>tasks, MoM, QC, audit_logs, ai_request_logs")]
+
+    %% ============ Provider LLM Eksternal (jauh-kanan/bawah) ============
     subgraph LLM["Provider LLM (Eksternal)"]
+        direction LR
         G["Gemini"]
         GR["Groq"]
         OR["OpenRouter"]
     end
 
-    U --> W --> R --> C --> S
-    C --> DB
-    S --> DB
-    S --> AI
+    %% ============ Cek kesiapan System Health ============
+    CHK["DB, Storage,<br/>Provider AI, Environment"]
+
+    %% ---- Alur utama (sedikit panah) ----
+    U --> W --> L
+    L --> DB
+    L --> SVC
+
+    %% ---- Fallback AI berurutan: Gemini -> Groq -> OpenRouter ----
     AI --> G
-    AI -. fallback .-> GR
-    AI -. fallback .-> OR
-    C --> PDF
-    S --> AUD --> DB
+    G -. fallback .-> GR
+    GR -. fallback .-> OR
+
+    %% ---- Logging & auditabilitas menuju basis data ----
     AI --> MON --> DB
-    C --> HEALTH
-    S --> INS
-    INS --> DB
+    AUD --> DB
+
+    %% ---- Smart Insights bersumber dari data sistem (bukan prediksi AI) ----
+    DB --> INS
+
+    %% ---- System Health memeriksa kesiapan komponen ----
+    HEALTH -. memeriksa .-> CHK

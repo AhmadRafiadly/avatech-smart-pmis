@@ -1,0 +1,58 @@
+<mxfile host="app.diagrams.net" modified="2026-05-30T00:00:00.000Z" agent="thesis-artifact" version="24.0.0" type="device">
+  <diagram id="seqai" name="Sequence AI MoM WBS TestCase">
+    <mxGraphModel dx="1100" dy="780" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Sequence Diagram Alur Asistensi AI: MoM, WBS, dan Test Case" style="text;html=1;align=center;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="180" y="15" width="800" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="hSaqa" value="SA/QA" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="90" y="60" width="36" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hUi" value="Project Detail UI" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="200" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="hPc" value="ProjectController" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="hAi" value="AiPlanner" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="520" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="hLlm" value="LLM Provider" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="680" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="hDb" value="Database" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="hMon" value="AI Monitor / Audit Log" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lSaqa" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="108" y="120" as="sourcePoint" /><mxPoint x="108" y="650" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lUi" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="270" y="110" as="sourcePoint" /><mxPoint x="270" y="650" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lPc" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="430" y="110" as="sourcePoint" /><mxPoint x="430" y="650" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lAi" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="590" y="110" as="sourcePoint" /><mxPoint x="590" y="650" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lLlm" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="750" y="110" as="sourcePoint" /><mxPoint x="750" y="650" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lDb" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="910" y="110" as="sourcePoint" /><mxPoint x="910" y="650" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lMon" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1070" y="110" as="sourcePoint" /><mxPoint x="1070" y="650" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m1" value="Input MoM / minta generate WBS" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="108" y="150" as="sourcePoint" /><mxPoint x="270" y="150" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m2" value="POST ai-wbs/generate" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="270" y="185" as="sourcePoint" /><mxPoint x="430" y="185" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m3" value="generateWbsDraft(context)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="430" y="220" as="sourcePoint" /><mxPoint x="590" y="220" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="s1" value="isConfigured()? + susun prompt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=10;" vertex="1" parent="1"><mxGeometry x="540" y="240" width="200" height="28" as="geometry" /></mxCell>
+        <mxCell id="m5" value="kirim prompt (urutan provider)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="590" y="295" as="sourcePoint" /><mxPoint x="750" y="295" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m6" value="respons JSON" style="html=1;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="750" y="325" as="sourcePoint" /><mxPoint x="590" y="325" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="s2" value="parse &amp;amp; validasi format" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=10;" vertex="1" parent="1"><mxGeometry x="540" y="345" width="200" height="28" as="geometry" /></mxCell>
+        <mxCell id="m8" value="draf WBS (modul + task)" style="html=1;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="590" y="400" as="sourcePoint" /><mxPoint x="430" y="400" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m9" value="tampilkan draf untuk ditinjau" style="html=1;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="430" y="435" as="sourcePoint" /><mxPoint x="270" y="435" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m10" value="tinjau / edit / setujui" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="108" y="470" as="sourcePoint" /><mxPoint x="270" y="470" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m11" value="simpan WBS yang disetujui" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="270" y="505" as="sourcePoint" /><mxPoint x="430" y="505" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m12" value="simpan project_modules &amp;amp; project_tasks" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="430" y="540" as="sourcePoint" /><mxPoint x="910" y="540" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m13" value="catat metadata (ai_request_logs)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="590" y="575" as="sourcePoint" /><mxPoint x="1070" y="575" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m14" value="catat aktivitas (audit_logs)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="430" y="610" as="sourcePoint" /><mxPoint x="1070" y="610" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="note" value="Alur serupa berlaku untuk AI Test Case Generator (Human-in-the-Loop)." style="text;html=1;align=left;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="90" y="665" width="700" height="20" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

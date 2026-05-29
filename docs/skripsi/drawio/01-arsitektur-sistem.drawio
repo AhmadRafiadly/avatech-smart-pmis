@@ -1,0 +1,118 @@
+<mxfile host="app.diagrams.net" modified="2026-05-30T00:00:00.000Z" agent="thesis-artifact" version="24.0.0" type="device">
+  <diagram id="arsitektur" name="Arsitektur Sistem">
+    <mxGraphModel dx="1100" dy="780" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Arsitektur Sistem Avatech Smart-PMIS" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="20" width="560" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="cUser" value="Pengguna (Peran)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="70" width="620" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="u1" value="CEO / Project Manager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="100" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="u2" value="System Analyst / QA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="205" y="100" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="u3" value="Fullstack Developer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="355" y="100" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="u4" value="UI/UX Designer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="505" y="100" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="web" value="Antarmuka Web (Blade + Tailwind)&lt;br&gt;Halaman Eksekutif &amp;amp; Operasional" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="180" width="620" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="cApp" value="Lapisan Aplikasi Laravel" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="260" width="620" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="appR" value="Routing + Middleware&lt;br&gt;Auth &amp;amp; Peran (ceo.pm)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="295" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="appC" value="Controllers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="370" y="295" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="cSvc" value="Layanan Pendukung" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="400" width="620" height="255" as="geometry" />
+        </mxCell>
+        <mxCell id="svcAI" value="AI Service Layer (AiPlanner)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="430" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="svcAud" value="Audit Trail (AuditLogger)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="370" y="430" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="svcMon" value="AI Monitor (metadata)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="510" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="svcIns" value="Smart Insights / Reminders&lt;br&gt;(berbasis aturan)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="370" y="510" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="svcHealth" value="System Health" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="590" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="svcPdf" value="PDF Export (dompdf)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="370" y="590" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="db" value="Lapisan Basis Data (MySQL)&lt;br&gt;&lt;br&gt;users, clients, projects,&lt;br&gt;team_assignments, project_tasks,&lt;br&gt;project_moms, project_qc_tests,&lt;br&gt;audit_logs, ai_request_logs" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="760" y="250" width="250" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="cLlm" value="Provider LLM (Eksternal)" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#fbfbfb;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="760" y="440" width="380" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="llmG" value="Gemini" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="775" y="485" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="llmGr" value="Groq" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="895" y="485" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="llmOr" value="OpenRouter" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1015" y="485" width="110" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="chk" value="Cek kesiapan: DB, Storage,&lt;br&gt;Provider AI, Environment" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f7f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="760" y="600" width="250" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="Keluaran AI bersifat draf dan wajib divalidasi pengguna (Human-in-the-Loop)." style="text;html=1;align=left;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="675" width="620" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="cUser" target="web">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="web" target="cApp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="data" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="cApp" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="cApp" target="cSvc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="svcAI" target="llmG">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="fallback" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="llmG" target="llmGr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="fallback" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="llmGr" target="llmOr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="svcAI" target="svcMon">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="ai_request_logs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="svcMon" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="audit_logs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="svcAud" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="data sistem" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="db" target="svcIns">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" value="memeriksa" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#333333;fontSize=10;" edge="1" parent="1" source="svcHealth" target="chk">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

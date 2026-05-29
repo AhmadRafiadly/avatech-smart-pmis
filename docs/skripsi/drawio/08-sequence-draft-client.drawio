@@ -1,0 +1,49 @@
+<mxfile host="app.diagrams.net" modified="2026-05-30T00:00:00.000Z" agent="thesis-artifact" version="24.0.0" type="device">
+  <diagram id="seqdraft" name="Sequence Draft Client">
+    <mxGraphModel dx="1100" dy="780" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Sequence Diagram Draft Komunikasi Client Berbantuan AI" style="text;html=1;align=center;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="15" width="760" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="hCeo" value="CEO / PM" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="92" y="60" width="36" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hUi" value="Client Directory UI" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="230" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="hCc" value="ClientController" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="420" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="hAi" value="AiPlanner" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="610" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="hLlm" value="LLM Provider" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="800" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="hMon" value="AI Monitor" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="990" y="70" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lCeo" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="110" y="120" as="sourcePoint" /><mxPoint x="110" y="500" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lUi" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="300" y="110" as="sourcePoint" /><mxPoint x="300" y="500" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lCc" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="490" y="110" as="sourcePoint" /><mxPoint x="490" y="500" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lAi" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="680" y="110" as="sourcePoint" /><mxPoint x="680" y="500" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lLlm" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="870" y="110" as="sourcePoint" /><mxPoint x="870" y="500" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="lMon" style="endArrow=none;html=1;dashed=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="1060" y="110" as="sourcePoint" /><mxPoint x="1060" y="500" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m1" value="Minta draf WhatsApp/Email untuk client" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="110" y="150" as="sourcePoint" /><mxPoint x="300" y="150" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m2" value="POST clients/{client}/draft/whatsapp (atau /email)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="300" y="185" as="sourcePoint" /><mxPoint x="490" y="185" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m3" value="generateClientWhatsappDraft(context)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="490" y="220" as="sourcePoint" /><mxPoint x="680" y="220" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m4" value="kirim prompt (urutan provider)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="680" y="255" as="sourcePoint" /><mxPoint x="870" y="255" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m5" value="respons teks draf" style="html=1;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="870" y="290" as="sourcePoint" /><mxPoint x="680" y="290" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m6" value="teks draf" style="html=1;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="680" y="325" as="sourcePoint" /><mxPoint x="490" y="325" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m7" value="catat metadata (ai_request_logs)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="680" y="360" as="sourcePoint" /><mxPoint x="1060" y="360" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m8" value="tampilkan draf (salin / edit manual)" style="html=1;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="490" y="395" as="sourcePoint" /><mxPoint x="300" y="395" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="s1" value="kirim sendiri via kanal eksternal" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=10;" vertex="1" parent="1"><mxGeometry x="60" y="425" width="200" height="28" as="geometry" /></mxCell>
+        <mxCell id="note" value="Tidak ada auto-send. Sistem berhenti pada draf; pengguna menyalin / mengedit dan mengirim manual." style="text;html=1;align=left;fontSize=10;fontStyle=2;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="60" y="510" width="700" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,55 @@
+<mxfile host="app.diagrams.net" modified="2026-05-30T00:00:00.000Z" agent="thesis-artifact" version="24.0.0" type="device">
+  <diagram id="role" name="Role dan Hak Akses">
+    <mxGraphModel dx="1100" dy="780" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Pemetaan Peran ke Kelompok Navigasi dan Hak Akses" style="text;html=1;align=center;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="250" y="20" width="660" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="r1" value="ceo_pm / admin /&lt;br&gt;super_admin / developer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="120" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="r2" value="sa_qa / fullstack_dev /&lt;br&gt;uiux_designer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="400" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="g1" value="Grup CEO (Executive)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="340" y="125" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="g2" value="Grup Operational" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef6ff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="340" y="405" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="m1" value="Middleware ceo.pm:&lt;br&gt;LOLOS" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f0f7f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="620" y="110" width="180" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="m2" value="Middleware ceo.pm:&lt;br&gt;redirect ke /dashboard" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fdf0f0;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="620" y="390" width="180" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" value="/executive, /clients, /team,&lt;br&gt;/ai-monitor, /settings, /audit" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="880" y="120" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" value="/dashboard,&lt;br&gt;/projects (hanya yang ditugaskan)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="880" y="400" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ea" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="r1" target="g1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="r2" target="g2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ec" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="g1" target="m1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="g2" target="m2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ee" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="m1" target="p1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#333333;" edge="1" parent="1" source="m2" target="p2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
