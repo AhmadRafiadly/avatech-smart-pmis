@@ -92,8 +92,8 @@
                         <span class="w-2.5 h-2.5 rounded-full bg-violet-600 animate-pulse"></span>
                         <h2 class="text-[22px] font-bold tracking-tight text-[#1E1B4B]">Pengingat Cerdas</h2>
                         <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-full bg-violet-100 text-violet-700">
-                            <x-heroicon-o-sparkles class="w-3 h-3" />
-                            Saran AI
+                            <x-heroicon-o-chart-bar class="w-3 h-3" />
+                            Berbasis Data
                         </span>
                     </div>
                     <a href="{{ route('executive.insights') }}" class="text-[14px] font-semibold text-violet-700 hover:text-violet-900 transition flex items-center gap-1.5 cursor-pointer">

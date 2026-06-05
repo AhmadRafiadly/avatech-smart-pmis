@@ -1298,44 +1298,68 @@
                                 @endif
                             </td>
                             @if ($canEdit && ! $useReferenceProjectData && ! empty($tc['id']))
-                                <td data-tc-actions class="px-7 py-4 text-right">
-                                    @php $qcAction = route('projects.qc.update', [$project, $tc['id']]); @endphp
-                                    @if (in_array($tcStatus, ['passed', 'lulus'], true))
-                                        <form method="POST" action="{{ $qcAction }}" class="inline">
-                                            @csrf
-                                            @method('PATCH')
-                                            <input type="hidden" name="status" value="retest">
-                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-white text-[12px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">
-                                                <x-heroicon-o-arrow-path class="w-3.5 h-3.5" />
-                                                Retest
-                                            </button>
-                                        </form>
-                                    @elseif (in_array($tcStatus, ['failed', 'gagal'], true))
-                                        <form method="POST" action="{{ $qcAction }}" class="inline">
-                                            @csrf
-                                            @method('PATCH')
-                                            <input type="hidden" name="status" value="retest">
-                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-white text-[12px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">
-                                                <x-heroicon-o-arrow-path class="w-3.5 h-3.5" />
-                                                Retest
-                                            </button>
-                                        </form>
-                                    @else
-                                        <div class="inline-flex gap-2">
+                                <td data-tc-actions class="px-7 py-4 text-right align-top">
+                                    @php
+                                        $qcAction       = route('projects.qc.update', [$project, $tc['id']]);
+                                        $qcEditAction   = route('projects.qc.edit', [$project, $tc['id']]);
+                                        $qcDeleteAction = route('projects.qc.destroy', [$project, $tc['id']]);
+                                    @endphp
+                                    <div class="flex flex-col items-end gap-2">
+                                        {{-- Status actions (Lulus/Gagal/Retest) — dipertahankan --}}
+                                        @if (in_array($tcStatus, ['passed', 'lulus', 'failed', 'gagal'], true))
                                             <form method="POST" action="{{ $qcAction }}" class="inline">
                                                 @csrf
                                                 @method('PATCH')
-                                                <input type="hidden" name="status" value="passed">
-                                                <button type="submit" class="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-bold transition cursor-pointer">Lulus</button>
+                                                <input type="hidden" name="status" value="retest">
+                                                <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-white text-[12px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">
+                                                    <x-heroicon-o-arrow-path class="w-3.5 h-3.5" />
+                                                    Retest
+                                                </button>
                                             </form>
-                                            <form method="POST" action="{{ $qcAction }}" class="inline">
+                                        @else
+                                            <div class="inline-flex gap-2">
+                                                <form method="POST" action="{{ $qcAction }}" class="inline">
+                                                    @csrf
+                                                    @method('PATCH')
+                                                    <input type="hidden" name="status" value="passed">
+                                                    <button type="submit" class="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-bold transition cursor-pointer">Lulus</button>
+                                                </form>
+                                                <form method="POST" action="{{ $qcAction }}" class="inline">
+                                                    @csrf
+                                                    @method('PATCH')
+                                                    <input type="hidden" name="status" value="failed">
+                                                    <button type="submit" class="h-8 px-3 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[12px] font-bold transition cursor-pointer">Gagal</button>
+                                                </form>
+                                            </div>
+                                        @endif
+
+                                        {{-- Manual Edit & Hapus (CRUD lengkap) — tombol selalu terlihat di kolom Aksi --}}
+                                        <div class="inline-flex items-start gap-2">
+                                            <button
+                                                type="button"
+                                                data-qc-edit-trigger
+                                                data-qc-action="{{ $qcEditAction }}"
+                                                data-qc-title="{{ $tcTitle ?? $tcScenario }}"
+                                                data-qc-scenario="{{ $tcScenario }}"
+                                                data-qc-expected="{{ $tc['expected_result'] ?? '' }}"
+                                                data-qc-module="{{ $tc['module_id'] ?? '' }}"
+                                                data-qc-priority="{{ $tcPriority }}"
+                                                data-qc-code="{{ $tcCode }}"
+                                                class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-white text-[12px] font-semibold text-violet-700 hover:border-violet-400 hover:text-violet-800 transition cursor-pointer"
+                                            >
+                                                <x-heroicon-o-pencil-square class="w-3.5 h-3.5" />
+                                                Edit
+                                            </button>
+                                            <form method="POST" action="{{ $qcDeleteAction }}" onsubmit="return confirm('Hapus test case ini? Tindakan ini tidak dapat dibatalkan.');">
                                                 @csrf
-                                                @method('PATCH')
-                                                <input type="hidden" name="status" value="failed">
-                                                <button type="submit" class="h-8 px-3 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[12px] font-bold transition cursor-pointer">Gagal</button>
+                                                @method('DELETE')
+                                                <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 transition cursor-pointer">
+                                                    <x-heroicon-o-trash class="w-3.5 h-3.5" />
+                                                    Hapus
+                                                </button>
                                             </form>
                                         </div>
-                                    @endif
+                                    </div>
                                 </td>
                             @endif
                         </tr>
@@ -1433,7 +1457,7 @@
                             <button
                                 type="submit"
                                 title="{{ $qcAiState['tooltip'] }}"
-                                class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer disabled:opacity-70 disabled:cursor-wait"
+                                class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-violet-500 to-pink-500 text-white font-semibold text-[13px] shadow-lg shadow-violet-500/20 hover:scale-[1.02] transition cursor-pointer disabled:opacity-70 disabled:cursor-wait"
                             >
                                 <x-heroicon-o-sparkles class="w-4 h-4" />
                                 <span data-loading-text>{{ $qcAiState['label'] }}</span>
@@ -1456,6 +1480,70 @@
             @endif
         </div>
     </div>
+
+    {{-- =============== QC EDIT MODAL (shared, satu untuk semua baris) =============== --}}
+    @if ($canEdit && ! $useReferenceProjectData)
+        <div id="qc-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="qc-edit-modal-title">
+            <div data-qc-modal-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
+            <div class="relative w-full max-w-md rounded-2xl bg-white border border-violet-100 shadow-[0_20px_60px_-15px_rgba(124,58,237,0.35)] overflow-hidden">
+                <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-violet-100/70 bg-violet-50/40">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <span class="pd-section-bar"></span>
+                        <div class="min-w-0">
+                            <h3 id="qc-edit-modal-title" class="text-[15px] font-extrabold tracking-tight text-[#1E1B4B] leading-tight">Edit Test Case</h3>
+                            <p data-qc-modal-code class="text-[11px] font-semibold text-violet-500"></p>
+                        </div>
+                    </div>
+                    <button type="button" data-qc-modal-close class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer" aria-label="Tutup">
+                        <x-heroicon-o-x-mark class="w-5 h-5" />
+                    </button>
+                </div>
+                <form id="qc-edit-form" method="POST" action="" class="px-5 py-4 space-y-3">
+                    @csrf
+                    @method('PUT')
+                    <div>
+                        <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Judul</label>
+                        <input name="title" required class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Skenario</label>
+                        <textarea name="scenario" rows="2" required class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Expected Result <span class="normal-case tracking-normal text-slate-300">(opsional)</span></label>
+                        <textarea name="expected_result" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Modul</label>
+                            <select name="project_module_id" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">— pilih modul —</option>
+                                @foreach ($modules as $mod)
+                                    @php $modId = $mod['id'] ?? null; @endphp
+                                    @if ($modId)
+                                        <option value="{{ $modId }}">{{ $mod['name'] }}</option>
+                                    @endif
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Prioritas</label>
+                            <select name="priority" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                @foreach ($qcPriorityOptions ?? ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High'] as $key => $label)
+                                    <option value="{{ $key }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <p class="text-[10.5px] text-slate-400 leading-tight">Status (Lulus/Gagal/Retest) dikelola lewat tombol di kolom Aksi.</p>
+                    <div class="flex justify-end gap-2 pt-1">
+                        <button type="button" data-qc-modal-close class="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer">Batal</button>
+                        <button type="submit" class="h-9 px-4 rounded-lg bg-violet-600 text-white text-[12.5px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endif
 
     <script>
         (function () {
@@ -1589,6 +1677,46 @@
 
                 /* Project Detail writes now submit to Laravel routes for WBS,
                  * Kanban, MoM, and QC actions. */
+
+                /* ===== QC Edit modal (shared, satu dialog untuk semua baris) ===== */
+                const qcModal = document.getElementById('qc-edit-modal');
+                if (qcModal) {
+                    const qcForm  = document.getElementById('qc-edit-form');
+                    const setVal  = (name, value) => {
+                        const el = qcForm.querySelector('[name="' + name + '"]');
+                        if (el) el.value = value ?? '';
+                    };
+                    const openQcModal = (btn) => {
+                        qcForm.setAttribute('action', btn.dataset.qcAction || '');
+                        setVal('title', btn.dataset.qcTitle);
+                        setVal('scenario', btn.dataset.qcScenario);
+                        setVal('expected_result', btn.dataset.qcExpected);
+                        setVal('project_module_id', btn.dataset.qcModule);
+                        setVal('priority', btn.dataset.qcPriority || 'medium');
+                        const code = qcModal.querySelector('[data-qc-modal-code]');
+                        if (code) code.textContent = btn.dataset.qcCode || '';
+                        qcModal.classList.remove('hidden');
+                        qcModal.classList.add('flex');
+                        document.body.classList.add('overflow-hidden');
+                        const first = qcForm.querySelector('[name="title"]');
+                        if (first) setTimeout(() => first.focus(), 30);
+                    };
+                    const closeQcModal = () => {
+                        qcModal.classList.add('hidden');
+                        qcModal.classList.remove('flex');
+                        document.body.classList.remove('overflow-hidden');
+                    };
+
+                    document.querySelectorAll('[data-qc-edit-trigger]').forEach(btn => {
+                        btn.addEventListener('click', () => openQcModal(btn));
+                    });
+                    qcModal.querySelectorAll('[data-qc-modal-close], [data-qc-modal-overlay]').forEach(el => {
+                        el.addEventListener('click', closeQcModal);
+                    });
+                    document.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape' && ! qcModal.classList.contains('hidden')) closeQcModal();
+                    });
+                }
             };
 
             if (document.readyState === 'loading') {

@@ -1165,6 +1165,87 @@ class ProjectController extends Controller
             ->with('status', 'Status QC "' . $qc->title . '" diperbarui ke ' . self::QC_STATUS_LABELS[$newStatus] . '.');
     }
 
+    /**
+     * Manual full edit of a QC/Test Case record (judul, skenario, expected
+     * result, modul, prioritas). Status tetap dikelola lewat tombol
+     * Lulus/Gagal/Retest (updateQcTest) agar alur verifikasi tidak berubah.
+     */
+    public function editQcTest(Request $request, Project $project, ProjectQcTest $qc)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($qc->project_id === $project->id, 404);
+
+        $validated = $request->validate([
+            'title'             => ['required', 'string', 'max:180'],
+            'scenario'          => ['required', 'string', 'max:4000'],
+            'expected_result'   => ['nullable', 'string', 'max:4000'],
+            'project_module_id' => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
+            'priority'          => ['required', Rule::in(array_keys(self::QC_PRIORITY_LABELS))],
+        ], [
+            'title.required'    => 'Judul test case wajib diisi.',
+            'scenario.required' => 'Skenario test case wajib diisi.',
+            'priority.required' => 'Prioritas wajib dipilih.',
+            'priority.in'       => 'Prioritas tidak valid.',
+        ]);
+
+        $original = $qc->getOriginal();
+
+        $qc->fill([
+            'title'             => $validated['title'],
+            'scenario'          => $validated['scenario'],
+            'expected_result'   => $validated['expected_result'] ?? null,
+            'project_module_id' => $validated['project_module_id'] ?? null,
+            'priority'          => $validated['priority'],
+        ]);
+        $qc->save();
+
+        AuditLogger::log(
+            'qc_updated',
+            'Project Master',
+            'Mengubah detail QC <strong>' . e($qc->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $qc,
+            ['project_id' => $project->id, 'qc_test_id' => $qc->id, 'title' => $original['title'] ?? null, 'priority' => $original['priority'] ?? null],
+            ['project_id' => $project->id, 'qc_test_id' => $qc->id, 'title' => $qc->title, 'priority' => $qc->priority],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#qc')
+            ->with('status', 'Test case "' . $qc->title . '" berhasil diperbarui.');
+    }
+
+    /**
+     * Manual delete of a single QC/Test Case record. Only removes the
+     * selected row; project/module/task data is untouched.
+     */
+    public function destroyQcTest(Request $request, Project $project, ProjectQcTest $qc)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($qc->project_id === $project->id, 404);
+
+        $title = $qc->title;
+
+        AuditLogger::log(
+            'qc_deleted',
+            'Project Master',
+            'Menghapus QC <strong>' . e($title) . '</strong> dari proyek <strong>' . e($project->name) . '</strong>',
+            $project,
+            ['project_id' => $project->id, 'qc_test_id' => $qc->id, 'title' => $qc->title, 'status' => $qc->status, 'priority' => $qc->priority],
+            null,
+        );
+
+        $qc->delete();
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#qc')
+            ->with('status', 'Test case "' . $title . '" berhasil dihapus.');
+    }
+
     /* ===================== PDF Exports ===================== */
 
     public function exportWbsPdf(Request $request, Project $project)
@@ -1472,6 +1553,7 @@ class ProjectController extends Controller
                 'title'           => $qc->title,
                 'scenario'        => $qc->scenario,
                 'module'          => $qc->module?->title ?? '—',
+                'module_id'       => $qc->project_module_id,
                 'task'            => $qc->task?->title,
                 'status'          => $qc->status ?: 'pending',
                 'priority'        => $qc->priority ?: 'medium',

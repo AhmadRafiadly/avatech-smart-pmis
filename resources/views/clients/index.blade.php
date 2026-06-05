@@ -169,8 +169,8 @@
                             data-client-name="{{ $attentionClient['name'] }}"
                             class="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-white border border-violet-200 hover:border-violet-400 text-[12.5px] font-semibold text-violet-700 transition cursor-pointer"
                         >
-                            <x-heroicon-o-chat-bubble-left-right class="w-3.5 h-3.5" />
-                            <span data-draft-button-text>Draft WhatsApp</span>
+                            <x-heroicon-o-sparkles class="w-3.5 h-3.5" />
+                            <span data-draft-button-text>Draft WA AI</span>
                         </button>
                     @endif
                     <button type="button" data-cycle-attention class="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:bg-white/70 transition cursor-pointer">
@@ -598,10 +598,10 @@
                                         data-url="{{ $c['wa_draft_url'] }}"
                                         data-fallback="{{ $c['wa_draft_fallback'] }}"
                                         data-client-name="{{ $c['name'] }}"
-                                        class="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-[12px] font-semibold transition cursor-pointer"
+                                        class="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-gradient-to-r from-pink-500 to-violet-600 text-white text-[12px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer"
                                     >
                                         <x-heroicon-o-sparkles class="w-3.5 h-3.5" />
-                                        <span data-draft-button-text>Draft WA</span>
+                                        <span data-draft-button-text>Draft WA AI</span>
                                     </button>
                                     <button
                                         type="button"
@@ -612,10 +612,10 @@
                                         data-subject="{{ $c['email_draft_fallback']['subject'] ?? '' }}"
                                         data-fallback="{{ $c['email_draft_fallback']['body'] ?? '' }}"
                                         data-client-name="{{ $c['name'] }}"
-                                        class="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-white border border-violet-100 hover:border-violet-300 text-slate-600 hover:text-violet-700 text-[12px] font-semibold transition cursor-pointer"
+                                        class="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-gradient-to-r from-pink-500 to-violet-600 text-white text-[12px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer"
                                     >
-                                        <x-heroicon-o-envelope class="w-3.5 h-3.5" />
-                                        <span data-draft-button-text>Draft Email</span>
+                                        <x-heroicon-o-sparkles class="w-3.5 h-3.5" />
+                                        <span data-draft-button-text>Draft Email AI</span>
                                     </button>
                                 </div>
                             </div>
@@ -729,13 +729,13 @@
                 </div>
                 <div class="flex justify-end gap-2 flex-wrap">
                     <button type="button" data-modal-close class="px-5 h-9 rounded-xl bg-white border border-violet-200 text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">Tutup</button>
-                    <button type="button" data-footer-draft="email" class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-white border border-violet-200 text-violet-700 text-[13px] font-semibold hover:border-violet-400 transition cursor-pointer">
-                        <x-heroicon-o-envelope class="w-4 h-4" />
-                        <span data-draft-button-text>Draft Email</span>
+                    <button type="button" data-footer-draft="email" class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-violet-600 text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                        <x-heroicon-o-sparkles class="w-4 h-4" />
+                        <span data-draft-button-text>Draft Email AI</span>
                     </button>
                     <button type="button" data-footer-draft="whatsapp" class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-violet-600 text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                         <x-heroicon-o-sparkles class="w-4 h-4" />
-                        <span data-draft-button-text>Draft WhatsApp</span>
+                        <span data-draft-button-text>Draft WA AI</span>
                     </button>
                 </div>
             </div>
@@ -761,7 +761,7 @@
                     <input data-draft-subject class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
                 </div>
                 <div>
-                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Draft bisa diedit sebelum dikirim</label>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Draft bisa diedit sebelum disalin</label>
                     <textarea data-draft-text rows="8" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-violet-300"></textarea>
                 </div>
                 <div class="flex items-start gap-2.5 p-3 rounded-lg bg-violet-50/70 border border-violet-100 text-[12px] text-slate-600">
@@ -774,9 +774,17 @@
                 <button type="button" data-draft-regenerate class="h-9 px-4 rounded-lg bg-white border border-violet-200 text-[12.5px] font-semibold text-violet-700 hover:border-violet-400 transition cursor-pointer">
                     <span data-draft-button-text>Regenerate</span>
                 </button>
+                <button type="button" data-draft-open-channel data-channel="whatsapp" class="hidden inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-[12.5px] hover:bg-emerald-100 transition cursor-pointer">
+                    <x-heroicon-o-chat-bubble-oval-left class="w-4 h-4" />
+                    Buka WhatsApp
+                </button>
+                <button type="button" data-draft-open-channel data-channel="email" class="hidden inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-violet-200 bg-white text-violet-700 font-semibold text-[12.5px] hover:border-violet-400 transition cursor-pointer">
+                    <x-heroicon-o-envelope class="w-4 h-4" />
+                    Buka Gmail
+                </button>
                 <button type="button" data-draft-copy class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                     <x-heroicon-o-clipboard-document class="w-4 h-4" />
-                    Copy
+                    Copy Draft
                 </button>
             </div>
         </div>
@@ -988,6 +996,11 @@
                     draftKicker.textContent = isEmail ? 'Draft AI · Email' : 'Draft AI · WhatsApp';
                     draftSubjectWrap?.classList.toggle('hidden', ! isEmail);
                     if (draftSubject) draftSubject.value = isEmail ? (state.subject || '') : '';
+                    /* Show only the relevant "Buka" channel button for this draft type. */
+                    draftModal.querySelectorAll('[data-draft-open-channel]').forEach(b => {
+                        b.classList.toggle('hidden', b.dataset.channel !== state.type);
+                        b.classList.toggle('inline-flex', b.dataset.channel === state.type);
+                    });
                     draftText.value = state.fallback || '';
                     showDraftMessage('Membuat draft dari konteks klien. Jika AI belum tersedia, draft aturan dasar tetap bisa dipakai.');
                     draftModal.classList.remove('hidden');
@@ -1043,14 +1056,19 @@
                     }
                 };
 
-                const stateFromButton = (btn) => ({
-                    type: btn.dataset.draftType || 'whatsapp',
-                    url: btn.dataset.url || '',
-                    fallback: btn.dataset.fallback || '',
-                    subject: btn.dataset.subject || '',
-                    clientName: btn.dataset.clientName || '',
-                    trigger: btn,
-                });
+                const stateFromButton = (btn) => {
+                    const cd = window.__clientsCsvMap?.[btn.dataset.clientId] || {};
+                    return {
+                        type: btn.dataset.draftType || 'whatsapp',
+                        url: btn.dataset.url || '',
+                        fallback: btn.dataset.fallback || '',
+                        subject: btn.dataset.subject || '',
+                        clientName: btn.dataset.clientName || '',
+                        phone: cd.raw_phone || '',
+                        email: cd.raw_email || '',
+                        trigger: btn,
+                    };
+                };
 
                 document.querySelectorAll('[data-open-draft]').forEach(btn => {
                     btn.addEventListener('click', (e) => {
@@ -1072,6 +1090,8 @@
                             fallback: isEmail ? (data.email_draft_fallback?.body || '') : (data.wa_draft_fallback || ''),
                             subject: isEmail ? (data.email_draft_fallback?.subject || '') : '',
                             clientName: data.name || '',
+                            phone: data.raw_phone || '',
+                            email: data.raw_email || '',
                             trigger: btn,
                         });
                     });
@@ -1080,6 +1100,29 @@
                 draftModal?.querySelector('[data-draft-overlay]')?.addEventListener('click', closeDraftModal);
                 draftModal?.querySelectorAll('[data-draft-close]').forEach(btn => btn.addEventListener('click', closeDraftModal));
                 draftModal?.querySelector('[data-draft-regenerate]')?.addEventListener('click', (e) => draftState && fetchDraft(draftState, e.currentTarget, 'Membuat Ulang...'));
+                /* Open WhatsApp (wa.me) or Gmail compose prefilled with the current
+                 * edited draft. No auto-send — the external app still requires the
+                 * user to press send manually. */
+                draftModal?.querySelectorAll('[data-draft-open-channel]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        if (! draftState) return;
+                        const body = draftText?.value || '';
+                        if (btn.dataset.channel === 'whatsapp') {
+                            const digits = (draftState.phone || '').replace(/[^0-9]/g, '');
+                            const url = digits
+                                ? 'https://wa.me/' + digits + '?text=' + encodeURIComponent(body)
+                                : 'https://wa.me/?text=' + encodeURIComponent(body);
+                            window.open(url, '_blank', 'noopener');
+                        } else {
+                            const to = encodeURIComponent(draftState.email || '');
+                            const su = encodeURIComponent(draftSubject?.value || '');
+                            const bo = encodeURIComponent(body);
+                            const url = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + to + '&su=' + su + '&body=' + bo;
+                            window.open(url, '_blank', 'noopener');
+                        }
+                    });
+                });
+
                 draftModal?.querySelector('[data-draft-copy]')?.addEventListener('click', async () => {
                     const subject = draftSubject && ! draftSubjectWrap?.classList.contains('hidden') ? draftSubject.value.trim() + "\n\n" : '';
                     const text = subject + (draftText?.value || '');
