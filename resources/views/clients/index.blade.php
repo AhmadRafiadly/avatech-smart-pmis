@@ -723,20 +723,8 @@
 
             {{-- Static footer (shared across clients) --}}
             <div data-client-footer class="px-7 py-4 border-t border-violet-100 bg-violet-50/30">
-                <div class="mb-3 rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-[12.5px] text-slate-500 flex items-start gap-2">
-                    <x-heroicon-o-sparkles class="w-3.5 h-3.5 text-violet-500 flex-shrink-0 mt-0.5" />
-                    <span>Draft outreach hanya saran. Tinjau dan edit sebelum dikirim.</span>
-                </div>
                 <div class="flex justify-end gap-2 flex-wrap">
                     <button type="button" data-modal-close class="px-5 h-9 rounded-xl bg-white border border-violet-200 text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer">Tutup</button>
-                    <button type="button" data-footer-draft="email" class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-violet-600 text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
-                        <x-heroicon-o-sparkles class="w-4 h-4" />
-                        <span data-draft-button-text>Draft Email AI</span>
-                    </button>
-                    <button type="button" data-footer-draft="whatsapp" class="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-violet-600 text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
-                        <x-heroicon-o-sparkles class="w-4 h-4" />
-                        <span data-draft-button-text>Draft WA AI</span>
-                    </button>
                 </div>
             </div>
         </div>
@@ -1075,25 +1063,6 @@
                         e.preventDefault();
                         e.stopPropagation();
                         openDraftModal(stateFromButton(btn));
-                    });
-                });
-
-                document.querySelectorAll('[data-footer-draft]').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        const data = window.__clientsCsvMap?.[activeClientId];
-                        if (! data) return;
-                        const isEmail = btn.dataset.footerDraft === 'email';
-                        openDraftModal({
-                            type: isEmail ? 'email' : 'whatsapp',
-                            url: isEmail ? data.email_draft_url : data.wa_draft_url,
-                            fallback: isEmail ? (data.email_draft_fallback?.body || '') : (data.wa_draft_fallback || ''),
-                            subject: isEmail ? (data.email_draft_fallback?.subject || '') : '',
-                            clientName: data.name || '',
-                            phone: data.raw_phone || '',
-                            email: data.raw_email || '',
-                            trigger: btn,
-                        });
                     });
                 });
 
