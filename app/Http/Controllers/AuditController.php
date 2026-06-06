@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Support\AppTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -112,7 +113,7 @@ class AuditController extends Controller
     {
         $logs = $this->buildQuery($request)->limit(5000)->get();
 
-        $filename = 'audit-' . Carbon::now()->format('Y-m-d-His') . '.csv';
+        $filename = 'audit-' . AppTime::now()->format('Y-m-d-His') . '.csv';
 
         return response()->streamDownload(function () use ($logs) {
             $handle = fopen('php://output', 'w');
@@ -120,7 +121,7 @@ class AuditController extends Controller
             fwrite($handle, "\xEF\xBB\xBF");
             fputcsv($handle, ['ID', 'Date', 'Time', 'Actor', 'Module', 'Tag', 'Action', 'Description', 'IP', 'User Agent']);
             foreach ($logs as $log) {
-                $created = $log->created_at ?: Carbon::now();
+                $created = AppTime::cast($log->created_at) ?: AppTime::now();
                 fputcsv($handle, [
                     $log->id,
                     $created->format('Y-m-d'),
@@ -148,7 +149,7 @@ class AuditController extends Controller
         return view('audit.report', [
             'title'       => 'Laporan Audit Trail',
             'events'      => $events,
-            'generatedAt' => Carbon::now(),
+            'generatedAt' => AppTime::now(),
             'filters'     => [
                 'chip'  => $this->normalizeChip((string) $request->query('chip', 'all')),
                 'actor' => $request->query('actor', 'all'),
@@ -384,7 +385,7 @@ class AuditController extends Controller
         if ($range !== '' && $range !== 'all') {
             $days = (int) $range;
             if ($days > 0) {
-                $query->where('created_at', '>=', Carbon::now()->subDays($days)->startOfDay());
+                $query->where('created_at', '>=', AppTime::now()->subDays($days)->startOfDay());
             }
         }
 
@@ -412,7 +413,7 @@ class AuditController extends Controller
     private function todayCount(): int
     {
         try {
-            $query = AuditLog::where('created_at', '>=', Carbon::now()->startOfDay());
+            $query = AuditLog::where('created_at', '>=', AppTime::now()->startOfDay());
             if ($this->isOperationalViewer()) {
                 $query->where('user_id', auth()->id());
             }
@@ -424,8 +425,8 @@ class AuditController extends Controller
 
     private function mapEntry(AuditLog $log): array
     {
-        $created = $log->created_at ?: Carbon::now();
-        $today = Carbon::now()->startOfDay();
+        $created = AppTime::cast($log->created_at) ?: AppTime::now();
+        $today = AppTime::now()->startOfDay();
         $logDay = $created->copy()->startOfDay();
 
         if ($logDay->equalTo($today)) {

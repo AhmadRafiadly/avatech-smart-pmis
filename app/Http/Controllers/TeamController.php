@@ -7,6 +7,7 @@ use App\Models\TeamAssignment;
 use App\Models\TeamWorkload;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Support\AppTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -260,7 +261,7 @@ class TeamController extends Controller
             'phone' => $user->phone ?: '',
             'location' => 'GMT+7',
             'join_date' => $joinedAt->translatedFormat('d M Y'),
-            'last_active' => $user->updated_at?->diffForHumans() ?: 'baru saja',
+            'last_active' => AppTime::diff($user->updated_at),
             'projects_lead' => $ledProjects,
             'tasks_done' => $doneAssignments->count(),
             'bio' => self::UI_ROLES[$roleKey]['label'] . ' · ' . ($user->level ?: 'Mid') . '. Profil ini tersimpan di database Smart-PMIS.',
@@ -355,7 +356,7 @@ class TeamController extends Controller
             'bg' => '#EDE9FE',
             'color' => '#7C3AED',
             'text' => 'Penugasan <strong>' . e($assignment->title) . '</strong> pada ' . e($assignment->project?->name ?? 'project'),
-            'time' => $assignment->created_at?->diffForHumans() ?: 'baru saja',
+            'time' => AppTime::diff($assignment->created_at),
         ])->all();
     }
 

@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\AiPlanner;
 use App\Services\AuditLogger;
 use App\Services\SmartInsightService;
+use App\Support\AppTime;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -274,9 +275,8 @@ class ProjectController extends Controller
             'tasks' => fn ($query) => $query->with(['module', 'assignee'])->orderBy('sort_order')->orderBy('id'),
             'moms' => fn ($query) => $query->with('creator:id,name')->orderByDesc('meeting_date')->orderByDesc('id'),
             'qcTests' => fn ($query) => $query->with(['module:id,title', 'task:id,title', 'creator:id,name'])
-                ->orderByRaw("FIELD(status, 'failed', 'retest', 'pending', 'passed')")
-                ->orderByDesc('updated_at')
-                ->orderByDesc('id'),
+                ->orderBy('created_at')
+                ->orderBy('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -287,7 +287,7 @@ class ProjectController extends Controller
         $desc = $project->description ?: (self::DESC_MAP[$project->code] ?? 'Belum ada deskripsi untuk proyek ini.');
 
         $due       = $project->due_at ? $this->formatDateId($project->due_at) : '—';
-        $createdAt = $project->created_at ? $this->formatDateLongId($project->created_at) : '—';
+        $createdAt = $project->created_at ? $this->formatDateLongId(AppTime::cast($project->created_at)) : '—';
 
         return view('projects.show', [
             'title'        => $project->name,
@@ -353,7 +353,7 @@ class ProjectController extends Controller
         AuditLogger::log('wbs_module_created', 'Project Master', 'Menambah modul WBS <strong>' . e($module->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>', $module);
 
         return redirect()
-            ->to(route('projects.show', $project) . '#overview')
+            ->to(route('projects.show', $project) . '#aiplanning')
             ->with('status', 'Modul WBS "' . $module->title . '" berhasil dibuat.');
     }
 
@@ -405,7 +405,7 @@ class ProjectController extends Controller
         );
 
         return redirect()
-            ->to(route('projects.show', $project) . '#overview')
+            ->to(route('projects.show', $project) . '#aiplanning')
             ->with('status', 'Modul WBS "' . $module->title . '" berhasil diperbarui.');
     }
 
@@ -732,30 +732,68 @@ class ProjectController extends Controller
                 ->with('status', 'AI MoM Fixer gagal: hasil ringkasan kosong.');
         }
 
+        /* HITL: jangan tulis ke DB di sini. Tampilkan draf editable lebih dulu;
+         * penyimpanan + audit terjadi di applyMomFix() setelah user konfirmasi.
+         * AI metadata sudah dicatat AiPlanner saat request (tetap metadata-only). */
+        return redirect()->to($backUrl)
+            ->with('ai_mom_preview', [
+                'mom_id'       => $latestMom->id,
+                'meeting_date' => optional($latestMom->meeting_date)->format('d M Y'),
+                'summary'      => $formatted,
+                'provider'     => $result['provider'] ?? null,
+            ])
+            ->with('status', 'Draf ringkasan AI siap ditinjau. Sunting bila perlu, lalu klik Simpan.');
+    }
+
+    /**
+     * HITL confirm step for AI MoM Fixer. Saves the (possibly user-edited)
+     * summary only after explicit user action. Audit logged here, not at preview.
+     */
+    public function applyMomFix(Request $request, Project $project)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $backUrl = route('projects.show', $project) . '#aiplanning';
+
+        $validated = $request->validate([
+            'mom_id'  => ['required', Rule::exists('project_moms', 'id')->where('project_id', $project->id)],
+            'summary' => ['required', 'string', 'max:12000'],
+        ], [
+            'mom_id.required'  => 'MoM target tidak valid.',
+            'mom_id.exists'    => 'MoM target tidak ditemukan pada proyek ini.',
+            'summary.required' => 'Ringkasan tidak boleh kosong saat menyimpan.',
+            'summary.max'      => 'Ringkasan MoM terlalu panjang.',
+        ]);
+
+        $mom = $project->moms()->whereKey($validated['mom_id'])->firstOrFail();
+
         try {
-            DB::transaction(function () use ($latestMom, $formatted) {
-                $latestMom->update([
-                    'summary' => $formatted,
+            DB::transaction(function () use ($mom, $validated) {
+                $mom->update([
+                    'summary' => $validated['summary'],
                     'status'  => 'ai_fixed',
                 ]);
             });
         } catch (\Throwable $e) {
             report($e);
             return redirect()->to($backUrl)
-                ->with('status', 'AI MoM Fixer gagal menyimpan ringkasan: ' . $e->getMessage());
+                ->with('status', 'Gagal menyimpan ringkasan MoM: ' . $e->getMessage());
         }
 
         AuditLogger::log(
             'ai_mom_fixed',
             'Project Master',
-            'Merapikan MoM dengan AI pada proyek <strong>' . e($project->name) . '</strong>',
-            $latestMom,
+            'Menyimpan ringkasan MoM hasil AI (ditinjau pengguna) pada proyek <strong>' . e($project->name) . '</strong>',
+            $mom,
             null,
-            ['project_id' => $project->id, 'mom_id' => $latestMom->id, 'provider' => $result['provider'] ?? null],
+            ['project_id' => $project->id, 'mom_id' => $mom->id],
         );
 
         return redirect()->to($backUrl)
-            ->with('status', 'AI MoM Fixer selesai. Ringkasan MoM berhasil diperbarui.');
+            ->with('status', 'Ringkasan MoM hasil AI berhasil disimpan.');
     }
 
     public function generateWbsFromMom(Request $request, Project $project)
@@ -808,6 +846,52 @@ class ProjectController extends Controller
                 ->with('status', 'Generator AI gagal: ' . ($result['error'] ?? 'tidak diketahui.'));
         }
 
+        $modules = $result['data']['modules'] ?? [];
+        if (empty($modules)) {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI belum menghasilkan draf WBS yang bisa ditinjau.');
+        }
+
+        /* HITL: jangan tulis ke DB di sini. Tampilkan draf editable lebih dulu;
+         * penyimpanan + audit terjadi di applyWbs() setelah user memilih & konfirmasi.
+         * AI metadata sudah dicatat AiPlanner saat request (tetap metadata-only). */
+        return redirect()->to($backUrl)
+            ->with('ai_wbs_preview', [
+                'modules'       => $modules,
+                'source_mom_id' => $latestMom->id,
+                'provider'      => $result['provider'] ?? null,
+            ])
+            ->with('status', 'Draf WBS AI siap ditinjau. Sunting/pilih item, lalu klik Simpan.');
+    }
+
+    /**
+     * HITL confirm step for AI WBS Generator. Persists only the included,
+     * user-edited modules/tasks. Skip-duplicate logic preserved. Audit here.
+     */
+    public function applyWbs(Request $request, Project $project)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $backUrl = route('projects.show', $project) . '#aiplanning';
+
+        $validated = $request->validate([
+            'modules'                       => ['required', 'array', 'min:1'],
+            'modules.*.include'             => ['nullable'],
+            'modules.*.title'               => ['nullable', 'string', 'max:180'],
+            'modules.*.description'         => ['nullable', 'string', 'max:2000'],
+            'modules.*.status'              => ['nullable', Rule::in(AiPlanner::ALLOWED_MODULE_STATUS)],
+            'modules.*.estimate_hours'      => ['nullable', 'integer', 'min:0', 'max:999'],
+            'modules.*.tasks'               => ['nullable', 'array'],
+            'modules.*.tasks.*.include'     => ['nullable'],
+            'modules.*.tasks.*.title'       => ['nullable', 'string', 'max:180'],
+            'modules.*.tasks.*.description' => ['nullable', 'string', 'max:2000'],
+            'modules.*.tasks.*.priority'    => ['nullable', Rule::in(AiPlanner::ALLOWED_TASK_PRIORITY)],
+            'modules.*.tasks.*.estimate_hours' => ['nullable', 'integer', 'min:0', 'max:999'],
+        ]);
+
         $existingModuleByLower = $project->modules()
             ->get(['id', 'title'])
             ->mapWithKeys(fn (ProjectModule $module) => [mb_strtolower($module->title) => $module->id])
@@ -828,7 +912,7 @@ class ProjectController extends Controller
         try {
             DB::transaction(function () use (
                 $project,
-                $result,
+                $validated,
                 &$existingModuleByLower,
                 &$existingTasksByModule,
                 &$maxModuleSort,
@@ -836,9 +920,13 @@ class ProjectController extends Controller
                 &$createdModules,
                 &$createdTasks,
             ) {
-                $drafts = $result['data']['modules'] ?? [];
-                foreach ($drafts as $modDraft) {
-                    $titleLower = mb_strtolower((string) ($modDraft['title'] ?? ''));
+                foreach ($validated['modules'] as $modDraft) {
+                    // Only persist modules the user kept checked.
+                    if (! filter_var($modDraft['include'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                        continue;
+                    }
+                    $title = trim((string) ($modDraft['title'] ?? ''));
+                    $titleLower = mb_strtolower($title);
                     if ($titleLower === '') {
                         continue;
                     }
@@ -852,7 +940,7 @@ class ProjectController extends Controller
                     } else {
                         $maxModuleSort++;
                         $module = $project->modules()->create([
-                            'title'          => $modDraft['title'],
+                            'title'          => $title,
                             'description'    => $modDraft['description'] ?? null,
                             'status'         => $modDraft['status'] ?? AiPlanner::DEFAULT_MODULE_STATUS,
                             'estimate_hours' => (int) ($modDraft['estimate_hours'] ?? 0),
@@ -864,7 +952,11 @@ class ProjectController extends Controller
 
                     $existingTaskByLower = $existingTasksByModule[$module->id] ?? [];
                     foreach (($modDraft['tasks'] ?? []) as $taskDraft) {
-                        $tTitleLower = mb_strtolower((string) ($taskDraft['title'] ?? ''));
+                        if (! filter_var($taskDraft['include'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                            continue;
+                        }
+                        $tTitle = trim((string) ($taskDraft['title'] ?? ''));
+                        $tTitleLower = mb_strtolower($tTitle);
                         if ($tTitleLower === '' || isset($existingTaskByLower[$tTitleLower])) {
                             continue;
                         }
@@ -872,9 +964,9 @@ class ProjectController extends Controller
                         $project->tasks()->create([
                             'project_module_id' => $module->id,
                             'assigned_to'       => null,
-                            'title'             => $taskDraft['title'],
+                            'title'             => $tTitle,
                             'description'       => $taskDraft['description'] ?? null,
-                            'status'            => $taskDraft['status'] ?? AiPlanner::DEFAULT_TASK_STATUS,
+                            'status'            => AiPlanner::DEFAULT_TASK_STATUS,
                             'priority'          => $taskDraft['priority'] ?? AiPlanner::DEFAULT_TASK_PRIORITY,
                             'estimate_hours'    => (int) ($taskDraft['estimate_hours'] ?? 0),
                             'sort_order'        => $maxTaskSort,
@@ -888,31 +980,33 @@ class ProjectController extends Controller
         } catch (\Throwable $e) {
             report($e);
             return redirect()->to($backUrl)
-                ->with('status', 'Generator AI gagal menyimpan draft: ' . $e->getMessage());
+                ->with('status', 'Gagal menyimpan draf WBS: ' . $e->getMessage());
         }
 
         if ($createdModules === 0 && $createdTasks === 0) {
             return redirect()->to($backUrl)
-                ->with('status', 'Tidak ada draft WBS baru yang ditambahkan karena seluruh judul sudah tersedia.');
+                ->with('status', 'Tidak ada draf WBS yang disimpan (tidak ada item dipilih atau judul sudah tersedia).');
+        }
+
+        if (! $project->ai_wbs_generated) {
+            $project->forceFill(['ai_wbs_generated' => true])->save();
         }
 
         AuditLogger::log(
             'ai_wbs_generated',
             'Project Master',
-            'Generate WBS AI: <strong>' . $createdModules . '</strong> modul + <strong>' . $createdTasks . '</strong> task pada proyek <strong>' . e($project->name) . '</strong>',
+            'Menyimpan WBS hasil AI (ditinjau pengguna): <strong>' . $createdModules . '</strong> modul + <strong>' . $createdTasks . '</strong> task pada proyek <strong>' . e($project->name) . '</strong>',
             $project,
             null,
             [
-                'project_id'    => $project->id,
-                'module_count'  => $createdModules,
-                'task_count'    => $createdTasks,
-                'source_mom_id' => $latestMom->id,
-                'provider'      => $result['provider'] ?? null,
+                'project_id'   => $project->id,
+                'module_count' => $createdModules,
+                'task_count'   => $createdTasks,
             ],
         );
 
         return redirect()->to($backUrl)
-            ->with('status', 'AI WBS Generator selesai: ' . $createdModules . ' modul, ' . $createdTasks . ' task.');
+            ->with('status', 'WBS hasil AI berhasil disimpan: ' . $createdModules . ' modul, ' . $createdTasks . ' task.');
     }
 
     public function generateTestCases(Request $request, Project $project)
@@ -989,11 +1083,47 @@ class ProjectController extends Controller
                 ->with('status', 'Generator AI gagal: ' . ($result['error'] ?? 'tidak diketahui.'));
         }
 
-        $moduleByLower = $project->modules
-            ->mapWithKeys(fn (ProjectModule $module) => [mb_strtolower($module->title) => $module->id])
-            ->all();
+        $testCases = $result['data']['test_cases'] ?? [];
+        if (empty($testCases)) {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI belum menghasilkan draf test case yang bisa ditinjau.');
+        }
 
-        $existingTitles = $project->qcTests
+        /* HITL: jangan tulis ke DB di sini. Tampilkan draf editable lebih dulu;
+         * penyimpanan + audit terjadi di applyTestCases() setelah user memilih & konfirmasi.
+         * AI metadata sudah dicatat AiPlanner saat request (tetap metadata-only). */
+        return redirect()->to($backUrl)
+            ->with('ai_testcase_preview', [
+                'test_cases' => $testCases,
+                'provider'   => $result['provider'] ?? null,
+            ])
+            ->with('status', 'Draf test case AI siap ditinjau. Sunting/pilih item, lalu klik Simpan.');
+    }
+
+    /**
+     * HITL confirm step for AI Test Case Generator. Persists only the included,
+     * user-edited test cases. Skip-duplicate logic preserved. Audit here.
+     */
+    public function applyTestCases(Request $request, Project $project)
+    {
+        $this->ensureCanEditProjectDetail();
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $backUrl = route('projects.show', $project) . '#qc';
+
+        $validated = $request->validate([
+            'test_cases'                     => ['required', 'array', 'min:1'],
+            'test_cases.*.include'           => ['nullable'],
+            'test_cases.*.title'             => ['nullable', 'string', 'max:180'],
+            'test_cases.*.scenario'          => ['nullable', 'string', 'max:4000'],
+            'test_cases.*.expected_result'   => ['nullable', 'string', 'max:4000'],
+            'test_cases.*.priority'          => ['nullable', Rule::in(AiPlanner::ALLOWED_TASK_PRIORITY)],
+            'test_cases.*.project_module_id' => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
+        ]);
+
+        $existingTitles = $project->qcTests()
             ->pluck('title')
             ->map(fn ($title) => mb_strtolower((string) $title))
             ->filter()
@@ -1007,27 +1137,28 @@ class ProjectController extends Controller
             DB::transaction(function () use (
                 $project,
                 $request,
-                $result,
-                $moduleByLower,
+                $validated,
                 &$existingTitles,
                 &$createdCases,
                 &$moduleIdsUsed,
             ) {
-                foreach (($result['data']['test_cases'] ?? []) as $caseDraft) {
-                    $titleLower = mb_strtolower((string) ($caseDraft['title'] ?? ''));
-                    if ($titleLower === '' || isset($existingTitles[$titleLower])) {
+                foreach ($validated['test_cases'] as $caseDraft) {
+                    if (! filter_var($caseDraft['include'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                        continue;
+                    }
+                    $title = trim((string) ($caseDraft['title'] ?? ''));
+                    $scenario = trim((string) ($caseDraft['scenario'] ?? ''));
+                    $titleLower = mb_strtolower($title);
+                    if ($title === '' || $scenario === '' || isset($existingTitles[$titleLower])) {
                         continue;
                     }
 
-                    $moduleTitle = mb_strtolower((string) ($caseDraft['module_title'] ?? ''));
-                    $moduleId = $moduleTitle !== '' ? ($moduleByLower[$moduleTitle] ?? null) : null;
-
                     $qc = $project->qcTests()->create([
-                        'project_module_id' => $moduleId,
+                        'project_module_id' => $caseDraft['project_module_id'] ?? null,
                         'project_task_id'   => null,
                         'created_by'        => $request->user()?->id,
-                        'title'             => $caseDraft['title'],
-                        'scenario'          => $caseDraft['scenario'],
+                        'title'             => $title,
+                        'scenario'          => $scenario,
                         'expected_result'   => $caseDraft['expected_result'] ?? null,
                         'status'            => 'pending',
                         'priority'          => $caseDraft['priority'] ?? AiPlanner::DEFAULT_TASK_PRIORITY,
@@ -1043,30 +1174,29 @@ class ProjectController extends Controller
         } catch (\Throwable $e) {
             report($e);
             return redirect()->to($backUrl)
-                ->with('status', 'Generator AI gagal menyimpan test case: ' . $e->getMessage());
+                ->with('status', 'Gagal menyimpan test case: ' . $e->getMessage());
         }
 
         if ($createdCases === 0) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI belum menghasilkan data baru yang bisa disimpan.');
+                ->with('status', 'Tidak ada test case yang disimpan (tidak ada item dipilih atau judul sudah tersedia).');
         }
 
         AuditLogger::log(
             'ai_test_cases_generated',
             'Project Master',
-            'Generate AI Test Case: <strong>' . $createdCases . '</strong> test case pada proyek <strong>' . e($project->name) . '</strong>',
+            'Menyimpan test case hasil AI (ditinjau pengguna): <strong>' . $createdCases . '</strong> test case pada proyek <strong>' . e($project->name) . '</strong>',
             $project,
             null,
             [
-                'project_id'       => $project->id,
-                'test_case_count'  => $createdCases,
-                'module_count'     => count($moduleIdsUsed),
-                'provider'         => $result['provider'] ?? null,
+                'project_id'      => $project->id,
+                'test_case_count' => $createdCases,
+                'module_count'    => count($moduleIdsUsed),
             ],
         );
 
         return redirect()->to($backUrl)
-            ->with('status', 'AI Test Case Generator selesai: ' . $createdCases . ' test case.');
+            ->with('status', 'Test case hasil AI berhasil disimpan: ' . $createdCases . ' test case.');
     }
 
     public function storeQcTest(Request $request, Project $project)
@@ -1306,7 +1436,7 @@ class ProjectController extends Controller
         $totalTasks   = $project->tasks->count();
         $totalEstimateHours = (int) $project->modules->sum('estimate_hours') + (int) $project->tasks->sum('estimate_hours');
 
-        $generatedAt = Carbon::now();
+        $generatedAt = AppTime::now();
         $filename = 'wbs-' . $this->exportSlug($project) . '-' . $generatedAt->format('Ymd-His') . '.pdf';
 
         $pdf = Pdf::loadView('projects.exports.wbs-pdf', [
@@ -1356,7 +1486,7 @@ class ProjectController extends Controller
                 'module'          => $qc->module?->title,
                 'priority'        => $qc->priority ?: 'medium',
                 'status'          => $qc->status ?: 'pending',
-                'tested_at'       => $qc->tested_at?->format('d M Y H:i'),
+                'tested_at'       => AppTime::cast($qc->tested_at)?->format('d M Y H:i'),
             ];
         })->all();
 
@@ -1369,8 +1499,8 @@ class ProjectController extends Controller
             'retest'  => (int) ($byStatus['retest'] ?? 0),
         ];
 
-        $generatedAt = Carbon::now();
-        $filename = 'test-cases-' . $this->exportSlug($project) . '-' . $generatedAt->format('Ymd-His') . '.pdf';
+        $generatedAt = AppTime::now();
+        $filename = 'test-case-' . $this->exportSlug($project) . '-' . $generatedAt->format('Ymd-His') . '.pdf';
 
         $pdf = Pdf::loadView('projects.exports.test-cases-pdf', [
             'project'     => $project,
@@ -1412,11 +1542,11 @@ class ProjectController extends Controller
 
     private function exportSlug(Project $project): string
     {
-        $base = trim((string) ($project->code ?: $project->name ?: 'project'));
+        $base = trim((string) ($project->code ?: $project->name ?: ('project-' . $project->id)));
         $slug = strtolower((string) preg_replace('/[^A-Za-z0-9]+/', '-', $base));
         $slug = trim($slug, '-');
 
-        return $slug !== '' ? $slug : 'project';
+        return $slug !== '' ? $slug : 'project-' . $project->id;
     }
 
     private function usesReferenceProjectData(Project $project): bool
@@ -1560,9 +1690,9 @@ class ProjectController extends Controller
                 'expected_result' => $qc->expected_result,
                 'actual_result'   => $qc->actual_result,
                 'notes'           => $qc->notes,
-                'tested_at'       => $qc->tested_at?->format('d M Y H:i'),
+                'tested_at'       => AppTime::cast($qc->tested_at)?->format('d M Y H:i'),
                 'creator'         => $qc->creator?->name,
-                'updated_at'      => $qc->updated_at?->diffForHumans(),
+                'updated_at'      => AppTime::diff($qc->updated_at),
             ];
         })->all();
     }
@@ -1580,7 +1710,7 @@ class ProjectController extends Controller
                 'summary'      => $mom->summary,
                 'status'       => $mom->status ?: 'draft',
                 'creator'      => $mom->creator?->name,
-                'created_at'   => $mom->created_at?->diffForHumans(),
+                'created_at'   => AppTime::diff($mom->created_at),
             ];
         })->all();
     }
@@ -1647,7 +1777,7 @@ class ProjectController extends Controller
 
             return [
                 'dot' => $this->activityDot($log->action),
-                'time' => $log->created_at?->diffForHumans() ?? 'Baru saja',
+                'time' => AppTime::diff($log->created_at, 'Baru saja'),
                 'title' => $tag,
                 'text' => trim(strip_tags((string) $log->description)) ?: 'Aktivitas project tercatat.',
             ];

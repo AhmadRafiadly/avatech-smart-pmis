@@ -9,6 +9,7 @@ use App\Models\ProjectQcTest;
 use App\Models\ProjectTask;
 use App\Models\TeamAssignment;
 use App\Models\User;
+use App\Support\AppTime;
 use Illuminate\Support\Carbon;
 
 class SmartInsightService
@@ -70,7 +71,7 @@ class SmartInsightService
 
         if ($taskCount > 0 && $unassignedTasks > 0) {
             $badges[] = ['label' => 'Needs Assignment', 'tone' => 'rose', 'icon' => 'user-plus'];
-        } elseif ($project->due_at && $project->due_at->isBetween(now(), now()->addDays(7)) && (int) $project->progress < 100) {
+        } elseif ($project->due_at && $project->due_at->isBetween(AppTime::now(), AppTime::now()->addDays(7)) && (int) $project->progress < 100) {
             $badges[] = ['label' => 'Due Soon', 'tone' => 'amber', 'icon' => 'clock'];
         } elseif ($project->status === 'on-track') {
             $badges[] = ['label' => 'On Track', 'tone' => 'emerald', 'icon' => 'check-circle'];
@@ -156,14 +157,14 @@ class SmartInsightService
             ];
         }
 
-        if ($lastAudit && $lastAudit->lt(now()->subDays(14))) {
+        if ($lastAudit && AppTime::cast($lastAudit)?->lt(AppTime::now()->subDays(14))) {
             $insights[] = [
                 'severity' => 'warning',
                 'category' => 'Last Touch',
                 'title' => 'Follow-up disarankan',
-                'description' => 'Belum ada aktivitas klien sejak ' . $lastAudit->diffForHumans() . '.',
+                'description' => 'Belum ada aktivitas klien sejak ' . AppTime::diff($lastAudit) . '.',
             ];
-        } elseif (! $lastAudit && $client->created_at?->lt(now()->subDays(14))) {
+        } elseif (! $lastAudit && AppTime::cast($client->created_at)?->lt(AppTime::now()->subDays(14))) {
             $insights[] = [
                 'severity' => 'info',
                 'category' => 'Last Touch',
@@ -209,8 +210,8 @@ class SmartInsightService
         return Project::query()
             ->whereNull('archived_at')
             ->whereNotNull('due_at')
-            ->whereDate('due_at', '>=', now()->toDateString())
-            ->whereDate('due_at', '<=', now()->addDays(7)->toDateString())
+            ->whereDate('due_at', '>=', AppTime::now()->toDateString())
+            ->whereDate('due_at', '<=', AppTime::now()->addDays(7)->toDateString())
             ->where('progress', '<', 100)
             ->orderBy('due_at')
             ->limit(2)
@@ -218,7 +219,7 @@ class SmartInsightService
             ->map(fn (Project $project) => $this->insight(
                 'warning',
                 'Mendekati Deadline',
-                $project->name . ' due dalam ' . max(0, now()->startOfDay()->diffInDays($project->due_at->startOfDay())) . ' hari',
+                $project->name . ' due dalam ' . max(0, AppTime::now()->startOfDay()->diffInDays($project->due_at->startOfDay())) . ' hari',
                 'Progress masih ' . (int) $project->progress . '%. Tinjau scope, WBS, dan task yang belum selesai.',
                 'Tinjau Proyek',
                 route('projects.show', $project) . '#workspace',
@@ -257,7 +258,7 @@ class SmartInsightService
         $overdue = ProjectTask::with('project')
             ->whereHas('project', fn ($query) => $query->whereNull('archived_at'))
             ->whereNotIn('status', self::CLOSED_TASK_STATUSES)
-            ->whereDate('due_date', '<', now()->toDateString())
+            ->whereDate('due_date', '<', AppTime::now()->toDateString())
             ->orderBy('due_date')
             ->first();
         if ($overdue?->project) {
@@ -314,7 +315,7 @@ class SmartInsightService
 
         $severity = $user['load'] >= 95 ? 'critical' : 'warning';
         return [
-            $this->insight($severity, 'Risiko Overload', $user['user']->name . ' berada di ' . $user['load'] . '% kapasitas', 'Pertimbangkan review assignment. Rebalance tetap manual melalui Team Management.', 'Buka Team Load', route('executive.index') . '#teamLoad', 'team_assignments.estimated_hours', now(), 'users'),
+            $this->insight($severity, 'Risiko Overload', $user['user']->name . ' berada di ' . $user['load'] . '% kapasitas', 'Pertimbangkan review assignment. Rebalance tetap manual melalui Team Management.', 'Buka Team Load', route('executive.index') . '#teamLoad', 'team_assignments.estimated_hours', AppTime::now(), 'users'),
         ];
     }
 
@@ -354,7 +355,7 @@ class SmartInsightService
             'action_label' => $actionLabel,
             'action_url' => $actionUrl,
             'source' => $this->sourceLabel($source),
-            'time' => $timestamp?->diffForHumans() ?? 'baru saja',
+            'time' => AppTime::diff($timestamp),
             'dismissable' => true,
             'icon' => $icon,
         ];

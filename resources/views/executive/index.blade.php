@@ -407,32 +407,36 @@
             const wire = () => {
                 const tabs   = document.querySelectorAll('.js-tab');
                 const panels = document.querySelectorAll('[data-panel]');
+                const activateTab = (id) => {
+                    tabs.forEach(x => {
+                        const active = x.dataset.tab === id;
+                        x.classList.toggle('text-violet-700', active);
+                        x.classList.toggle('text-slate-500', !active);
+                        x.classList.toggle('hover:text-slate-700', !active);
+
+                        const u = x.querySelector('.js-tab-underline');
+                        if (u) {
+                            u.classList.toggle('bg-gradient-to-r', active);
+                            u.classList.toggle('from-[#7C3AED]', active);
+                            u.classList.toggle('via-[#A855F7]', active);
+                            u.classList.toggle('to-[#C084FC]', active);
+                            u.classList.toggle('bg-transparent', !active);
+                        }
+                    });
+
+                    panels.forEach(p => {
+                        p.classList.toggle('hidden', p.dataset.panel !== id);
+                    });
+                };
 
                 tabs.forEach(t => {
                     t.addEventListener('click', () => {
-                        const id = t.dataset.tab;
-
-                        tabs.forEach(x => {
-                            const active = x.dataset.tab === id;
-                            x.classList.toggle('text-violet-700', active);
-                            x.classList.toggle('text-slate-500', !active);
-                            x.classList.toggle('hover:text-slate-700', !active);
-
-                            const u = x.querySelector('.js-tab-underline');
-                            if (u) {
-                                u.classList.toggle('bg-gradient-to-r', active);
-                                u.classList.toggle('from-[#7C3AED]', active);
-                                u.classList.toggle('via-[#A855F7]', active);
-                                u.classList.toggle('to-[#C084FC]', active);
-                                u.classList.toggle('bg-transparent', !active);
-                            }
-                        });
-
-                        panels.forEach(p => {
-                            p.classList.toggle('hidden', p.dataset.panel !== id);
-                        });
+                        activateTab(t.dataset.tab);
                     });
                 });
+
+                const hashTab = Array.from(tabs).find(t => t.dataset.tab.toLowerCase() === window.location.hash.slice(1).toLowerCase());
+                if (hashTab) activateTab(hashTab.dataset.tab);
 
                 /* Scroll-to with flash highlight */
                 document.querySelectorAll('[data-scroll-to]').forEach(btn => {
@@ -517,7 +521,7 @@
                             if (monthLabel) monthLabel.textContent = v;
                             closeMonth();
                             if (opt.dataset.monthUrl) {
-                                window.location = opt.dataset.monthUrl;
+                                window.location = `${opt.dataset.monthUrl}#teamLoad`;
                             }
                         });
                     });

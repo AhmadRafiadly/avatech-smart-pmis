@@ -8,6 +8,7 @@ use App\Models\ProjectQcTest;
 use App\Models\ProjectTask;
 use App\Models\TeamAssignment;
 use App\Models\User;
+use App\Support\AppTime;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -62,7 +63,7 @@ class DashboardController extends Controller
             ->orderByDesc('updated_at')
             ->get();
 
-        $todayStart = Carbon::now()->startOfDay();
+        $todayStart = AppTime::now()->startOfDay();
 
         $todayActivityCount = AuditLog::query()
             ->where('user_id', $user->id)
@@ -87,7 +88,7 @@ class DashboardController extends Controller
             'firstName'          => $rolePresets['firstName'],
             'initials'           => $rolePresets['initials'],
             'greetingLabel'      => $this->greetingLabel(),
-            'todayLabel'         => Carbon::now()->translatedFormat('l, d F Y'),
+            'todayLabel'         => AppTime::now()->translatedFormat('l, d F Y'),
             'subtitle'           => $rolePresets['subtitle'],
             'focusLine'          => $rolePresets['focusLine'],
             'projects'           => $assignedProjects,
@@ -353,14 +354,14 @@ class DashboardController extends Controller
         return [
             'description' => $log->description ?: e($log->action),
             'module' => $log->module,
-            'time' => $log->created_at?->diffForHumans() ?? 'baru saja',
+            'time' => AppTime::diff($log->created_at),
             'href' => AuditController::deepLinkForLog($log),
         ];
     }
 
     private function greetingLabel(): string
     {
-        $hour = (int) Carbon::now()->format('G');
+        $hour = (int) AppTime::now()->format('G');
         return match (true) {
             $hour < 11 => 'Selamat Pagi',
             $hour < 15 => 'Selamat Siang',

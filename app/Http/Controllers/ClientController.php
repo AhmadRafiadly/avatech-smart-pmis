@@ -7,6 +7,7 @@ use App\Models\Project;
 use App\Services\AiPlanner;
 use App\Services\AuditLogger;
 use App\Services\SmartInsightService;
+use App\Support\AppTime;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -215,7 +216,7 @@ class ClientController extends Controller
         $health = (int) ($client->relationship_health ?? 50);
         $picName = $client->pic_name ?: 'Belum ada PIC';
         $tier = self::TIER_LABELS[$client->tier] ?? 'Prospect';
-        $lastTouch = $client->last_touch_label ?: $client->created_at?->diffForHumans() ?: 'baru saja';
+        $lastTouch = $client->last_touch_label ?: AppTime::diff($client->created_at);
 
         return [
             'id' => $client->id,

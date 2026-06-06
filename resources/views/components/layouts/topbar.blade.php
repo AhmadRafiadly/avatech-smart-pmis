@@ -35,6 +35,7 @@
 
     $auditEntries = [];
     $auditTodayCount = 0;
+    $appTimeDiff = fn ($date, $fallback = 'baru saja') => \App\Support\AppTime::diff($date, $fallback);
 
     /*
      * Topbar audit/activity button is visible to every signed-in user, but the
@@ -61,7 +62,7 @@
 
             $recentLogs = $recentLogsQuery->limit(20)->get();
 
-            $todayQuery = \App\Models\AuditLog::where('created_at', '>=', \Illuminate\Support\Carbon::now()->startOfDay());
+            $todayQuery = \App\Models\AuditLog::where('created_at', '>=', \App\Support\AppTime::now()->startOfDay());
             if ($isOperationalViewer) {
                 $todayQuery->where('user_id', $user->id);
             }
@@ -99,7 +100,7 @@
                 'initials'         => $initialsLabel,
                 'avatar_class'     => $palette['avatar'],
                 'text'             => $log->description ?: e($actorName) . ' melakukan ' . e($log->action),
-                'time'             => $log->created_at?->diffForHumans() ?? 'baru saja',
+                'time'             => $appTimeDiff($log->created_at),
                 'user'             => $actorName,
                 'module'           => $log->module,
                 'project_name'     => $entryProjectName,
@@ -152,7 +153,7 @@
 
             $notifLogs = $notifQuery->limit(8)->get();
 
-            $unreadThreshold = \Illuminate\Support\Carbon::now()->subDay();
+            $unreadThreshold = \App\Support\AppTime::now()->subDay();
 
             foreach ($notifLogs as $log) {
                 $palette = $notifPaletteByModule[$log->module] ?? [
@@ -191,8 +192,8 @@
                     'message'        => $isOperationalViewer
                         ? ($palette['label'] . ' · ' . $log->module)
                         : (strip_tags((string) $log->description) ?: $palette['label']),
-                    'time'           => $log->created_at?->diffForHumans() ?? 'baru saja',
-                    'unread'         => $log->created_at && $log->created_at->greaterThan($unreadThreshold),
+                    'time'           => $appTimeDiff($log->created_at),
+                    'unread'         => \App\Support\AppTime::cast($log->created_at)?->greaterThan($unreadThreshold) ?? false,
                     'href'           => $href,
                 ];
             }
@@ -311,7 +312,7 @@
                 $searchIndex[] = [
                     'type'     => 'activity',
                     'label'    => $auditTag,
-                    'sub'      => 'Activity - ' . $a->module . ' - ' . ($a->created_at?->diffForHumans() ?? 'baru saja'),
+                    'sub'      => 'Activity - ' . $a->module . ' - ' . $appTimeDiff($a->created_at),
                     'haystack' => Illuminate\Support\Str::lower($auditTag . ' ' . $a->module . ' ' . $a->action . ' ' . strip_tags((string) $a->description)),
                     'href'     => \App\Http\Controllers\AuditController::deepLinkForLog($a),
                 ];
@@ -357,7 +358,7 @@
                 $searchIndex[] = [
                     'type'     => 'audit',
                     'label'    => $auditTag . ' - ' . $auditActor,
-                    'sub'      => 'Audit - ' . $a->module . ' - ' . ($a->created_at?->diffForHumans() ?? 'baru saja'),
+                    'sub'      => 'Audit - ' . $a->module . ' - ' . $appTimeDiff($a->created_at),
                     'haystack' => Illuminate\Support\Str::lower($auditTag . ' ' . $auditActor . ' ' . $a->module . ' ' . $a->action . ' ' . strip_tags((string) $a->description)),
                     'href'     => \App\Http\Controllers\AuditController::deepLinkForLog($a) !== route('audit.index')
                         ? \App\Http\Controllers\AuditController::deepLinkForLog($a)

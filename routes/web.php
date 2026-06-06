@@ -83,8 +83,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{project}/moms', [ProjectController::class, 'storeMom'])->name('projects.moms.store');
     Route::patch('/projects/{project}/moms/{mom}/summary', [ProjectController::class, 'updateMomSummary'])->name('projects.moms.summary');
     Route::post('/projects/{project}/ai-mom/fix', [ProjectController::class, 'fixLatestMom'])->name('projects.ai-mom.fix');
+    Route::post('/projects/{project}/ai-mom/apply', [ProjectController::class, 'applyMomFix'])->name('projects.ai-mom.apply');
     Route::post('/projects/{project}/ai-wbs/generate', [ProjectController::class, 'generateWbsFromMom'])->name('projects.ai-wbs.generate');
+    Route::post('/projects/{project}/ai-wbs/apply', [ProjectController::class, 'applyWbs'])->name('projects.ai-wbs.apply');
     Route::post('/projects/{project}/ai-test-cases/generate', [ProjectController::class, 'generateTestCases'])->name('projects.ai-test-cases.generate');
+    Route::post('/projects/{project}/ai-test-cases/apply', [ProjectController::class, 'applyTestCases'])->name('projects.ai-test-cases.apply');
     Route::post('/projects/{project}/qc', [ProjectController::class, 'storeQcTest'])->name('projects.qc.store');
     Route::patch('/projects/{project}/qc/{qc}', [ProjectController::class, 'updateQcTest'])->name('projects.qc.update');
     Route::put('/projects/{project}/qc/{qc}', [ProjectController::class, 'editQcTest'])->name('projects.qc.edit');

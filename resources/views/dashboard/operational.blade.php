@@ -175,7 +175,7 @@
                                 </span>
                                 <span class="inline-flex items-center gap-1">
                                     <x-heroicon-o-clock class="w-3 h-3" />
-                                    Update {{ $p->updated_at?->diffForHumans() ?? 'baru saja' }}
+                                    Update {{ \App\Support\AppTime::diff($p->updated_at) }}
                                 </span>
                             </div>
                         </div>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AiRequestLog;
 use App\Models\AuditLog;
 use App\Services\AiPlanner;
+use App\Support\AppTime;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -65,7 +66,7 @@ class SystemHealthController extends Controller
             [
                 'label' => 'Last Activity',
                 'status' => $this->latestAuditTime() ? 'ready' : 'info',
-                'value' => $this->latestAuditTime()?->diffForHumans() ?: 'Belum ada',
+                'value' => AppTime::diff($this->latestAuditTime(), 'Belum ada'),
                 'description' => $this->latestAuditTime()
                     ? 'Riwayat aktivitas terakhir tersedia dari Audit Trail.'
                     : 'Belum ada aktivitas yang tercatat.',
@@ -125,7 +126,7 @@ class SystemHealthController extends Controller
     private function cacheCheck(): array
     {
         try {
-            $key = 'system_health_check_' . md5((string) now()->timestamp);
+            $key = 'system_health_check_' . md5((string) AppTime::now()->timestamp);
             Cache::put($key, 'ok', 30);
             $ok = Cache::get($key) === 'ok';
             Cache::forget($key);
@@ -179,8 +180,8 @@ class SystemHealthController extends Controller
             ['label' => 'Debug Mode', 'value' => app()->hasDebugModeEnabled() ? 'On' : 'Off'],
             ['label' => 'PHP Version', 'value' => PHP_VERSION],
             ['label' => 'Laravel Version', 'value' => Application::VERSION],
-            ['label' => 'Waktu Sistem', 'value' => now()->format('d M Y H:i')],
-            ['label' => 'Aktivitas Terakhir', 'value' => $this->latestAuditTime()?->diffForHumans() ?: 'Belum ada aktivitas'],
+            ['label' => 'Waktu Sistem', 'value' => AppTime::now()->format('d M Y H:i')],
+            ['label' => 'Aktivitas Terakhir', 'value' => AppTime::diff($this->latestAuditTime(), 'Belum ada aktivitas')],
         ];
     }
 

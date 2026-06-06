@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AiRequestLog;
 use App\Services\AiPlanner;
+use App\Support\AppTime;
 use Illuminate\Support\Collection;
 
 class AiMonitorController extends Controller
@@ -18,8 +19,8 @@ class AiMonitorController extends Controller
 
     public function index()
     {
-        $todayStart = now()->startOfDay();
-        $monthStart = now()->startOfMonth();
+        $todayStart = AppTime::now()->startOfDay();
+        $monthStart = AppTime::now()->startOfMonth();
 
         $todayTotal = AiRequestLog::where('created_at', '>=', $todayStart)->count();
         $monthLogs = AiRequestLog::with(['user', 'project', 'client'])
@@ -105,7 +106,7 @@ class AiMonitorController extends Controller
     private function activityRow(AiRequestLog $log): array
     {
         return [
-            'time' => $log->created_at?->diffForHumans() ?? '-',
+            'time' => AppTime::diff($log->created_at, '-'),
             'feature' => self::FEATURE_LABELS[$log->feature] ?? 'AI',
             'provider' => $this->providerLabel($log->provider),
             'model' => $log->model ?: 'Tidak tersedia',
@@ -121,7 +122,7 @@ class AiMonitorController extends Controller
     private function fallbackRow(AiRequestLog $log): array
     {
         return [
-            'time' => $log->created_at?->diffForHumans() ?? '-',
+            'time' => AppTime::diff($log->created_at, '-'),
             'feature' => self::FEATURE_LABELS[$log->feature] ?? 'AI',
             'path' => collect($log->fallback_path ?: [])
                 ->map(fn ($item) => str_replace('_failed', ' gagal', $this->providerLabel(str_replace('_failed', '', (string) $item))))

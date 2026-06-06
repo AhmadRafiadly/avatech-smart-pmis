@@ -293,12 +293,12 @@
         <p class="mt-4 text-[14px] text-slate-500 max-w-3xl leading-relaxed">{{ $desc }}</p>
 
         <div class="mt-5 flex flex-wrap items-center gap-2">
-            <a href="{{ route('projects.export.wbs', $project) }}" title="Unduh WBS sebagai PDF" data-loading-link data-loading-label="Menyiapkan PDF..."
+            <a href="{{ route('projects.export.wbs', $project) }}" title="Unduh WBS sebagai PDF" data-loading-link data-loading-label="Menyiapkan PDF..." data-loading-reset-after="3000" data-download-timestamp-param="download_ts"
                class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer no-underline">
                 <x-heroicon-o-document-text class="w-4 h-4" />
                 <span data-loading-text>Export WBS (PDF)</span>
             </a>
-            <a href="{{ route('projects.export.test-cases', $project) }}" title="Unduh Test Case QC sebagai PDF" data-loading-link data-loading-label="Menyiapkan PDF..."
+            <a href="{{ route('projects.export.test-cases', $project) }}" title="Unduh Test Case QC sebagai PDF" data-loading-link data-loading-label="Menyiapkan PDF..." data-loading-reset-after="3000" data-download-timestamp-param="download_ts"
                class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 transition cursor-pointer no-underline">
                 <x-heroicon-o-beaker class="w-4 h-4" />
                 <span data-loading-text>Export Test Case (PDF)</span>
@@ -424,46 +424,6 @@
                     <h3 class="text-[16px] font-bold text-[#1E1B4B]">Pipeline WBS</h3>
                     <span class="text-[13px] font-semibold text-slate-400">{{ count($modules) }} total modul</span>
                 </div>
-
-                @if ($canEdit && ! $useReferenceProjectData)
-                    <form method="POST" action="{{ route('projects.modules.store', $project) }}" class="mb-6 rounded-xl border border-violet-100 bg-violet-50/30 p-4">
-                        @csrf
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Judul Modul</label>
-                                <input name="title" value="{{ old('title') }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Contoh: Modul Autentikasi" />
-                                @error('title')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
-                            </div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Status</label>
-                                    <select name="status" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                        @foreach ($moduleStatusOptions as $value => $label)
-                                            <option value="{{ $value }}" @selected(old('status', 'pending_design') === $value)>{{ $label }}</option>
-                                        @endforeach
-                                    </select>
-                                    @error('status')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
-                                </div>
-                                <div>
-                                    <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Estimasi Jam</label>
-                                    <input name="estimate_hours" type="number" min="0" max="999" value="{{ old('estimate_hours', 0) }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
-                                    @error('estimate_hours')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
-                                </div>
-                            </div>
-                            <div class="md:col-span-2">
-                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Deskripsi</label>
-                                <textarea name="description" rows="2" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Opsional">{{ old('description') }}</textarea>
-                                @error('description')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
-                            </div>
-                        </div>
-                        <div class="mt-3 flex justify-end">
-                            <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
-                                <x-heroicon-o-plus class="w-4 h-4" />
-                                Tambah Modul
-                            </button>
-                        </div>
-                    </form>
-                @endif
 
                 @php
                     $segColors = ['#10B981', '#3B82F6', '#F59E0B', '#F43F5E'];
@@ -861,6 +821,116 @@
 
     {{-- =============== AI PLANNING =============== --}}
     <div id="aiplanning" data-panel="aiplanning" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {{-- ====== HITL PREVIEW: AI MoM Fixer (draf editable, simpan setelah konfirmasi) ====== --}}
+        @if ($canEdit && ! $useReferenceProjectData && session('ai_mom_preview'))
+            @php $momPrev = session('ai_mom_preview'); @endphp
+            <div class="lg:col-span-2 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 overflow-hidden">
+                <div class="px-6 py-4 border-b border-violet-100 flex items-center gap-2.5">
+                    <x-heroicon-o-sparkles class="w-5 h-5 text-violet-600" />
+                    <div>
+                        <h3 class="text-[14.5px] font-extrabold text-[#1E1B4B]">Draf Ringkasan MoM (AI)</h3>
+                        <p class="text-[11.5px] text-slate-500">Tinjau dan sunting draf. Belum tersimpan — klik <strong>Simpan</strong> untuk menerapkan, atau <strong>Batal</strong> untuk membatalkan.</p>
+                        <p class="text-[10.5px] text-slate-400 italic mt-0.5">Generate ulang akan mengganti draf yang belum disimpan.</p>
+                    </div>
+                </div>
+                <form method="POST" action="{{ route('projects.ai-mom.apply', $project) }}" class="px-6 py-5 space-y-3">
+                    @csrf
+                    <input type="hidden" name="mom_id" value="{{ $momPrev['mom_id'] }}">
+                    <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500">Ringkasan untuk MoM {{ $momPrev['meeting_date'] ?? '' }}</label>
+                    <textarea name="summary" rows="10" class="w-full rounded-xl border border-violet-200 bg-white px-4 py-3 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('summary', $momPrev['summary'] ?? '') }}</textarea>
+                    @error('summary') <p class="text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    <div class="flex items-center justify-end gap-2">
+                        <a href="{{ route('projects.show', $project) }}?cancel_ai_preview=1#aiplanning" class="h-9 px-4 inline-flex items-center rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer no-underline">Batal</a>
+                        <button type="submit" class="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 text-white text-[12.5px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                            <x-heroicon-o-check class="w-4 h-4" /> Simpan sebagai Ringkasan MoM
+                        </button>
+                    </div>
+                </form>
+            </div>
+        @endif
+
+        {{-- ====== HITL PREVIEW: AI WBS Generator (draf editable + pilih item) ====== --}}
+        @if ($canEdit && ! $useReferenceProjectData && session('ai_wbs_preview'))
+            @php $wbsPrev = session('ai_wbs_preview'); @endphp
+            <div class="lg:col-span-2 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 overflow-hidden">
+                <div class="px-6 py-4 border-b border-violet-100 flex items-center gap-2.5">
+                    <x-heroicon-o-sparkles class="w-5 h-5 text-violet-600" />
+                    <div>
+                        <h3 class="text-[14.5px] font-extrabold text-[#1E1B4B]">Draf WBS (AI)</h3>
+                        <p class="text-[11.5px] text-slate-500">Tinjau, sunting, dan centang item yang ingin disimpan. Belum tersimpan sampai Anda klik <strong>Simpan</strong>.</p>
+                        <p class="text-[10.5px] text-slate-400 italic mt-0.5">Generate ulang akan mengganti draf yang belum disimpan.</p>
+                    </div>
+                </div>
+                <form method="POST" action="{{ route('projects.ai-wbs.apply', $project) }}" class="px-6 py-5 space-y-4">
+                    @csrf
+                    @foreach (($wbsPrev['modules'] ?? []) as $mi => $mod)
+                        <div class="rounded-xl border border-violet-100 bg-white p-4 space-y-3" data-wbs-module-block="{{ $mi }}">
+                            <div class="flex items-start gap-2">
+                                <input type="checkbox" name="modules[{{ $mi }}][include]" value="1" checked data-wbs-module-include="{{ $mi }}" class="mt-1.5 w-4 h-4 rounded border-violet-300 text-violet-600 focus:ring-violet-300 cursor-pointer">
+                                <div class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-2">
+                                    <div class="md:col-span-7">
+                                        <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Judul Modul</label>
+                                        <input name="modules[{{ $mi }}][title]" value="{{ $mod['title'] ?? '' }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                    </div>
+                                    <div class="md:col-span-3">
+                                        <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Status</label>
+                                        <select name="modules[{{ $mi }}][status]" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                            @foreach (($moduleStatusOptions ?? []) as $value => $label)
+                                                <option value="{{ $value }}" @selected(($mod['status'] ?? 'pending_design') === $value)>{{ $label }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Jam</label>
+                                        <input type="number" min="0" max="999" name="modules[{{ $mi }}][estimate_hours]" value="{{ (int) ($mod['estimate_hours'] ?? 0) }}" class="w-full h-9 rounded-lg border border-violet-100 px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                    </div>
+                                    <div class="md:col-span-12">
+                                        <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Deskripsi</label>
+                                        <textarea name="modules[{{ $mi }}][description]" rows="2" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $mod['description'] ?? '' }}</textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            @if (! empty($mod['tasks']))
+                                <div class="pl-6 space-y-2">
+                                    <p class="text-[9.5px] font-bold tracking-wider uppercase text-slate-400">Task</p>
+                                    @foreach ($mod['tasks'] as $ti => $task)
+                                        <div class="flex items-start gap-2 rounded-lg border border-violet-50 bg-violet-50/30 p-2.5">
+                                            <input type="checkbox" name="modules[{{ $mi }}][tasks][{{ $ti }}][include]" value="1" checked data-wbs-task-include="{{ $mi }}" class="mt-1.5 w-4 h-4 rounded border-violet-300 text-violet-600 focus:ring-violet-300 cursor-pointer">
+                                            <div class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-2">
+                                                <div class="md:col-span-7">
+                                                    <input name="modules[{{ $mi }}][tasks][{{ $ti }}][title]" value="{{ $task['title'] ?? '' }}" placeholder="Judul task" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                                </div>
+                                                <div class="md:col-span-3">
+                                                    <select name="modules[{{ $mi }}][tasks][{{ $ti }}][priority]" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                        @foreach (($taskPriorityOptions ?? ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High']) as $value => $label)
+                                                            <option value="{{ $value }}" @selected(($task['priority'] ?? 'medium') === $value)>{{ $label }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="md:col-span-2">
+                                                    <input type="number" min="0" max="999" name="modules[{{ $mi }}][tasks][{{ $ti }}][estimate_hours]" value="{{ (int) ($task['estimate_hours'] ?? 0) }}" placeholder="Jam" class="w-full h-9 rounded-lg border border-violet-100 px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                                </div>
+                                                <div class="md:col-span-12">
+                                                    <textarea name="modules[{{ $mi }}][tasks][{{ $ti }}][description]" rows="1" placeholder="Deskripsi task (opsional)" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $task['description'] ?? '' }}</textarea>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                    <div class="flex items-center justify-end gap-2">
+                        <a href="{{ route('projects.show', $project) }}?cancel_ai_preview=1#aiplanning" class="h-9 px-4 inline-flex items-center rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer no-underline">Batal</a>
+                        <button type="submit" class="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 text-white text-[12.5px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                            <x-heroicon-o-check class="w-4 h-4" /> Simpan Draf Terpilih
+                        </button>
+                    </div>
+                </form>
+            </div>
+        @endif
+
         {{-- LEFT: Daftar MoM --}}
         <div class="bg-white rounded-2xl pd-stitch-card flex flex-col">
             <div class="p-7 flex-1 space-y-5">
@@ -1062,6 +1132,46 @@
                     <span class="px-2.5 py-1 rounded-full bg-[#EDE9FE] text-violet-700 text-[10px] font-bold">{{ count($modules) }} MODUL</span>
                 </div>
 
+                @if ($canEdit && ! $useReferenceProjectData)
+                    <form method="POST" action="{{ route('projects.modules.store', $project) }}" class="rounded-xl border border-violet-100 bg-violet-50/30 p-4">
+                        @csrf
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Judul Modul</label>
+                                <input name="title" value="{{ old('title') }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Contoh: Modul Autentikasi" />
+                                @error('title')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Status</label>
+                                    <select name="status" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                        @foreach ($moduleStatusOptions as $value => $label)
+                                            <option value="{{ $value }}" @selected(old('status', 'pending_design') === $value)>{{ $label }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('status')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                                </div>
+                                <div>
+                                    <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Estimasi Jam</label>
+                                    <input name="estimate_hours" type="number" min="0" max="999" value="{{ old('estimate_hours', 0) }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                    @error('estimate_hours')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                                </div>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Deskripsi</label>
+                                <textarea name="description" rows="2" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Opsional">{{ old('description') }}</textarea>
+                                @error('description')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                            </div>
+                        </div>
+                        <div class="mt-3 flex justify-end">
+                            <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
+                                <x-heroicon-o-plus class="w-4 h-4" />
+                                Tambah Modul
+                            </button>
+                        </div>
+                    </form>
+                @endif
+
                 <div class="space-y-3">
                     @forelse ($modules as $mod)
                         @php $st = $modStatusStyles[$mod['status']] ?? ['bg' => '#F3F4F6', 'color' => '#374151']; @endphp
@@ -1230,6 +1340,78 @@
                 @endif
             </div>
         </div>
+
+        {{-- ====== HITL PREVIEW: AI Test Case Generator (draf editable + pilih item) ====== --}}
+        @if ($canEdit && ! $useReferenceProjectData && session('ai_testcase_preview'))
+            @php $tcPrev = session('ai_testcase_preview'); @endphp
+            <div class="m-6 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 overflow-hidden">
+                <div class="px-6 py-4 border-b border-violet-100 flex items-center gap-2.5">
+                    <x-heroicon-o-sparkles class="w-5 h-5 text-violet-600" />
+                    <div>
+                        <h3 class="text-[14.5px] font-extrabold text-[#1E1B4B]">Draf Test Case (AI)</h3>
+                        <p class="text-[11.5px] text-slate-500">Tinjau, sunting, dan centang test case yang ingin disimpan. Belum tersimpan sampai Anda klik <strong>Simpan</strong>.</p>
+                        <p class="text-[10.5px] text-slate-400 italic mt-0.5">Generate ulang akan mengganti draf yang belum disimpan.</p>
+                    </div>
+                </div>
+                <form method="POST" action="{{ route('projects.ai-test-cases.apply', $project) }}" class="px-6 py-5 space-y-3">
+                    @csrf
+                    @foreach (($tcPrev['test_cases'] ?? []) as $ci => $case)
+                        @php
+                            $caseModuleTitle = mb_strtolower((string) ($case['module_title'] ?? ''));
+                            $caseModuleId = null;
+                            foreach ($modules as $mod) {
+                                if (! empty($mod['id']) && mb_strtolower((string) $mod['name']) === $caseModuleTitle) { $caseModuleId = $mod['id']; break; }
+                            }
+                        @endphp
+                        <div class="rounded-xl border border-violet-100 bg-white p-4">
+                            <div class="flex items-start gap-2">
+                                <input type="checkbox" name="test_cases[{{ $ci }}][include]" value="1" checked class="mt-1.5 w-4 h-4 rounded border-violet-300 text-violet-600 focus:ring-violet-300 cursor-pointer">
+                                <div class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-2">
+                                    <div class="md:col-span-9">
+                                        <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Judul</label>
+                                        <input name="test_cases[{{ $ci }}][title]" value="{{ $case['title'] ?? '' }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                    </div>
+                                    <div class="md:col-span-3">
+                                        <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Prioritas</label>
+                                        <select name="test_cases[{{ $ci }}][priority]" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                            @foreach (($qcPriorityOptions ?? ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High']) as $value => $label)
+                                                <option value="{{ $value }}" @selected(($case['priority'] ?? 'medium') === $value)>{{ $label }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="md:col-span-6">
+                                        <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Skenario</label>
+                                        <textarea name="test_cases[{{ $ci }}][scenario]" rows="2" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $case['scenario'] ?? '' }}</textarea>
+                                    </div>
+                                    <div class="md:col-span-6">
+                                        <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Expected Result</label>
+                                        <textarea name="test_cases[{{ $ci }}][expected_result]" rows="2" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $case['expected_result'] ?? '' }}</textarea>
+                                    </div>
+                                    <div class="md:col-span-6">
+                                        <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Modul (opsional)</label>
+                                        <select name="test_cases[{{ $ci }}][project_module_id]" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                            <option value="">— tanpa modul —</option>
+                                            @foreach ($modules as $mod)
+                                                @php $modId = $mod['id'] ?? null; @endphp
+                                                @if ($modId)
+                                                    <option value="{{ $modId }}" @selected((string) $caseModuleId === (string) $modId)>{{ $mod['name'] }}</option>
+                                                @endif
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                    <div class="flex items-center justify-end gap-2">
+                        <a href="{{ route('projects.show', $project) }}?cancel_ai_preview=1#qc" class="h-9 px-4 inline-flex items-center rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer no-underline">Batal</a>
+                        <button type="submit" class="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 text-white text-[12.5px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                            <x-heroicon-o-check class="w-4 h-4" /> Simpan Test Case Terpilih
+                        </button>
+                    </div>
+                </form>
+            </div>
+        @endif
 
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
@@ -1578,12 +1760,28 @@
                             event.preventDefault();
                             return;
                         }
+                        if (link.dataset.downloadTimestampParam) {
+                            const url = new URL(link.href, window.location.href);
+                            url.searchParams.set(link.dataset.downloadTimestampParam, Date.now().toString());
+                            link.href = url.toString();
+                        }
                         link.dataset.loading = '1';
                         link.setAttribute('aria-disabled', 'true');
                         link.classList.add('opacity-70', 'cursor-wait', 'pointer-events-none');
                         const text = link.querySelector('[data-loading-text]');
+                        if (text && ! link.dataset.loadingOriginalLabel) link.dataset.loadingOriginalLabel = text.textContent;
                         if (text) text.textContent = link.dataset.loadingLabel || 'Menyiapkan...';
                         link.insertAdjacentHTML('afterbegin', spinner);
+                        const resetAfter = Number.parseInt(link.dataset.loadingResetAfter || '', 10);
+                        if (resetAfter > 0) {
+                            window.setTimeout(() => {
+                                link.querySelector('[data-loading-spinner]')?.remove();
+                                if (text && link.dataset.loadingOriginalLabel) text.textContent = link.dataset.loadingOriginalLabel;
+                                link.classList.remove('opacity-70', 'cursor-wait', 'pointer-events-none');
+                                link.removeAttribute('aria-disabled');
+                                delete link.dataset.loading;
+                            }, resetAfter);
+                        }
                     });
                 });
 
@@ -1677,6 +1875,23 @@
 
                 /* Project Detail writes now submit to Laravel routes for WBS,
                  * Kanban, MoM, and QC actions. */
+
+                /* ===== HITL WBS preview: sinkron centang modul -> task anaknya (UI clarity) =====
+                 * Backend tetap melewati task bila modulnya tidak di-include; ini hanya kejelasan UI. */
+                document.querySelectorAll('[data-wbs-module-include]').forEach(modCb => {
+                    const block = modCb.closest('[data-wbs-module-block]');
+                    if (! block) return;
+                    const tasks = block.querySelectorAll('[data-wbs-task-include]');
+                    const sync = () => {
+                        const on = modCb.checked;
+                        tasks.forEach(t => {
+                            t.disabled = ! on;
+                            if (! on) t.checked = false;
+                            t.closest('.flex')?.classList.toggle('opacity-50', ! on);
+                        });
+                    };
+                    modCb.addEventListener('change', sync);
+                });
 
                 /* ===== QC Edit modal (shared, satu dialog untuk semua baris) ===== */
                 const qcModal = document.getElementById('qc-edit-modal');

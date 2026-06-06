@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\TeamAssignment;
 use App\Models\User;
 use App\Services\SmartInsightService;
+use App\Support\AppTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -267,7 +268,7 @@ class ExecutiveController extends Controller
             'title' => $log->module . ' oleh ' . $actor,
             'body' => $description !== '' ? html_entity_decode($description) : $actor . ' melakukan ' . str_replace('_', ' ', $log->action) . ' di ' . $log->module . '.',
             'action' => 'Lihat Audit',
-            'time' => $log->created_at?->diffForHumans() ?? 'baru saja',
+            'time' => AppTime::diff($log->created_at),
             'href' => $this->auditHref($log->module),
         ];
     }
@@ -324,13 +325,13 @@ class ExecutiveController extends Controller
             }
         }
 
-        return Carbon::now()->startOfMonth();
+        return AppTime::now()->startOfMonth();
     }
 
     private function monthOptions(Carbon $selectedMonth): array
     {
         return collect(range(0, 2))
-            ->map(fn (int $offset) => Carbon::now()->startOfMonth()->subMonths($offset))
+            ->map(fn (int $offset) => AppTime::now()->startOfMonth()->subMonths($offset))
             ->push($selectedMonth)
             ->unique(fn (Carbon $month) => $month->format('Y-m'))
             ->sortByDesc(fn (Carbon $month) => $month->format('Y-m'))
