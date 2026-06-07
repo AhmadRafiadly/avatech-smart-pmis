@@ -298,7 +298,6 @@ class DashboardController extends Controller
                     'progress' => 'Sedang Dikerjakan',
                 ],
                 'quickActions'     => [
-                    ['label' => 'Upload Design',  'sub' => 'Tambah mockup ke proyek',       'icon' => 'photo',         'tileBg' => '#FCE7F3', 'tileFg' => '#9D174D', 'href' => $primaryShow, 'disabled' => true, 'tooltip' => 'Upload Design akan tersedia setelah modul desain DB siap.'],
                     ['label' => 'Lihat Revisi',   'sub' => 'Daftar revisi yang menunggu',   'icon' => 'pencil-square', 'tileBg' => '#EDE9FE', 'tileFg' => '#6D28D9', 'href' => $primaryShow],
                     ['label' => 'Projects',       'sub' => 'Semua proyek yang ditugaskan',  'icon' => 'rectangle-stack','tileBg' => '#DBEAFE', 'tileFg' => '#1E40AF', 'href' => $projectsRoute],
                     ['label' => 'Activity Log',   'sub' => 'Riwayat aktivitas Anda',        'icon' => 'clock',         'tileBg' => '#FEF3C7', 'tileFg' => '#92400E', 'href' => $auditUrl],

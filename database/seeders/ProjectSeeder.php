@@ -43,7 +43,7 @@ class ProjectSeeder extends Seeder
                     'due_at'           => Carbon::parse($p['due_at']),
                     'progress'         => $p['progress'],
                     'status'           => $p['status'],
-                    'ai_wbs_generated' => true,
+                    'ai_wbs_generated' => $p['code'] === 'AC',
                     'is_featured'      => true,
                 ],
             );

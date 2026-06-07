@@ -147,24 +147,7 @@ class TeamController extends Controller
     {
         $this->ensureOperationalMember($member);
 
-        $validated = $request->validate([
-            'project_id' => ['required', Rule::exists('projects', 'id')],
-            'title' => ['required', 'string', 'max:160'],
-            'type' => ['required', 'string', 'max:60'],
-            'status' => ['required', 'string', 'max:60'],
-            'estimated_hours' => ['nullable', 'integer', 'min:0', 'max:200'],
-            'due_date' => ['nullable', 'date'],
-            'notes' => ['nullable', 'string', 'max:1000'],
-        ], [
-            'project_id.required' => 'Proyek wajib dipilih.',
-            'project_id.exists' => 'Proyek tidak valid.',
-            'title.required' => 'Ringkasan penugasan wajib diisi.',
-            'type.required' => 'Tipe penugasan wajib diisi.',
-            'status.required' => 'Status wajib dipilih.',
-            'estimated_hours.integer' => 'Estimasi jam harus berupa angka.',
-            'estimated_hours.min' => 'Estimasi jam tidak boleh negatif.',
-            'estimated_hours.max' => 'Estimasi jam terlalu besar.',
-        ]);
+        $validated = $this->validateAssignment($request);
 
         $assignment = TeamAssignment::create([
             'user_id' => $member->id,
@@ -193,6 +176,65 @@ class TeamController extends Controller
             ->with('status', 'Penugasan untuk "' . $member->name . '" berhasil disimpan.');
     }
 
+    public function updateAssignment(Request $request, User $member, TeamAssignment $assignment)
+    {
+        $this->ensureOperationalMember($member);
+        abort_unless($assignment->user_id === $member->id, 404);
+
+        $validated = $this->validateAssignment($request);
+        $original = $assignment->getOriginal();
+
+        $assignment->update([
+            'project_id' => $validated['project_id'],
+            'title' => $validated['title'],
+            'type' => $validated['type'],
+            'status' => $validated['status'],
+            'estimated_hours' => $validated['estimated_hours'] ?? 0,
+            'due_date' => $validated['due_date'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        $projectName = Project::whereKey($validated['project_id'])->value('name') ?? 'project';
+
+        AuditLogger::log(
+            'assignment_updated',
+            'Team Management',
+            'Memperbarui penugasan <strong>' . e($assignment->title) . '</strong> untuk <strong>' . e($member->name) . '</strong> di proyek <strong>' . e($projectName) . '</strong>',
+            $assignment,
+            $original,
+            $assignment->getAttributes(),
+        );
+
+        return redirect()
+            ->route('team.index', ['open' => 'member:' . $member->id])
+            ->with('status', 'Penugasan "' . $assignment->title . '" berhasil diperbarui.');
+    }
+
+    public function destroyAssignment(Request $request, User $member, TeamAssignment $assignment)
+    {
+        $this->ensureOperationalMember($member);
+        abort_unless($assignment->user_id === $member->id, 404);
+
+        $title = $assignment->title;
+        $projectName = $assignment->project?->name ?? 'project';
+        $snapshot = $assignment->getAttributes();
+
+        AuditLogger::log(
+            'assignment_deleted',
+            'Team Management',
+            'Menghapus penugasan <strong>' . e($title) . '</strong> untuk <strong>' . e($member->name) . '</strong> di proyek <strong>' . e($projectName) . '</strong>',
+            $assignment,
+            $snapshot,
+            null,
+        );
+
+        $assignment->delete();
+
+        return redirect()
+            ->route('team.index', ['open' => 'member:' . $member->id])
+            ->with('status', 'Penugasan "' . $title . '" berhasil dihapus.');
+    }
+
     private function validateMember(Request $request, ?User $member = null): array
     {
         $emailRule = Rule::unique('users', 'email');
@@ -216,6 +258,30 @@ class TeamController extends Controller
             'role.required' => 'Role wajib dipilih.',
             'role.in' => 'Role tidak valid.',
             'level.required' => 'Level wajib dipilih.',
+        ]);
+    }
+
+    private function validateAssignment(Request $request): array
+    {
+        return $request->validate([
+            'project_id' => ['required', Rule::exists('projects', 'id')],
+            'title' => ['required', 'string', 'max:160'],
+            'type' => ['required', Rule::in(['task', 'review', 'support'])],
+            'status' => ['required', Rule::in(['planned', 'in_progress', 'done'])],
+            'estimated_hours' => ['nullable', 'integer', 'min:0', 'max:200'],
+            'due_date' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'project_id.required' => 'Proyek wajib dipilih.',
+            'project_id.exists' => 'Proyek tidak valid.',
+            'title.required' => 'Ringkasan penugasan wajib diisi.',
+            'type.required' => 'Tipe penugasan wajib diisi.',
+            'type.in' => 'Tipe penugasan tidak valid.',
+            'status.required' => 'Status wajib dipilih.',
+            'status.in' => 'Status penugasan tidak valid.',
+            'estimated_hours.integer' => 'Estimasi jam harus berupa angka.',
+            'estimated_hours.min' => 'Estimasi jam tidak boleh negatif.',
+            'estimated_hours.max' => 'Estimasi jam terlalu besar.',
         ]);
     }
 
@@ -274,24 +340,40 @@ class TeamController extends Controller
             'wa_link' => $this->whatsAppLink($user->phone),
             'email_link' => $this->gmailLink($user->email),
             'assignment_url' => route('team.assignments.store', $user),
-            'allocations' => $openAssignments->map(function (TeamAssignment $assignment) use ($capacityHours) {
-                $hours = (int) ($assignment->estimated_hours ?? 0);
-
-                return [
-                    'project_id' => $assignment->project_id,
-                    'code' => $assignment->project?->code ?: 'PRJ',
-                    'color' => $assignment->project?->color ?: '#7C3AED',
-                    'name' => $assignment->project?->name ?: 'Project',
-                    'role' => $assignment->title,
-                    'pct' => $capacityHours > 0 ? (int) min(100, round($hours / $capacityHours * 100)) : 0,
-                    'hours' => $hours,
-                    'status' => $assignment->status,
-                    'due_date' => $assignment->due_date?->format('Y-m-d'),
-                    'notes' => $assignment->notes,
-                ];
-            })->all(),
+            'allocations' => $openAssignments
+                ->map(fn (TeamAssignment $assignment) => $this->assignmentRow($assignment, $capacityHours, $user))
+                ->all(),
+            'completed_allocations' => $doneAssignments
+                ->values()
+                ->map(fn (TeamAssignment $assignment) => $this->assignmentRow($assignment, $capacityHours, $user, true))
+                ->all(),
             'activities' => $this->activityRows($assignments),
             'permissions' => $this->permissionsForRole($roleKey),
+        ];
+    }
+
+    private function assignmentRow(TeamAssignment $assignment, int $capacityHours, User $user, bool $completed = false): array
+    {
+        $hours = (int) ($assignment->estimated_hours ?? 0);
+
+        return [
+            'id' => $assignment->id,
+            'project_id' => $assignment->project_id,
+            'code' => $assignment->project?->code ?: 'PRJ',
+            'color' => $assignment->project?->color ?: '#7C3AED',
+            'name' => $assignment->project?->name ?: 'Project',
+            'role' => $assignment->title,
+            'title' => $assignment->title,
+            'type' => $assignment->type,
+            'pct' => $capacityHours > 0 ? (int) min(100, round($hours / $capacityHours * 100)) : 0,
+            'hours' => $hours,
+            'status' => $assignment->status,
+            'status_label' => $assignment->status === 'done' ? 'Selesai' : str_replace('_', ' ', (string) $assignment->status),
+            'completed' => $completed,
+            'due_date' => $assignment->due_date?->format('Y-m-d'),
+            'notes' => $assignment->notes,
+            'update_url' => route('team.assignments.update', [$user, $assignment]),
+            'delete_url' => route('team.assignments.destroy', [$user, $assignment]),
         ];
     }
 

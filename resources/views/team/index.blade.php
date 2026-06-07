@@ -1139,6 +1139,7 @@
         <div data-assign-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
         <form method="POST" action="#" data-assign-panel data-assign-form class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-violet-100">
             @csrf
+            <input type="hidden" name="_method" value="PUT" data-assign-method disabled>
             <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between gap-3">
                 <div class="min-w-0">
                     <h3 id="assign-modal-title" class="text-[16px] font-bold text-[#1E1B4B] leading-tight">Atur Penugasan</h3>
@@ -1153,8 +1154,12 @@
                     <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Penugasan Saat Ini</h4>
                     <div data-assign-current class="space-y-2"></div>
                 </section>
+                <section>
+                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Riwayat Selesai</h4>
+                    <div data-assign-completed class="space-y-2"></div>
+                </section>
                 <section class="rounded-2xl border border-dashed border-violet-200 bg-violet-50/30 p-4">
-                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-violet-700 mb-3">Tambah Penugasan Baru</h4>
+                    <h4 data-assign-form-title class="text-[11px] font-bold tracking-wider uppercase text-violet-700 mb-3">Tambah Penugasan Baru</h4>
                     <div class="space-y-3">
                         <div>
                             <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Proyek</label>
@@ -1205,12 +1210,17 @@
                 </section>
             </div>
             <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2 flex-shrink-0">
+                <button type="button" data-assign-reset class="hidden h-9 px-4 rounded-lg border border-violet-200 bg-white text-[12.5px] font-semibold text-violet-700 hover:border-violet-400 transition cursor-pointer">Tambah Baru</button>
                 <button type="button" data-assign-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Batal</button>
                 <button type="submit" class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                     <x-heroicon-o-bookmark-square class="w-4 h-4" />
-                    Simpan
+                    <span data-assign-submit-label>Simpan</span>
                 </button>
             </div>
+        </form>
+        <form method="POST" action="#" data-assign-delete-form class="hidden">
+            @csrf
+            @method('DELETE')
         </form>
     </div>
 
@@ -1224,6 +1234,7 @@
                 const form     = modal.querySelector('[data-assign-form]');
                 const nameEl   = modal.querySelector('[data-assign-member-name]');
                 const curEl    = modal.querySelector('[data-assign-current]');
+                const doneEl   = modal.querySelector('[data-assign-completed]');
                 const projSel  = modal.querySelector('[data-assign-project]');
                 const titleInp = modal.querySelector('[data-assign-title]');
                 const typeSel = modal.querySelector('[data-assign-type]');
@@ -1231,9 +1242,56 @@
                 const dueInp = modal.querySelector('[data-assign-due]');
                 const hoursInp = modal.querySelector('[data-assign-hours]');
                 const notesInp = modal.querySelector('[data-assign-notes]');
+                const methodInp = modal.querySelector('[data-assign-method]');
+                const formTitle = modal.querySelector('[data-assign-form-title]');
+                const resetBtn = modal.querySelector('[data-assign-reset]');
+                const submitLabel = modal.querySelector('[data-assign-submit-label]');
+                const deleteForm = modal.querySelector('[data-assign-delete-form]');
                 let currentId  = null;
+                let currentMember = null;
 
                 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+                const allAssignments = () => [
+                    ...((currentMember && currentMember.allocations) || []),
+                    ...((currentMember && currentMember.completed_allocations) || []),
+                ];
+                const assignmentById = (id) => allAssignments().find(a => String(a.id || '') === String(id || ''));
+
+                const resetAssignmentForm = () => {
+                    if (form && currentMember?.assignment_url) form.action = currentMember.assignment_url;
+                    if (methodInp) methodInp.disabled = true;
+                    if (formTitle) formTitle.textContent = 'Tambah Penugasan Baru';
+                    if (submitLabel) submitLabel.textContent = 'Simpan';
+                    resetBtn?.classList.add('hidden');
+                    if (projSel) projSel.value = '';
+                    if (titleInp) titleInp.value = '';
+                    if (typeSel) typeSel.value = 'task';
+                    if (statusSel) statusSel.value = 'planned';
+                    if (dueInp) dueInp.value = '';
+                    if (hoursInp) hoursInp.value = '';
+                    if (notesInp) notesInp.value = '';
+                };
+
+                const editAssignment = (assignment) => {
+                    if (! assignment || ! form || ! assignment.update_url) return;
+                    form.action = assignment.update_url;
+                    if (methodInp) {
+                        methodInp.disabled = false;
+                        methodInp.value = 'PUT';
+                    }
+                    if (formTitle) formTitle.textContent = 'Edit Penugasan';
+                    if (submitLabel) submitLabel.textContent = 'Simpan Perubahan';
+                    resetBtn?.classList.remove('hidden');
+                    if (projSel) projSel.value = assignment.project_id || '';
+                    if (titleInp) titleInp.value = assignment.title || assignment.role || '';
+                    if (typeSel) typeSel.value = assignment.type || 'task';
+                    if (statusSel) statusSel.value = assignment.status || 'planned';
+                    if (dueInp) dueInp.value = assignment.due_date || '';
+                    if (hoursInp) hoursInp.value = assignment.hours ?? '';
+                    if (notesInp) notesInp.value = assignment.notes || '';
+                    titleInp?.focus();
+                };
 
                 const renderCurrent = (allocs) => {
                     if (! curEl) return;
@@ -1243,32 +1301,54 @@
                     }
                     curEl.innerHTML = allocs.map(a =>
                         '<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-violet-100 bg-white">'
-                        + '  <div class="flex items-center gap-3 min-w-0">'
+                        + '  <div class="flex items-center gap-3 min-w-0 flex-1">'
                         + '    <span class="w-8 h-8 rounded-lg text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0" style="background:' + esc(a.color || '#7C3AED') + ';">' + esc(a.code || '··') + '</span>'
                         + '    <div class="min-w-0">'
                         + '      <div class="text-[13px] font-semibold text-[#1E1B4B] truncate">' + esc(a.name || '—') + '</div>'
                         + '      <div class="text-[11.5px] text-slate-500">' + esc(a.role || '—') + ' · ' + esc(a.hours || 0) + 'h/minggu</div>'
                         + '    </div>'
                         + '  </div>'
-                        + '  <span class="text-[12px] font-bold tabular-nums text-violet-700">' + esc(a.pct || 0) + '%</span>'
+                        + '  <div class="flex items-center gap-2 flex-shrink-0">'
+                        + '    <span class="text-[12px] font-bold tabular-nums text-violet-700">' + esc(a.pct || 0) + '%</span>'
+                        + (a.update_url ? '    <button type="button" data-assign-edit="' + esc(a.id) + '" class="h-8 px-3 rounded-lg border border-violet-100 text-[12px] font-semibold text-violet-700 hover:border-violet-300 transition cursor-pointer">Edit</button>' : '')
+                        + (a.delete_url ? '    <button type="button" data-assign-delete="' + esc(a.id) + '" class="h-8 px-3 rounded-lg border border-rose-100 text-[12px] font-semibold text-rose-600 hover:bg-rose-50 transition cursor-pointer">Hapus</button>' : '')
+                        + '  </div>'
+                        + '</div>'
+                    ).join('');
+                };
+
+                const renderCompleted = (allocs) => {
+                    if (! doneEl) return;
+                    if (! allocs || allocs.length === 0) {
+                        doneEl.innerHTML = '<p class="text-[12.5px] text-slate-400 italic">Belum ada penugasan selesai.</p>';
+                        return;
+                    }
+                    doneEl.innerHTML = allocs.map(a =>
+                        '<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50/80">'
+                        + '  <div class="flex items-center gap-3 min-w-0 flex-1">'
+                        + '    <span class="w-8 h-8 rounded-lg text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0" style="background:' + esc(a.color || '#7C3AED') + ';">' + esc(a.code || '..') + '</span>'
+                        + '    <div class="min-w-0">'
+                        + '      <div class="text-[13px] font-semibold text-[#1E1B4B] truncate">' + esc(a.name || '-') + '</div>'
+                        + '      <div class="text-[11.5px] text-slate-500">' + esc(a.role || '-') + ' - ' + esc(a.hours || 0) + 'h/minggu</div>'
+                        + '    </div>'
+                        + '  </div>'
+                        + '  <div class="flex items-center gap-2 flex-shrink-0">'
+                        + '    <span class="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10.5px] font-bold uppercase">' + esc(a.status_label || 'Selesai') + '</span>'
+                        + (a.update_url ? '    <button type="button" data-assign-edit="' + esc(a.id) + '" class="h-8 px-3 rounded-lg border border-violet-100 bg-white text-[12px] font-semibold text-violet-700 hover:border-violet-300 transition cursor-pointer">Edit</button>' : '')
+                        + (a.delete_url ? '    <button type="button" data-assign-delete="' + esc(a.id) + '" class="h-8 px-3 rounded-lg border border-rose-100 bg-white text-[12px] font-semibold text-rose-600 hover:bg-rose-50 transition cursor-pointer">Hapus</button>' : '')
+                        + '  </div>'
                         + '</div>'
                     ).join('');
                 };
 
                 const openAssign = (id, fallbackName) => {
                     currentId = id;
-                    const member = (window.__teamCsvMap && window.__teamCsvMap[id]) || null;
-                    const name   = (member && member.name) || fallbackName || 'Anggota';
-                    if (form && member?.assignment_url) form.action = member.assignment_url;
+                    currentMember = (window.__teamCsvMap && window.__teamCsvMap[id]) || null;
+                    const name   = (currentMember && currentMember.name) || fallbackName || 'Anggota';
                     if (nameEl) nameEl.textContent = name;
-                    renderCurrent(member ? (member.allocations || []) : []);
-                    if (projSel) projSel.value = '';
-                    if (titleInp) titleInp.value = '';
-                    if (typeSel) typeSel.value = 'task';
-                    if (statusSel) statusSel.value = 'planned';
-                    if (dueInp) dueInp.value = '';
-                    if (hoursInp) hoursInp.value = '';
-                    if (notesInp) notesInp.value = '';
+                    renderCurrent(currentMember ? (currentMember.allocations || []) : []);
+                    renderCompleted(currentMember ? (currentMember.completed_allocations || []) : []);
+                    resetAssignmentForm();
                     modal.classList.remove('hidden');
                     modal.classList.add('flex');
                     document.body.style.overflow = 'hidden';
@@ -1279,6 +1359,7 @@
                     modal.classList.remove('flex');
                     document.body.style.overflow = '';
                     currentId = null;
+                    currentMember = null;
                 };
 
                 /* Open trigger — delegated in CAPTURE phase so that the member modal's
@@ -1295,8 +1376,22 @@
                 if (panel) {
                     panel.addEventListener('click', (e) => {
                         if (e.target.closest('[data-assign-close]')) { closeAssign(); return; }
+                        const editBtn = e.target.closest('[data-assign-edit]');
+                        if (editBtn) {
+                            editAssignment(assignmentById(editBtn.dataset.assignEdit));
+                            return;
+                        }
+                        const deleteBtn = e.target.closest('[data-assign-delete]');
+                        if (deleteBtn) {
+                            const assignment = assignmentById(deleteBtn.dataset.assignDelete);
+                            if (! assignment?.delete_url || ! deleteForm) return;
+                            if (! confirm('Hapus penugasan ini? Beban kerja anggota akan dihitung ulang.')) return;
+                            deleteForm.action = assignment.delete_url;
+                            deleteForm.submit();
+                        }
                     });
                 }
+                resetBtn?.addEventListener('click', resetAssignmentForm);
                 if (overlay) overlay.addEventListener('click', closeAssign);
                 document.addEventListener('keydown', (e) => {
                     if (e.key === 'Escape' && ! modal.classList.contains('hidden')) closeAssign();

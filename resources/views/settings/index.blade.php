@@ -143,6 +143,7 @@
                                 <option value="Asia/Jakarta" @selected($workspaceTimezone === 'Asia/Jakarta')>Asia/Jakarta · GMT+7</option>
                                 <option value="Asia/Singapore" @selected($workspaceTimezone === 'Asia/Singapore')>Asia/Singapore · GMT+8</option>
                             </select>
+                            <p class="mt-1.5 text-[11px] text-slate-400 leading-snug">Tampilan timestamp demo mengikuti APP_TIMEZONE=Asia/Jakarta pada konfigurasi aplikasi.</p>
                         </div>
                     </div>
                 </div>

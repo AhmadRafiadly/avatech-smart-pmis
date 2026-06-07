@@ -262,6 +262,8 @@ class DemoWalkthroughSeeder extends Seeder
     {
         $bp = $projects->get('BP');
         if ($bp) {
+            $bp->forceFill(['ai_wbs_generated' => false])->save();
+
             ProjectTask::updateOrCreate(
                 ['project_id' => $bp->id, 'title' => 'Review UX merchant onboarding'],
                 [
@@ -279,6 +281,8 @@ class DemoWalkthroughSeeder extends Seeder
 
         $ga = $projects->get('GA');
         if ($ga) {
+            $ga->forceFill(['ai_wbs_generated' => false])->save();
+
             ProjectQcTest::updateOrCreate(
                 ['project_id' => $ga->id, 'title' => 'Gateway menolak token partner kedaluwarsa'],
                 [

@@ -1551,7 +1551,24 @@ class ProjectController extends Controller
 
     private function usesReferenceProjectData(Project $project): bool
     {
-        return array_key_exists($project->code, self::PROJECT_META);
+        if (! array_key_exists($project->code, self::PROJECT_META)) {
+            return false;
+        }
+
+        if ($project->relationLoaded('modules')
+            && $project->relationLoaded('tasks')
+            && $project->relationLoaded('moms')
+            && $project->relationLoaded('qcTests')) {
+            return $project->modules->isEmpty()
+                && $project->tasks->isEmpty()
+                && $project->moms->isEmpty()
+                && $project->qcTests->isEmpty();
+        }
+
+        return ! $project->modules()->exists()
+            && ! $project->tasks()->exists()
+            && ! $project->moms()->exists()
+            && ! $project->qcTests()->exists();
     }
 
     private function ensureCanEditProjectDetail(): void

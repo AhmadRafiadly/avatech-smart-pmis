@@ -216,11 +216,12 @@
                 <div class="mt-auto">
                     <div class="flex items-center justify-between mb-1.5">
                         <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Progress</span>
-                        <span class="text-[13px] font-bold text-[#1E1B4B] tabular-nums">{{ $p['progress'] }}%</span>
+                        <span class="text-[13px] font-bold text-[#1E1B4B] tabular-nums" title="Estimasi manual PM, bukan hitung otomatis task/QC.">{{ $p['progress'] }}%</span>
                     </div>
                     <div class="h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                         <div class="h-full rounded-full {{ $statusDot[$p['status']] }}" style="width: {{ $p['progress'] }}%"></div>
                     </div>
+                    <p class="mt-1 text-[10.5px] text-slate-400">Estimasi manual PM.</p>
 
                     <div class="mt-4 flex items-center gap-2" onclick="event.stopPropagation()">
                         <button
@@ -305,7 +306,7 @@
                         <th class="px-4 py-4">Klien</th>
                         <th class="px-4 py-4">Phase</th>
                         <th class="px-4 py-4">Team</th>
-                        <th class="px-4 py-4 w-[220px]">Progress</th>
+                        <th class="px-4 py-4 w-[220px]">Progress <span class="normal-case tracking-normal font-medium text-slate-300">(manual PM)</span></th>
                         <th class="px-4 py-4">Status</th>
                         <th class="px-7 py-4 text-right"></th>
                     </tr>
@@ -354,7 +355,7 @@
                                     <div class="flex-1 h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                                         <div class="h-full rounded-full {{ $statusDot[$p['status']] }}" style="width: {{ $p['progress'] }}%"></div>
                                     </div>
-                                    <span class="text-[12px] font-bold text-[#1E1B4B] w-9 text-right tabular-nums">{{ $p['progress'] }}%</span>
+                                    <span class="text-[12px] font-bold text-[#1E1B4B] w-9 text-right tabular-nums" title="Estimasi manual PM, bukan hitung otomatis task/QC.">{{ $p['progress'] }}%</span>
                                 </div>
                             </td>
                             <td class="px-4 py-4">

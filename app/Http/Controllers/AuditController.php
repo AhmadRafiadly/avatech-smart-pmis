@@ -30,6 +30,8 @@ class AuditController extends Controller
         'integration_connected'    => 'INTEGRASI TERHUBUNG',
         'integration_disconnected' => 'INTEGRASI DIPUTUS',
         'assignment_created'       => 'PENUGASAN BARU',
+        'assignment_updated'       => 'PENUGASAN DIPERBARUI',
+        'assignment_deleted'       => 'PENUGASAN DIHAPUS',
         'wbs_module_created'       => 'MODUL WBS BARU',
         'wbs_module_updated'       => 'MODUL WBS DIPERBARUI',
         'wbs_module_deleted'       => 'MODUL WBS DIHAPUS',

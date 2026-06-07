@@ -58,6 +58,8 @@ Route::middleware('auth')->group(function () {
         Route::patch('/team/members/{member}/archive', [TeamController::class, 'archive'])->name('team.members.archive');
         Route::patch('/team/members/{member}/restore', [TeamController::class, 'restore'])->name('team.members.restore');
         Route::post('/team/members/{member}/assignments', [TeamController::class, 'storeAssignment'])->name('team.assignments.store');
+        Route::put('/team/members/{member}/assignments/{assignment}', [TeamController::class, 'updateAssignment'])->name('team.assignments.update');
+        Route::delete('/team/members/{member}/assignments/{assignment}', [TeamController::class, 'destroyAssignment'])->name('team.assignments.destroy');
         Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
         Route::put('/settings/preferences', [SettingsController::class, 'updatePreferences'])->name('settings.preferences.update');
         Route::post('/settings/integrations/{provider}/toggle', [SettingsController::class, 'toggleIntegration'])->name('settings.integrations.toggle');
@@ -65,14 +67,14 @@ Route::middleware('auth')->group(function () {
         Route::post('/settings/recovery-codes', [SettingsController::class, 'regenerateRecoveryCodes'])->name('settings.recovery-codes.regenerate');
         Route::delete('/settings/sessions/{session}', [SettingsController::class, 'destroySession'])->name('settings.sessions.destroy');
         Route::post('/settings/account-deletion', [SettingsController::class, 'requestAccountDeletion'])->name('settings.account-deletion.request');
+        Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
+        Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
+        Route::patch('/projects/{project}/archive', [ProjectController::class, 'archive'])->name('projects.archive');
+        Route::patch('/projects/{project}/restore', [ProjectController::class, 'restore'])->name('projects.restore');
     });
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
-    Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
-    Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
-    Route::patch('/projects/{project}/archive', [ProjectController::class, 'archive'])->name('projects.archive');
-    Route::patch('/projects/{project}/restore', [ProjectController::class, 'restore'])->name('projects.restore');
     Route::post('/projects/{project}/modules', [ProjectController::class, 'storeModule'])->name('projects.modules.store');
     Route::put('/projects/{project}/modules/{module}', [ProjectController::class, 'updateModule'])->name('projects.modules.update');
     Route::delete('/projects/{project}/modules/{module}', [ProjectController::class, 'destroyModule'])->name('projects.modules.destroy');

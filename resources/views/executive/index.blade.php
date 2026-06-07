@@ -191,7 +191,7 @@
                                 <th class="px-4 py-4">Klien</th>
                                 <th class="px-4 py-4">SA/Lead</th>
                                 <th class="px-4 py-4">Health Status</th>
-                                <th class="px-4 py-4 w-[260px]">Progress</th>
+                                <th class="px-4 py-4 w-[260px]">Progress <span class="normal-case tracking-normal font-medium text-slate-300">(manual PM)</span></th>
                                 <th class="px-7 py-4 text-right"></th>
                             </tr>
                         </thead>
@@ -244,7 +244,7 @@
                                             <div class="flex-1 h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                                                 <div class="h-full rounded-full {{ $statusDot[$p['status']] ?? 'bg-slate-400' }}" style="width: {{ $p['progress'] }}%"></div>
                                             </div>
-                                            <span class="text-[13px] font-semibold text-[#1E1B4B] w-9 text-right tabular-nums">{{ $p['progress'] }}%</span>
+                                            <span class="text-[13px] font-semibold text-[#1E1B4B] w-9 text-right tabular-nums" title="Estimasi manual PM, bukan hitung otomatis task/QC.">{{ $p['progress'] }}%</span>
                                         </div>
                                     </td>
                                     <td class="px-7 py-5 text-right">
