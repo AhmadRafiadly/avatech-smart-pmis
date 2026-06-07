@@ -77,10 +77,10 @@ class ExecutiveController extends Controller
             : 0;
 
         $metrics = [
-            ['key' => 'projects', 'icon' => 'folder', 'label' => 'Active Projects', 'value' => (string) $totalProjects, 'foot' => $archivedProjects . ' archived excluded', 'foot_icon' => 'archive-box', 'foot_color' => 'text-slate-500', 'progress' => null],
-            ['key' => 'wbs', 'icon' => 'clipboard-document-check', 'label' => 'WBS Coverage', 'value' => $aiPct . '%', 'foot' => $aiCount . '/' . $totalProjects . ' active projects marked WBS-ready', 'foot_icon' => 'clipboard-document-list', 'foot_color' => 'text-violet-600 font-medium', 'progress' => null],
-            ['key' => 'workload', 'icon' => 'users', 'label' => 'Team Workload', 'value' => $avgLoad . '%', 'foot' => $this->loadFootLabel($avgLoad, $teamMembers->count()), 'foot_icon' => null, 'foot_color' => null, 'progress' => min(100, $avgLoad)],
-            ['key' => 'clients', 'icon' => 'building-office', 'label' => 'Active Clients', 'value' => (string) $totalClients, 'foot' => $archivedClients . ' archived excluded', 'foot_icon' => 'information-circle', 'foot_color' => 'text-slate-500', 'progress' => null],
+            ['key' => 'projects', 'icon' => 'folder', 'label' => 'Active Projects', 'value' => (string) $totalProjects, 'foot' => $archivedProjects . ' archived excluded', 'foot_icon' => 'archive-box', 'foot_color' => 'text-slate-500', 'progress' => null, 'href' => route('projects.index')],
+            ['key' => 'wbs', 'icon' => 'clipboard-document-check', 'label' => 'WBS Coverage', 'value' => $aiPct . '%', 'foot' => $aiCount . '/' . $totalProjects . ' active projects marked WBS-ready', 'foot_icon' => 'clipboard-document-list', 'foot_color' => 'text-violet-600 font-medium', 'progress' => null, 'href' => route('projects.index')],
+            ['key' => 'workload', 'icon' => 'users', 'label' => 'Team Workload', 'value' => $avgLoad . '%', 'foot' => $this->loadFootLabel($avgLoad, $teamMembers->count()), 'foot_icon' => null, 'foot_color' => null, 'progress' => min(100, $avgLoad), 'href' => route('executive.index') . '#teamLoad'],
+            ['key' => 'clients', 'icon' => 'building-office', 'label' => 'Active Clients', 'value' => (string) $totalClients, 'foot' => $archivedClients . ' archived excluded', 'foot_icon' => 'information-circle', 'foot_color' => 'text-slate-500', 'progress' => null, 'href' => route('clients.index')],
         ];
 
         $projects = Project::with(['client', 'lead', 'modules', 'tasks', 'moms', 'qcTests'])

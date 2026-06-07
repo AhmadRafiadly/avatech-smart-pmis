@@ -58,10 +58,16 @@
 
             <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
                 @foreach ($metrics as $m)
-                    <article class="relative overflow-hidden rounded-2xl p-7 bg-white border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:shadow-[0_8px_24px_rgba(124,58,237,0.12)] transition">
+                    @php $metricHash = parse_url($m['href'] ?? '', PHP_URL_FRAGMENT); @endphp
+                    <a
+                        href="{{ $m['href'] ?? '#' }}"
+                        @if ($metricHash) data-tab-target="{{ $metricHash }}" @endif
+                        class="relative overflow-hidden rounded-2xl p-7 bg-white border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:shadow-[0_8px_24px_rgba(124,58,237,0.12)] hover:-translate-y-0.5 transition cursor-pointer no-underline group"
+                        aria-label="Buka {{ $m['label'] }}"
+                    >
                         <div class="absolute -top-7 -right-7 w-24 h-24 rounded-full bg-violet-100/55 pointer-events-none"></div>
                         <div class="relative flex items-start gap-3 mb-4">
-                            <div class="w-11 h-11 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center flex-shrink-0">
+                            <div class="w-11 h-11 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center flex-shrink-0 group-hover:bg-violet-600 group-hover:text-white transition">
                                 <x-dynamic-component :component="'heroicon-o-' . $m['icon']" class="w-5 h-5" />
                             </div>
                             <div class="text-[13px] font-medium text-slate-500 leading-tight pt-1">{{ $m['label'] }}</div>
@@ -82,7 +88,7 @@
                                 </div>
                             @endif
                         </div>
-                    </article>
+                    </a>
                 @endforeach
             </section>
 
@@ -304,6 +310,9 @@
                     <div>
                         <h2 class="text-[20px] font-bold tracking-tight text-[#1E1B4B]">Team Load Distribution</h2>
                         <p class="text-[13px] text-slate-500 mt-1">Visualisasi beban kerja real-time tiap anggota tim</p>
+                        <p class="text-[12px] text-slate-400 mt-1 max-w-2xl">
+                            Team Load menunjukkan estimasi alokasi jam/minggu untuk membantu pembagian beban kerja, bukan batas kerja mutlak.
+                        </p>
                     </div>
                     <div class="relative" data-month-filter>
                         <button
@@ -429,14 +438,40 @@
                     });
                 };
 
+                const updateHash = (id) => {
+                    const nextHash = `#${id}`;
+                    if (window.location.hash === nextHash) return;
+                    history.pushState(null, '', nextHash);
+                };
+
                 tabs.forEach(t => {
                     t.addEventListener('click', () => {
                         activateTab(t.dataset.tab);
+                        updateHash(t.dataset.tab);
                     });
                 });
 
-                const hashTab = Array.from(tabs).find(t => t.dataset.tab.toLowerCase() === window.location.hash.slice(1).toLowerCase());
-                if (hashTab) activateTab(hashTab.dataset.tab);
+                document.querySelectorAll('[data-tab-target]').forEach(link => {
+                    link.addEventListener('click', (event) => {
+                        const target = link.dataset.tabTarget;
+                        if (! target) return;
+
+                        event.preventDefault();
+                        activateTab(target);
+                        updateHash(target);
+                    });
+                });
+
+                const activateTabFromHash = () => {
+                    const requested = window.location.hash.slice(1).toLowerCase();
+                    if (! requested) return;
+
+                    const hashTab = Array.from(tabs).find(t => t.dataset.tab.toLowerCase() === requested);
+                    if (hashTab) activateTab(hashTab.dataset.tab);
+                };
+                activateTabFromHash();
+                window.addEventListener('hashchange', activateTabFromHash);
+                window.addEventListener('popstate', activateTabFromHash);
 
                 /* Scroll-to with flash highlight */
                 document.querySelectorAll('[data-scroll-to]').forEach(btn => {

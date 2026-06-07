@@ -157,6 +157,9 @@
             </div>
         </div>
     </section>
+    <p class="-mt-3 mb-6 text-[12px] text-slate-400">
+        Due date merupakan target saat ini dan dapat disesuaikan jika ada revisi atau perubahan scope. Progress merupakan estimasi manual PM.
+    </p>
 
     <section data-view-panel="grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         @foreach ($projects as $p)
@@ -221,7 +224,7 @@
                     <div class="h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                         <div class="h-full rounded-full {{ $statusDot[$p['status']] }}" style="width: {{ $p['progress'] }}%"></div>
                     </div>
-                    <p class="mt-1 text-[10.5px] text-slate-400">Estimasi manual PM.</p>
+                    <p class="mt-1 text-[10.5px] text-slate-400">Progress merupakan estimasi manual PM.</p>
 
                     <div class="mt-4 flex items-center gap-2" onclick="event.stopPropagation()">
                         <button
@@ -514,7 +517,7 @@
     {{-- ===== Edit Project Modal ===== --}}
     <div data-edit-modal="project" data-edit-has-errors="{{ old('_form') === 'edit' && $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
         <div data-edit-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
-        <form method="POST" action="{{ $editAction }}" data-edit-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
+        <form method="POST" action="{{ $editAction }}" data-edit-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-violet-100">
             @csrf
             @method('PUT')
             <input type="hidden" name="_form" value="edit">
@@ -525,7 +528,7 @@
                     <x-heroicon-o-x-mark class="w-5 h-5" />
                 </button>
             </div>
-            <div class="px-6 py-5 space-y-3">
+            <div class="px-6 py-5 space-y-3 overflow-y-auto">
                 <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Kode</label>
                     <input name="code" value="{{ old('_form') === 'edit' ? old('code') : '' }}" maxlength="4" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] uppercase focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="AC" />
@@ -553,6 +556,18 @@
                     @endif
                 </div>
                 <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Template Proyek</label>
+                    <select data-project-template class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
+                        <option value="custom">Custom</option>
+                        <option value="web">Web Development</option>
+                        <option value="wordpress">WordPress Website</option>
+                        <option value="mobile">Mobile App</option>
+                        <option value="internal">Internal System</option>
+                        <option value="qa">QA/UAT Project</option>
+                    </select>
+                    <p class="mt-1 text-[11px] text-slate-400">Opsional, hanya membantu mengisi deskripsi awal.</p>
+                </div>
+                <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Deskripsi</label>
                     <textarea name="description" rows="3" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Ringkasan singkat proyek...">{{ old('_form') === 'edit' ? old('description') : '' }}</textarea>
                     @if (old('_form') === 'edit')
@@ -562,6 +577,7 @@
                 <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Due Date</label>
                     <input name="due_at" type="date" value="{{ old('_form') === 'edit' ? old('due_at') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                    <p class="mt-1 text-[11px] text-slate-400">Target saat ini; bisa disesuaikan jika ada revisi atau perubahan scope.</p>
                     @if (old('_form') === 'edit')
                         @error('due_at') <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p> @enderror
                     @endif
@@ -580,7 +596,7 @@
     {{-- ===== Create Project Modal ===== --}}
     <div data-create-modal="project" data-create-has-errors="{{ old('_form') === 'create' && $errors->any() ? '1' : '0' }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
         <div data-create-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
-        <form method="POST" action="{{ route('projects.store') }}" data-create-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md flex flex-col overflow-hidden border border-violet-100">
+        <form method="POST" action="{{ route('projects.store') }}" data-create-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-violet-100">
             @csrf
             <input type="hidden" name="_form" value="create">
             <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
@@ -589,7 +605,7 @@
                     <x-heroicon-o-x-mark class="w-5 h-5" />
                 </button>
             </div>
-            <div class="px-6 py-5 space-y-3">
+            <div class="px-6 py-5 space-y-3 overflow-y-auto">
                 <div class="flex items-start gap-2.5 p-3 rounded-lg bg-violet-50/70 border border-violet-100 text-[12px] text-slate-600">
                     <x-heroicon-o-sparkles class="w-4 h-4 text-violet-600 flex-shrink-0 mt-0.5" />
                     <span>Project baru otomatis dimulai dari <strong class="text-[#1E1B4B]">Planning</strong> dengan status <strong class="text-[#1E1B4B]">On Track</strong>.</span>
@@ -621,6 +637,18 @@
                     @enderror
                 </div>
                 <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Template Proyek</label>
+                    <select data-project-template class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
+                        <option value="custom">Custom</option>
+                        <option value="web">Web Development</option>
+                        <option value="wordpress">WordPress Website</option>
+                        <option value="mobile">Mobile App</option>
+                        <option value="internal">Internal System</option>
+                        <option value="qa">QA/UAT Project</option>
+                    </select>
+                    <p class="mt-1 text-[11px] text-slate-400">Opsional, hanya membantu mengisi deskripsi awal.</p>
+                </div>
+                <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Deskripsi</label>
                     <textarea name="description" rows="3" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Ringkasan singkat proyek...">{{ old('description') }}</textarea>
                     @error('description')
@@ -630,6 +658,7 @@
                 <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Due Date</label>
                     <input name="due_at" type="date" value="{{ old('due_at') }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                    <p class="mt-1 text-[11px] text-slate-400">Target saat ini; bisa disesuaikan jika ada revisi atau perubahan scope.</p>
                     @error('due_at')
                         <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p>
                     @enderror
@@ -705,6 +734,7 @@
                         editForm.querySelector('[name="client_id"]').value = btn.dataset.clientId || '';
                         editForm.querySelector('[name="description"]').value = btn.dataset.description || '';
                         editForm.querySelector('[name="due_at"]').value = btn.dataset.dueAt || '';
+                        editForm.querySelector('[data-project-template]').value = 'custom';
                         editOpen();
                     });
                 });
@@ -715,6 +745,28 @@
                     if (event.key === 'Escape' && editModal && ! editModal.classList.contains('hidden')) editClose();
                 });
                 if (editModal?.dataset.editHasErrors === '1') editOpen();
+
+                const templateDescriptions = {
+                    web: 'Web development untuk kebutuhan bisnis klien, mencakup perencanaan halaman, implementasi frontend/backend, integrasi teknis, revisi desain/development, testing, dan handover.',
+                    wordpress: 'WordPress website untuk company profile atau landing page, mencakup input konten, penyesuaian desain, revisi klien, konfigurasi CMS, testing, dan handover pengelolaan.',
+                    mobile: 'Mobile app untuk kebutuhan pengguna klien, mencakup desain alur, implementasi fitur, integrasi API, revisi UI/UX, testing perangkat, dan persiapan rilis.',
+                    internal: 'Internal system untuk operasional klien, mencakup dashboard, role access, workflow, reporting, testing, revisi scope, dan handover penggunaan.',
+                    qa: 'QA/UAT project untuk validasi sistem, mencakup penyusunan test case, bug validation, regression testing, dokumentasi temuan, dan laporan hasil pengujian.'
+                };
+
+                document.querySelectorAll('[data-project-template]').forEach(select => {
+                    select.addEventListener('change', () => {
+                        const description = select.closest('form')?.querySelector('[name="description"]');
+                        const nextValue = templateDescriptions[select.value] || '';
+                        if (! description || nextValue === '') return;
+                        if (description.value.trim() !== '' && ! window.confirm('Ganti deskripsi dengan template proyek ini?')) {
+                            select.value = 'custom';
+                            return;
+                        }
+                        description.value = nextValue;
+                        description.focus();
+                    });
+                });
             };
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', wire);

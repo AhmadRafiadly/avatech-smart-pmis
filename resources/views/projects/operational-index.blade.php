@@ -71,6 +71,7 @@
                         <div class="h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                             <div class="h-full rounded-full" style="width: {{ $progress }}%; background: {{ $progressColor }};"></div>
                         </div>
+                        <p class="mt-1 text-[10.5px] text-slate-400">Progress merupakan estimasi manual PM.</p>
                     </div>
 
                     <div class="mt-auto pt-4 border-t border-violet-50 grid grid-cols-2 gap-3 text-center mb-4">

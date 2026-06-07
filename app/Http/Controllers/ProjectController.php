@@ -9,6 +9,7 @@ use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
 use App\Models\ProjectTask;
+use App\Models\TeamAssignment;
 use App\Models\User;
 use App\Services\AiPlanner;
 use App\Services\AuditLogger;
@@ -86,6 +87,7 @@ class ProjectController extends Controller
     ];
 
     private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
+    private const QUICK_ASSIGN_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
 
     public function __construct(private readonly SmartInsightService $insights)
     {
@@ -282,22 +284,23 @@ class ProjectController extends Controller
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
 
         $leadName     = $project->lead?->name;
-        $leadInitials = $leadName ? $this->initials($leadName) : '—';
+        $leadInitials = $leadName ? $this->initials($leadName) : '-';
+        $leadDisplay  = $leadName ?: 'Belum ditentukan';
 
         $desc = $project->description ?: (self::DESC_MAP[$project->code] ?? 'Belum ada deskripsi untuk proyek ini.');
 
-        $due       = $project->due_at ? $this->formatDateId($project->due_at) : '—';
-        $createdAt = $project->created_at ? $this->formatDateLongId(AppTime::cast($project->created_at)) : '—';
+        $due       = $project->due_at ? $this->formatDateId($project->due_at) : '-';
+        $createdAt = $project->created_at ? $this->formatDateLongId(AppTime::cast($project->created_at)) : '-';
 
         return view('projects.show', [
             'title'        => $project->name,
             'project'      => $project,
             'desc'         => $desc,
-            'createdBy'    => 'Ahmad Rafiadly A.',
             'createdAt'    => $createdAt,
             'dueFormatted' => $due,
             'statusUi'     => $statusUi,
             'leadName'     => $leadName,
+            'leadDisplay'  => $leadDisplay,
             'leadInitials' => $leadInitials,
             'useReferenceProjectData' => $this->usesReferenceProjectData($project),
             'clients'      => Client::orderBy('name')->get(['id', 'name']),
@@ -320,7 +323,97 @@ class ProjectController extends Controller
             'taskStatusOptions' => self::TASK_STATUS_LABELS,
             'taskPriorityOptions' => self::TASK_PRIORITY_LABELS,
             'assigneeOptions' => $this->projectAssignedUsers($project),
+            'quickAssignUsers' => $this->canQuickAssignTeam() ? $this->quickAssignUserRows($project) : [],
         ]);
+    }
+
+    public function quickAssignTeam(Request $request, Project $project)
+    {
+        abort_unless($this->canQuickAssignTeam(), 403);
+
+        $eligibleUserIds = User::whereHas('roles', fn ($query) => $query->whereIn('name', self::OPERATIONAL_ROLES))
+            ->pluck('id')
+            ->all();
+
+        $validated = $request->validate([
+            'assignments' => ['required', 'array'],
+            'assignments.*.include' => ['nullable'],
+            'assignments.*.user_id' => ['required', Rule::in($eligibleUserIds)],
+            'assignments.*.title' => ['nullable', 'string', 'max:160'],
+            'assignments.*.type' => ['required', Rule::in(['task', 'review', 'support'])],
+            'assignments.*.status' => ['required', Rule::in(['planned', 'in_progress', 'done'])],
+            'assignments.*.estimated_hours' => ['nullable', 'integer', 'min:0', 'max:200'],
+            'assignments.*.due_date' => ['nullable', 'date'],
+            'assignments.*.notes' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'assignments.required' => 'Pilih minimal satu anggota tim.',
+            'assignments.*.user_id.in' => 'Anggota tim tidak valid untuk quick assign.',
+            'assignments.*.type.in' => 'Tipe penugasan tidak valid.',
+            'assignments.*.status.in' => 'Status penugasan tidak valid.',
+            'assignments.*.estimated_hours.integer' => 'Estimasi jam harus berupa angka.',
+            'assignments.*.estimated_hours.max' => 'Estimasi jam terlalu besar.',
+        ]);
+
+        $selected = collect($validated['assignments'])
+            ->filter(fn (array $row) => ! empty($row['include']))
+            ->values();
+
+        if ($selected->isEmpty()) {
+            return redirect()
+                ->to(route('projects.show', $project) . '#overview')
+                ->with('status', 'Pilih minimal satu anggota untuk Quick Assign.');
+        }
+
+        $created = 0;
+        $updated = 0;
+        $userNames = User::whereIn('id', $selected->pluck('user_id'))->pluck('name', 'id');
+
+        foreach ($selected as $row) {
+            $defaults = $this->quickAssignDefaultsForUser((int) $row['user_id']);
+            $assignment = TeamAssignment::firstOrNew([
+                'project_id' => $project->id,
+                'user_id' => (int) $row['user_id'],
+            ]);
+
+            $wasExisting = $assignment->exists;
+            $original = $assignment->getOriginal();
+            $assignment->fill([
+                'title' => trim((string) ($row['title'] ?? '')) ?: $defaults['title'],
+                'type' => $row['type'],
+                'status' => $row['status'],
+                'estimated_hours' => (int) ($row['estimated_hours'] ?? $defaults['estimated_hours']),
+                'due_date' => $row['due_date'] ?? $project->due_at?->toDateString(),
+                'notes' => trim((string) ($row['notes'] ?? '')) ?: $defaults['notes'],
+            ]);
+            $assignment->save();
+
+            $person = $userNames[$assignment->user_id] ?? 'anggota tim';
+            if (! $wasExisting) {
+                $created++;
+                AuditLogger::log(
+                    'assignment_created',
+                    'Team Management',
+                    'Quick assign <strong>' . e($person) . '</strong> ke proyek <strong>' . e($project->name) . '</strong>',
+                    $assignment,
+                    null,
+                    ['project_id' => $project->id, 'user_id' => $assignment->user_id, 'title' => $assignment->title],
+                );
+            } elseif ($assignment->wasChanged()) {
+                $updated++;
+                AuditLogger::log(
+                    'assignment_updated',
+                    'Team Management',
+                    'Quick assign memperbarui penugasan <strong>' . e($person) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+                    $assignment,
+                    $original,
+                    $assignment->getAttributes(),
+                );
+            }
+        }
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#overview')
+            ->with('status', 'Quick Assign selesai: ' . $created . ' dibuat, ' . $updated . ' diperbarui.');
     }
 
     public function storeModule(Request $request, Project $project)
@@ -1883,6 +1976,149 @@ class ProjectController extends Controller
             ->whereHas('roles', fn ($query) => $query->whereIn('name', self::OPERATIONAL_ROLES))
             ->orderBy('name')
             ->get(['id', 'name']);
+    }
+
+    private function canQuickAssignTeam(): bool
+    {
+        $role = auth()->user()?->roles?->first()?->name;
+
+        return in_array($role, self::QUICK_ASSIGN_ROLES, true);
+    }
+
+    private function quickAssignUserRows(Project $project): array
+    {
+        $existing = TeamAssignment::where('project_id', $project->id)
+            ->get()
+            ->keyBy('user_id');
+
+        $preferredEmailOrder = [
+            'ahmad.arlisyah@avatech.test',
+            'ferry.achmad@avatech.test',
+            'irwan.kurniawan@avatech.test',
+            'genta@avatech.test',
+            'yuda.prayoga@avatech.test',
+        ];
+
+        return User::query()
+            ->with('roles')
+            ->whereNull('archived_at')
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', self::OPERATIONAL_ROLES))
+            ->get()
+            ->sortBy(function (User $user) use ($preferredEmailOrder) {
+                $index = array_search($user->email, $preferredEmailOrder, true);
+
+                return $index === false ? 99 . $user->name : str_pad((string) $index, 2, '0', STR_PAD_LEFT);
+            })
+            ->values()
+            ->map(function (User $user) use ($existing, $project) {
+                $assignment = $existing->get($user->id);
+                $defaults = $this->quickAssignDefaultsForUser($user);
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'initials' => $this->initials($user->name),
+                    'role' => $this->quickAssignRoleLabel($user),
+                    'checked' => (bool) $assignment,
+                    'title' => $assignment?->title ?: $defaults['title'],
+                    'type' => $assignment?->type ?: $defaults['type'],
+                    'status' => $assignment?->status ?: $defaults['status'],
+                    'estimated_hours' => $assignment?->estimated_hours ?? $defaults['estimated_hours'],
+                    'due_date' => $assignment?->due_date?->format('Y-m-d') ?: $project->due_at?->format('Y-m-d'),
+                    'notes' => $assignment?->notes ?: $defaults['notes'],
+                    'presets' => $this->quickAssignPresetsForUser($user),
+                ];
+            })
+            ->all();
+    }
+
+    private function quickAssignDefaultsForUser(User|int $user): array
+    {
+        if (is_int($user)) {
+            $user = User::with('roles')->find($user);
+        }
+
+        $email = (string) ($user?->email ?? '');
+        $role = (string) ($user?->roles?->first()?->name ?? '');
+
+        if ($email === 'ahmad.arlisyah@avatech.test') {
+            return $this->quickAssignPresetsForUser($user)['saqa'];
+        }
+
+        if ($email === 'yuda.prayoga@avatech.test' || in_array($role, ['uiux_designer', 'ui_ux'], true)) {
+            return $this->quickAssignPresetsForUser($user)['default'];
+        }
+
+        return $this->quickAssignPresetsForUser($user)['default'];
+    }
+
+    private function quickAssignPresetsForUser(?User $user): array
+    {
+        $email = (string) ($user?->email ?? '');
+        $role = (string) ($user?->roles?->first()?->name ?? '');
+
+        if ($email === 'ahmad.arlisyah@avatech.test') {
+            return [
+                'saqa' => [
+                    'label' => 'SA/QA & MoM/QC',
+                    'title' => 'Analisis kebutuhan, MoM, dan validasi QC',
+                    'type' => 'review',
+                    'status' => 'in_progress',
+                    'estimated_hours' => 12,
+                    'notes' => 'Bertanggung jawab pada analisis kebutuhan, dokumentasi MoM, validasi output AI, penyusunan test case, pengujian fungsional, serta dukungan copywriting bila diperlukan.',
+                ],
+                'wordpress' => [
+                    'label' => 'WordPress Support',
+                    'title' => 'Dukungan WordPress dan konten website',
+                    'type' => 'support',
+                    'status' => 'planned',
+                    'estimated_hours' => 8,
+                    'notes' => 'Mendukung konfigurasi WordPress, penyesuaian konten, validasi halaman, dan koordinasi kebutuhan ringan website klien.',
+                ],
+                'copywriting' => [
+                    'label' => 'Copywriting Support',
+                    'title' => 'Dukungan copywriting dan validasi konten',
+                    'type' => 'support',
+                    'status' => 'planned',
+                    'estimated_hours' => 6,
+                    'notes' => 'Mendukung penyusunan microcopy, konten presentasi, wording UI, dan validasi bahasa agar sesuai kebutuhan klien.',
+                ],
+            ];
+        }
+
+        if ($email === 'yuda.prayoga@avatech.test' || in_array($role, ['uiux_designer', 'ui_ux'], true)) {
+            return [
+                'default' => [
+                    'label' => 'UI/UX Design',
+                    'title' => 'Perancangan dan penyempurnaan UI/UX',
+                    'type' => 'task',
+                    'status' => 'in_progress',
+                    'estimated_hours' => 12,
+                    'notes' => 'Bertanggung jawab pada mockup, desain UI/UX, konsistensi tampilan, dan penyempurnaan pengalaman pengguna.',
+                ],
+            ];
+        }
+
+        return [
+            'default' => [
+                'label' => 'Fullstack Implementation',
+                'title' => 'Implementasi fitur dan integrasi teknis',
+                'type' => 'task',
+                'status' => 'planned',
+                'estimated_hours' => 14,
+                'notes' => 'Bertanggung jawab pada implementasi fitur, pengembangan frontend/backend, integrasi teknis, bugfix, dan stabilisasi sistem.',
+            ],
+        ];
+    }
+
+    private function quickAssignRoleLabel(User $user): string
+    {
+        return match ($user->roles->first()?->name) {
+            'sa_qa' => 'SA / QA',
+            'uiux_designer', 'ui_ux' => 'UI/UX Designer',
+            default => 'Fullstack Developer',
+        };
     }
 
     private function percentage(int $done, int $total): int

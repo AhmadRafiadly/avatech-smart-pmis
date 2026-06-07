@@ -1,9 +1,6 @@
 @php
     $tabs = [
         ['id' => 'general',      'icon' => 'adjustments-horizontal', 'label' => 'Umum'],
-        ['id' => 'ai',           'icon' => 'sparkles',                'label' => 'Sekretaris AI'],
-        ['id' => 'notif',        'icon' => 'bell',                    'label' => 'Notifikasi'],
-        ['id' => 'integrations', 'icon' => 'puzzle-piece',            'label' => 'Integrasi'],
         ['id' => 'security',     'icon' => 'shield-check',            'label' => 'Keamanan'],
     ];
 
@@ -18,20 +15,20 @@
     ];
 
     $notifRows = [
-        ['label' => 'AI Output Siap',    'desc' => 'WBS, TC, MoM, Reminder draft',       'app' => true, 'email' => true,  'wa' => false],
-        ['label' => 'Proyek Critical',   'desc' => 'Status berubah ke Critical Blocker', 'app' => true, 'email' => true,  'wa' => true],
-        ['label' => 'Approval Diminta',  'desc' => 'Anda diminta approve sesuatu',       'app' => true, 'email' => true,  'wa' => false],
-        ['label' => 'Task Movement',     'desc' => 'Task pindah di Kanban proyek Anda',  'app' => true, 'email' => false, 'wa' => false],
-        ['label' => 'Klien Reply',       'desc' => 'Balasan WhatsApp klien diterima',    'app' => true, 'email' => true,  'wa' => true],
-        ['label' => 'Workload Alert',    'desc' => 'Anda mendekati overload',            'app' => true, 'email' => false, 'wa' => false],
-        ['label' => 'Sistem & Keamanan', 'desc' => 'Login baru, backup, perubahan akun', 'app' => true, 'email' => true,  'wa' => false],
+        ['label' => 'AI Output Siap',    'desc' => 'WBS, TC, MoM, Reminder draft',       'app' => true],
+        ['label' => 'Proyek Critical',   'desc' => 'Status berubah ke Critical Blocker', 'app' => true],
+        ['label' => 'Approval Diminta',  'desc' => 'Anda diminta approve sesuatu',       'app' => true],
+        ['label' => 'Task Movement',     'desc' => 'Task pindah di Kanban proyek Anda',  'app' => true],
+        ['label' => 'Klien Reply',       'desc' => 'Balasan WhatsApp klien diterima',    'app' => true],
+        ['label' => 'Workload Alert',    'desc' => 'Anda mendekati overload',            'app' => true],
+        ['label' => 'Sistem & Keamanan', 'desc' => 'Login baru, backup, perubahan akun', 'app' => true],
     ];
 
     $integrations = [
-        ['name' => 'WhatsApp Business', 'icon' => 'chat-bubble-oval-left',  'color' => '#10B981', 'connected' => true,  'desc' => 'CRM Lite — pre-filled outbound message via wa.me'],
-        ['name' => 'Google Calendar',   'icon' => 'calendar',                'color' => '#3B82F6', 'connected' => true,  'desc' => 'Sinkronisasi deadline proyek & rapat tim'],
+        ['name' => 'WhatsApp Business', 'icon' => 'chat-bubble-oval-left',  'color' => '#10B981', 'connected' => false, 'desc' => 'CRM Lite - pre-filled outbound message via wa.me'],
+        ['name' => 'Google Calendar',   'icon' => 'calendar',                'color' => '#3B82F6', 'connected' => false, 'desc' => 'Sinkronisasi deadline proyek & rapat tim'],
         ['name' => 'Slack',             'icon' => 'chat-bubble-left-right', 'color' => '#7C3AED', 'connected' => false, 'desc' => 'Push notifikasi AI ke channel #avatech-pm'],
-        ['name' => 'GitHub',            'icon' => 'code-bracket-square',    'color' => '#1E1B4B', 'connected' => true,  'desc' => 'Link PR ke task Kanban + commit di Audit Trail'],
+        ['name' => 'GitHub',            'icon' => 'code-bracket-square',    'color' => '#1E1B4B', 'connected' => false, 'desc' => 'Link PR ke task Kanban + commit di Audit Trail'],
         ['name' => 'Figma',             'icon' => 'paint-brush',             'color' => '#EC4899', 'connected' => false, 'desc' => 'Embed mockup ke task UI/UX'],
         ['name' => 'Webhook',           'icon' => 'bolt',                    'color' => '#F59E0B', 'connected' => false, 'desc' => 'Outbound event ke endpoint custom Anda'],
     ];
@@ -86,7 +83,7 @@
             Set<span class="bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#A855F7]">tings</span>
         </h1>
         <p class="mt-3 text-[15px] text-slate-500 max-w-2xl">
-            Konfigurasi sistem, preferensi AI, dan integrasi pihak ketiga untuk akun Avatech Anda.
+            Pengaturan workspace dan keamanan akun yang aktif digunakan di Smart-PMIS.
         </p>
     </section>
 
@@ -117,7 +114,11 @@
             <div data-panel="general">
                 <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-7 mb-5">
                     <h3 class="text-[16px] font-bold text-[#1E1B4B] mb-1">Workspace</h3>
-                    <p class="text-[13px] text-slate-500 mb-5">Identitas perusahaan yang muncul di laporan dan ekspor.</p>
+                    <p class="text-[13px] text-slate-500 mb-2">Identitas perusahaan yang muncul di laporan dan ekspor.</p>
+                    <p class="text-[12px] text-slate-400 mb-5">Settings hanya menampilkan pengaturan yang aktif digunakan. Timestamp runtime mengikuti APP_TIMEZONE=Asia/Jakarta pada konfigurasi aplikasi.</p>
+                    <input form="settings-preferences-form" name="subdomain" type="hidden" value="{{ $workspaceSubdomain }}">
+                    <input form="settings-preferences-form" name="interface_language" type="hidden" value="id">
+                    <input form="settings-preferences-form" name="timezone" type="hidden" value="Asia/Jakarta">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Nama Workspace</label>
@@ -126,24 +127,21 @@
                         <div>
                             <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Subdomain</label>
                             <div class="flex items-center h-11 rounded-xl border border-violet-100 overflow-hidden focus-within:ring-2 focus-within:ring-violet-300 focus-within:border-violet-300 transition">
-                                <input form="settings-preferences-form" name="subdomain" type="text" value="{{ $workspaceSubdomain }}" class="flex-1 h-full px-4 text-[13.5px] text-[#1E1B4B] focus:outline-none" />
+                                <input type="text" value="{{ $workspaceSubdomain }}" readonly aria-readonly="true" class="flex-1 h-full px-4 text-[13.5px] text-[#1E1B4B] bg-violet-50/30 focus:outline-none cursor-not-allowed" />
                                 <span class="px-3 text-[13px] text-slate-400 bg-violet-50/40 h-full flex items-center">.smartpmis.id</span>
                             </div>
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Bahasa Antarmuka</label>
-                            <select form="settings-preferences-form" name="interface_language" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                                <option value="id" @selected($workspaceLanguage === 'id')>Bahasa Indonesia</option>
-                                <option value="en" @selected($workspaceLanguage === 'en')>English</option>
-                            </select>
+                            <div class="h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-violet-50/40 flex items-center">Bahasa Indonesia</div>
                         </div>
                         <div>
-                            <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Zona Waktu</label>
-                            <select form="settings-preferences-form" name="timezone" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                                <option value="Asia/Jakarta" @selected($workspaceTimezone === 'Asia/Jakarta')>Asia/Jakarta · GMT+7</option>
+                            <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Zona Waktu Runtime</label>
+                            <select disabled aria-disabled="true" class="w-full h-11 rounded-xl border border-violet-100 px-4 text-[13.5px] text-[#1E1B4B] bg-violet-50/40 cursor-not-allowed">
+                                <option value="Asia/Jakarta" selected>Asia/Jakarta - GMT+7</option>
                                 <option value="Asia/Singapore" @selected($workspaceTimezone === 'Asia/Singapore')>Asia/Singapore · GMT+8</option>
                             </select>
-                            <p class="mt-1.5 text-[11px] text-slate-400 leading-snug">Tampilan timestamp demo mengikuti APP_TIMEZONE=Asia/Jakarta pada konfigurasi aplikasi.</p>
+                            <p class="mt-1.5 text-[11px] text-slate-400 leading-snug">Nilai ini dikunci oleh APP_TIMEZONE aplikasi, bukan preferensi pengguna.</p>
                         </div>
                     </div>
                 </div>
@@ -168,7 +166,7 @@
                     </div>
                 @endif
 
-                <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-7">
+                <div class="hidden bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-7">
                     <h3 class="text-[16px] font-bold text-[#1E1B4B] mb-1">Tampilan</h3>
                     <p class="text-[13px] text-slate-500 mb-5">Personalisasi tampilan dan kepadatan layout.</p>
                     <div class="space-y-1">
@@ -278,14 +276,14 @@
 
             <div data-panel="notif" class="hidden">
                 <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-7">
-                    <h3 class="text-[16px] font-bold text-[#1E1B4B] mb-1">Preferensi Notifikasi</h3>
-                    <p class="text-[13px] text-slate-500 mb-5">Atur kategori notifikasi yang muncul di lonceng Smart-PMIS.</p>
+                    <h3 class="text-[16px] font-bold text-[#1E1B4B] mb-1">Status Notifikasi</h3>
+                    <p class="text-[13px] text-slate-500 mb-5">Saat ini notifikasi aktif di dalam aplikasi. Email/WhatsApp tersedia setelah integrasi resmi diaktifkan.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left">
                             <thead>
                                 <tr class="text-[11px] font-bold tracking-[0.1em] uppercase text-slate-400 border-b border-violet-50">
                                     <th class="py-3 pr-4">Kategori</th>
-                                    <th class="py-3 px-3 text-center w-[120px]">In-App</th>
+                                    <th class="py-3 px-3 text-center w-[160px]">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -295,13 +293,10 @@
                                             <div class="text-[13.5px] font-semibold text-[#1E1B4B]">{{ $row['label'] }}</div>
                                             <div class="text-[12px] text-slate-500">{{ $row['desc'] }}</div>
                                         </td>
-                                        @php $rowSlug = $row['key'] ?? Illuminate\Support\Str::slug($row['label']); @endphp
-                                        <td class="py-3 px-3">
-                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][app]" value="{{ $row['app'] ? '1' : '0' }}" data-switch-input>
-                                            <div class="js-switch {{ $row['app'] ? 'is-on' : '' }} mx-auto" data-backed-switch role="switch" aria-checked="{{ $row['app'] ? 'true' : 'false' }}"></div>
-                                            {{-- Keep Email + WhatsApp keys in the form so the existing controller validation/saver keeps working without further changes. These are off by default until external delivery is wired up. --}}
-                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][email]" value="0">
-                                            <input form="settings-preferences-form" type="hidden" name="notifications[{{ $rowSlug }}][wa]"    value="0">
+                                        <td class="py-3 px-3 text-center">
+                                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[10.5px] font-bold tracking-wider uppercase">
+                                                In-app aktif
+                                            </span>
                                         </td>
                                     </tr>
                                 @endforeach
@@ -309,14 +304,14 @@
                         </table>
                     </div>
                     <div class="mt-5 rounded-xl border border-violet-100 bg-violet-50/40 px-4 py-3 text-[12.5px] text-slate-600 leading-snug">
-                        Pengiriman lewat <strong>Email</strong> dan <strong>WhatsApp</strong> akan tersedia setelah integrasi resmi diaktifkan. Untuk saat ini hanya notifikasi in-app yang aktif.
+                        Saat ini notifikasi aktif di dalam aplikasi. Email/WhatsApp tersedia setelah integrasi resmi diaktifkan.
                     </div>
                 </div>
             </div>
 
             <div data-panel="integrations" class="hidden">
                 <div class="mb-5 rounded-xl border border-violet-100 bg-violet-50/40 px-4 py-3 text-[12.5px] text-slate-600 leading-snug">
-                    Integrasi eksternal (WhatsApp Business, Google Calendar, Slack, GitHub, Figma) belum diaktifkan di server ini. Status di bawah hanya informasional. Draft pesan klien tetap tersedia di Client Directory tanpa koneksi resmi.
+                    Integrasi eksternal (WhatsApp Business, Google Calendar, Slack, GitHub, Figma, Webhook) belum diaktifkan di server ini. Status di bawah hanya informasional. Draft pesan klien tetap tersedia di Client Directory tanpa koneksi resmi.
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     @foreach ($integrations as $ig)
@@ -354,17 +349,15 @@
                     <div class="space-y-1">
                         @foreach ($security as $s)
                             @php
-                                /* Persisted-real controls in this release:
-                                 *  - "Login Alert" switch (UserSecurityPreference saver)
+                                /* Working control in this release:
                                  *  - "Ubah Password" button (real password update form)
-                                 * 2FA / IP Allowlist / Recovery Codes are placeholders
+                                 * 2FA / login alerts / IP allowlist / recovery codes are placeholders
                                  * until those backends are actually wired up. */
                                 $label = (string) $s['label'];
                                 $lower = mb_strtolower($label);
-                                $isLoginAlert  = str_contains($lower, 'login alert');
                                 $isPasswordBtn = str_contains($lower, 'password');
                                 $isRecovery    = str_starts_with($lower, 'recovery');
-                                $isRealSwitch  = $s['kind'] === 'switch' && $isLoginAlert;
+                                $isRealSwitch  = false;
                             @endphp
                             <div class="flex items-center justify-between py-3 border-b border-violet-50 last:border-0 gap-3">
                                 <div class="min-w-0">
@@ -426,11 +419,11 @@
                      but no deletion pipeline exists. Hidden until the flow is real. --}}
             </div>
 
-            <div class="flex items-center justify-end gap-3 pt-4 border-t border-violet-100">
+            <div data-settings-actions class="flex items-center justify-end gap-3 pt-4 border-t border-violet-100">
                 <a href="{{ route('settings.index', ['tab' => request('tab', 'general')]) }}" class="h-10 px-4 rounded-xl text-[13px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer inline-flex items-center">Batal</a>
-                <button form="settings-preferences-form" type="submit" data-settings-save class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[13px] shadow-[0_4px_14px_rgba(124,58,237,0.35)] hover:shadow-[0_6px_20px_rgba(124,58,237,0.45)] hover:-translate-y-0.5 transition-all cursor-pointer">
+                <button form="settings-preferences-form" type="submit" data-settings-save data-active-label="Simpan Umum" data-inactive-label="Belum ada perubahan" class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[13px] shadow-[0_4px_14px_rgba(124,58,237,0.35)] hover:shadow-[0_6px_20px_rgba(124,58,237,0.45)] hover:-translate-y-0.5 transition-all cursor-pointer">
                     <x-heroicon-o-bookmark-square class="w-4 h-4" />
-                    Simpan Perubahan
+                    <span data-settings-save-label>Simpan Umum</span>
                 </button>
             </div>
 
@@ -493,12 +486,37 @@
             const wire = () => {
                 const tabs   = document.querySelectorAll('.js-settings-tab');
                 const panels = document.querySelectorAll('[data-panel]');
+                const actions = document.querySelector('[data-settings-actions]');
+                const saveButton = document.querySelector('[data-settings-save]');
+                const saveLabel = document.querySelector('[data-settings-save-label]');
+                const applyFooterState = (id) => {
+                    actions?.classList.toggle('hidden', id !== 'general');
+                    if (! saveButton) return;
+                    const active = id === 'general';
+                    saveButton.disabled = ! active;
+                    saveButton.setAttribute('aria-disabled', active ? 'false' : 'true');
+                    saveButton.classList.toggle('bg-gradient-to-r', active);
+                    saveButton.classList.toggle('from-[#7C3AED]', active);
+                    saveButton.classList.toggle('via-[#A855F7]', active);
+                    saveButton.classList.toggle('to-[#C084FC]', active);
+                    saveButton.classList.toggle('text-white', active);
+                    saveButton.classList.toggle('shadow-[0_4px_14px_rgba(124,58,237,0.35)]', active);
+                    saveButton.classList.toggle('hover:shadow-[0_6px_20px_rgba(124,58,237,0.45)]', active);
+                    saveButton.classList.toggle('hover:-translate-y-0.5', active);
+                    saveButton.classList.toggle('cursor-pointer', active);
+                    saveButton.classList.toggle('bg-slate-100', ! active);
+                    saveButton.classList.toggle('text-slate-400', ! active);
+                    saveButton.classList.toggle('shadow-none', ! active);
+                    saveButton.classList.toggle('cursor-not-allowed', ! active);
+                    if (saveLabel) saveLabel.textContent = 'Simpan Umum';
+                };
 
                 tabs.forEach(t => {
                     t.addEventListener('click', () => {
                         const id = t.dataset.tab;
                         const activeTab = document.querySelector('[data-settings-active-tab]');
                         if (activeTab) activeTab.value = id;
+                        applyFooterState(id);
                         tabs.forEach(x => {
                             const active = x.dataset.tab === id;
                             x.classList.toggle('bg-gradient-to-br', active);
@@ -514,8 +532,9 @@
                         });
                     });
                 });
+                applyFooterState(document.querySelector('.js-settings-tab.bg-gradient-to-br')?.dataset.tab || 'general');
 
-                document.querySelectorAll('.js-switch').forEach(s => {
+                document.querySelectorAll('.js-switch[data-backed-switch]').forEach(s => {
                     s.addEventListener('click', () => {
                         s.classList.toggle('is-on');
                         const on = s.classList.contains('is-on');
@@ -588,7 +607,7 @@
     <script>
         (function () {
             const wire = () => {
-                /* === Legacy integration helper kept inert; forms now submit to DB-backed routes === */
+                /* === Legacy integration helper kept inert; integration cards are informational in this build. === */
                 const IG_KEY = 'avt-integrations';
                 let igState = {};
                 try { igState = {}; } catch (e) {}
@@ -601,12 +620,13 @@
                     const badge = card.querySelector('[data-integration-badge]');
                     const btn   = card.querySelector('[data-db-integration-toggle]');
                     if (badge) {
-                        badge.className = 'text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md ' + (connected ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500');
-                        badge.textContent = connected ? 'Terhubung' : 'Belum';
+                        badge.className = 'text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-500';
+                        badge.textContent = 'Belum dikonfigurasi';
                     }
                     if (btn) {
-                        btn.className = 'w-full h-9 rounded-lg text-[12.5px] font-semibold transition cursor-pointer ' + (connected ? 'bg-violet-50 text-violet-700 hover:bg-violet-100' : 'bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:-translate-y-0.5');
-                        btn.textContent = connected ? 'Kelola' : 'Hubungkan';
+                        btn.className = 'w-full h-9 rounded-lg text-[12.5px] font-semibold bg-slate-100 text-slate-400 cursor-not-allowed';
+                        btn.textContent = 'Segera tersedia';
+                        btn.disabled = true;
                     }
                     card.dataset.integrationConnected = connected ? '1' : '0';
                 };
@@ -620,21 +640,7 @@
                         const key  = card.dataset.integrationKey;
                         const name = card.dataset.integrationName;
                         const cur  = card.dataset.integrationConnected === '1';
-                        // Toggle: connected -> open mgmt (toast); not-connected -> connect (toast confirmation)
-                        if (cur) {
-                            // Currently connected keeps an explicit disconnect confirmation.
-                            // Provide a confirm to disconnect for clarity:
-                            if (! confirm('Putuskan koneksi ' + name + '?')) return;
-                            igState[key] = false;
-                            try {} catch (e) {}
-                            renderIntegration(card);
-                            window.toast && window.toast(name + ' diputus.');
-                        } else {
-                            igState[key] = true;
-                            try {} catch (e) {}
-                            renderIntegration(card);
-                            window.toast && window.toast(name + ' terhubung.');
-                        }
+                        window.toast && window.toast(name + ' belum dikonfigurasi.');
                     });
                 });
 

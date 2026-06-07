@@ -168,6 +168,19 @@ class AuditController extends Controller
      */
     public static function deepLinkForLog(AuditLog $log): string
     {
+        if ($log->module === 'Team Management') {
+            $role = auth()->user()?->roles?->first()?->name;
+            if (! in_array($role, ['ceo_pm', 'admin', 'super_admin', 'developer'], true)) {
+                return route('dashboard.index');
+            }
+
+            $memberId = self::resolveTeamMemberIdForLog($log);
+
+            return $memberId
+                ? route('team.index', ['open' => 'member:' . $memberId])
+                : route('team.index');
+        }
+
         if ($log->module === 'Project Master') {
             $projectId = self::resolveProjectIdForLog($log);
             if ($projectId) {
@@ -276,6 +289,7 @@ class AuditController extends Controller
             str_ends_with($type, '\\ProjectModule') => \App\Models\ProjectModule::class,
             str_ends_with($type, '\\ProjectMom')    => \App\Models\ProjectMom::class,
             str_ends_with($type, '\\ProjectQcTest') => \App\Models\ProjectQcTest::class,
+            str_ends_with($type, '\\TeamAssignment') => \App\Models\TeamAssignment::class,
             default                                 => null,
         };
         if ($modelClass === null) {
@@ -288,6 +302,37 @@ class AuditController extends Controller
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    public static function resolveTeamMemberIdForLog(AuditLog $log): ?int
+    {
+        foreach ([(array) ($log->new_values ?? []), (array) ($log->old_values ?? [])] as $vals) {
+            if (isset($vals['user_id']) && (int) $vals['user_id'] > 0) {
+                return (int) $vals['user_id'];
+            }
+        }
+
+        $type = (string) $log->auditable_type;
+        $id = (int) $log->auditable_id;
+        if ($id <= 0 || $type === '') {
+            return null;
+        }
+
+        if ($type === \App\Models\User::class || str_ends_with($type, '\\User')) {
+            return $id;
+        }
+
+        if (str_ends_with($type, '\\TeamAssignment')) {
+            try {
+                $memberId = (int) \App\Models\TeamAssignment::query()->whereKey($id)->value('user_id');
+
+                return $memberId > 0 ? $memberId : null;
+            } catch (\Throwable $e) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     public static function resolveClientIdForLog(AuditLog $log): ?int
@@ -450,7 +495,7 @@ class AuditController extends Controller
          * user back to /audit in a loop. */
         $projectName = self::contextNameForLog($log);
         $deepLink    = self::deepLinkForLog($log);
-        $hasDeepLink = $projectName !== null && (str_contains($deepLink, '/projects/') || str_contains($deepLink, '/clients'));
+        $hasDeepLink = $deepLink !== route('audit.index');
 
         return [
             'id'           => $log->id,

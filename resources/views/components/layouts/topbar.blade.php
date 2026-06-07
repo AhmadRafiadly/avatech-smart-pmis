@@ -91,7 +91,7 @@
              * the row static and link to /audit to avoid wrong /projects/{id}). */
             $entryProjectName = \App\Http\Controllers\AuditController::contextNameForLog($log);
             $entryDeepLink    = \App\Http\Controllers\AuditController::deepLinkForLog($log);
-            $entryHasProjectLink = $entryProjectName !== null && (str_contains($entryDeepLink, '/projects/') || str_contains($entryDeepLink, '/clients'));
+            $entryHasProjectLink = $entryDeepLink !== route('audit.index');
 
             $auditEntries[] = [
                 'category'         => $filterKey,
@@ -175,12 +175,13 @@
                     $log->module === 'Project Master' => \App\Http\Controllers\AuditController::deepLinkForLog($log),
                     $log->module === 'Client Directory' && $isFullAuditViewer => \App\Http\Controllers\AuditController::deepLinkForLog($log),
                     $log->module === 'Team Management' && $isOperationalViewer => route('dashboard.index'),
-                    $log->module === 'Team Management' => route('team.index'),
+                    $log->module === 'Team Management' => \App\Http\Controllers\AuditController::deepLinkForLog($log),
                     $log->module === 'Settings' && $isFullAuditViewer => route('settings.index'),
                     default => route('audit.index'),
                 };
 
                 $notifications[] = [
+                    'id'             => $log->id,
                     'category'       => strtolower($palette['label']),
                     'category_label' => $tag,
                     'category_class' => $palette['cat_class'],
@@ -709,6 +710,7 @@
                     <a
                         href="{{ $n['href'] }}"
                         data-notif-item
+                        data-notif-id="{{ $n['id'] }}"
                         data-notif-category="{{ $n['category'] }}"
                         @class(['notif-item flex items-start gap-3 px-5 py-3.5 hover:bg-violet-50/70 transition cursor-pointer no-underline', 'is-unread' => $n['unread']])
                     >
@@ -816,6 +818,54 @@
                     const notifNum     = notifDropdown.querySelector('[data-notif-unread-num]');
                     const notifItems   = notifDropdown.querySelectorAll('[data-notif-item]');
                     const markAllBtn   = notifDropdown.querySelector('[data-notif-mark-all-read]');
+                    const notifReadKey = 'avatech:read-notifications:{{ auth()->id() }}';
+
+                    const readIds = () => {
+                        try {
+                            return new Set(JSON.parse(localStorage.getItem(notifReadKey) || '[]'));
+                        } catch (error) {
+                            return new Set();
+                        }
+                    };
+                    const saveReadIds = (ids) => {
+                        try {
+                            localStorage.setItem(notifReadKey, JSON.stringify(Array.from(ids).slice(-80)));
+                        } catch (error) {
+                            /* Best-effort local read state only. */
+                        }
+                    };
+                    const updateNotifCount = () => {
+                        const remaining = notifDropdown.querySelectorAll('[data-notif-item].is-unread').length;
+                        if (notifNum) notifNum.textContent = String(remaining);
+                        if (remaining === 0) {
+                            notifPill?.classList.add('hidden');
+                            notifBadge?.classList.add('hidden');
+                        } else {
+                            notifPill?.classList.remove('hidden');
+                            if (notifBadge) {
+                                notifBadge.classList.remove('hidden');
+                                notifBadge.textContent = remaining > 9 ? '9+' : String(remaining);
+                            }
+                        }
+                    };
+                    const markItemRead = (item) => {
+                        if (! item || ! item.classList.contains('is-unread')) return;
+                        const ids = readIds();
+                        if (item.dataset.notifId) {
+                            ids.add(item.dataset.notifId);
+                            saveReadIds(ids);
+                        }
+                        item.classList.remove('is-unread');
+                        updateNotifCount();
+                    };
+
+                    const initialReadIds = readIds();
+                    notifItems.forEach(item => {
+                        if (item.dataset.notifId && initialReadIds.has(item.dataset.notifId)) {
+                            item.classList.remove('is-unread');
+                        }
+                    });
+                    updateNotifCount();
 
                     const isNotifOpen  = () => ! notifDropdown.classList.contains('hidden');
                     const openNotif    = () => {
@@ -844,26 +894,18 @@
                     });
 
                     markAllBtn?.addEventListener('click', () => {
-                        notifItems.forEach(it => it.classList.remove('is-unread'));
-                        if (notifPill)  notifPill.classList.add('hidden');
-                        if (notifNum)   notifNum.textContent = '0';
-                        if (notifBadge) notifBadge.classList.add('hidden');
+                        const ids = readIds();
+                        notifItems.forEach(it => {
+                            if (it.dataset.notifId) ids.add(it.dataset.notifId);
+                            it.classList.remove('is-unread');
+                        });
+                        saveReadIds(ids);
+                        updateNotifCount();
                     });
 
                     /* Individual mark-read on click before native navigation */
                     notifItems.forEach(item => {
-                        item.addEventListener('click', () => {
-                            if (! item.classList.contains('is-unread')) return;
-                            item.classList.remove('is-unread');
-                            const remaining = notifDropdown.querySelectorAll('[data-notif-item].is-unread').length;
-                            if (notifNum) notifNum.textContent = String(remaining);
-                            if (remaining === 0) {
-                                notifPill?.classList.add('hidden');
-                                notifBadge?.classList.add('hidden');
-                            } else if (notifBadge) {
-                                notifBadge.textContent = remaining > 9 ? '9+' : String(remaining);
-                            }
-                        });
+                        item.addEventListener('click', () => markItemRead(item));
                     });
                 }
 

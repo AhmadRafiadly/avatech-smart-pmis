@@ -100,17 +100,13 @@ class SettingsController extends Controller
         $validated = $request->validate([
             'workspace_name'     => ['required', 'string', 'max:120'],
             'subdomain'          => ['required', 'string', 'max:40', 'regex:/^[a-z0-9-]+$/'],
-            'interface_language' => ['required', Rule::in(['id', 'en'])],
-            'timezone'           => ['required', Rule::in(['Asia/Jakarta', 'Asia/Singapore'])],
-            'notifications'      => ['array'],
-            'security'           => ['array'],
+            'interface_language' => ['required', Rule::in(['id'])],
+            'timezone'           => ['required', Rule::in(['Asia/Jakarta'])],
         ]);
-
-        $user = $request->user();
 
         $workspaceBefore = WorkspaceSetting::find(1)?->only(['workspace_name', 'subdomain', 'interface_language', 'timezone']);
 
-        DB::transaction(function () use ($validated, $request, $user) {
+        DB::transaction(function () use ($validated) {
             WorkspaceSetting::updateOrCreate(
                 ['id' => 1],
                 [
@@ -120,35 +116,12 @@ class SettingsController extends Controller
                     'timezone'           => $validated['timezone'],
                 ],
             );
-
-            foreach (self::NOTIFICATION_ROWS as $row) {
-                foreach (self::CHANNELS as $channel) {
-                    UserNotificationPreference::updateOrCreate(
-                        [
-                            'user_id'   => $user->id,
-                            'category'  => $row['key'],
-                            'channel'   => $channel,
-                        ],
-                        ['enabled' => $request->boolean("notifications.{$row['key']}.{$channel}")],
-                    );
-                }
-            }
-
-            foreach (self::SECURITY_SWITCHES as $switch) {
-                UserSecurityPreference::updateOrCreate(
-                    [
-                        'user_id' => $user->id,
-                        'key'     => $switch['key'],
-                    ],
-                    ['enabled' => $request->boolean("security.{$switch['key']}")],
-                );
-            }
         });
 
         AuditLogger::log(
             'preferences_updated',
             'Settings',
-            'Memperbarui preferensi workspace, notifikasi, dan keamanan',
+            'Memperbarui preferensi workspace',
             WorkspaceSetting::find(1),
             $workspaceBefore,
             [
@@ -373,22 +346,8 @@ class SettingsController extends Controller
 
     private function securityRows(int $userId): array
     {
-        $states = UserSecurityPreference::where('user_id', $userId)->pluck('enabled', 'key');
-
-        $rows = collect(self::SECURITY_SWITCHES)->map(function (array $switch) use ($states) {
-            return [
-                'kind'  => 'switch',
-                'key'   => $switch['key'],
-                'label' => $switch['label'],
-                'desc'  => $switch['desc'],
-                'on'    => $states->has($switch['key']) ? (bool) $states->get($switch['key']) : $switch['default'],
-            ];
-        })->all();
-
         return [
-            ...$rows,
             ['kind' => 'button', 'label' => 'Ubah Password',  'desc' => 'Gunakan password saat ini untuk mengubah password akun', 'btn' => 'Ubah'],
-            ['kind' => 'button', 'label' => 'Recovery Codes', 'desc' => 'Backup-code preparation sampai full 2FA tersedia',         'btn' => 'Generate'],
         ];
     }
 

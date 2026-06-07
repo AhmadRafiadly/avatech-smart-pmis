@@ -1,7 +1,11 @@
 @php
     $role    = auth()->user()?->roles?->first()?->name;
-    $isCeo   = $role === 'ceo_pm';
-    $canEdit = ! $isCeo;
+    $readOnlyDetailRoles = ['ceo_pm', 'admin', 'super_admin', 'developer'];
+    $operationalEditRoles = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
+    $isReadOnlyProjectDetail = in_array($role, $readOnlyDetailRoles, true);
+    $isCeo   = $isReadOnlyProjectDetail;
+    $canEdit = in_array($role, $operationalEditRoles, true);
+    $canQuickAssign = $isReadOnlyProjectDetail;
     $useReferenceProjectData = (bool) ($useReferenceProjectData ?? false);
 
     $tabs = [
@@ -21,7 +25,7 @@
 
     $metrics = [
         ['code' => 'MOD',  'value' => '0/6',  'label' => 'Modul Disetujui',    'color' => '#3B82F6', 'progress' => 0,   'sub' => '100% Terdefinisi'],
-        ['code' => 'TASK', 'value' => '0/14', 'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => 0,   'sub' => '0 Selesai • 14 Proses'],
+        ['code' => 'TASK', 'value' => '0/14', 'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => 0,   'sub' => '0 Selesai / 14 Proses'],
         ['code' => 'MOM',  'value' => '1/1',  'label' => 'MoM AI Rapi',        'color' => '#10B981', 'progress' => 100, 'sub' => 'Semua disetujui'],
         ['code' => 'QC',   'value' => '0%',   'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0,   'sub' => 'Pass Rate'],
     ];
@@ -188,6 +192,96 @@
         'medium' => 'bg-amber-50 text-amber-700 border border-amber-100',
         'high'   => 'bg-rose-50 text-rose-700 border border-rose-100',
     ];
+
+    $hasTeamAssignments = ($assigneeOptions ?? collect())->count() > 0;
+    $hasMom = count($moms) > 0;
+    $hasAiMomSummary = collect($moms)->contains(fn ($mom) => trim((string) ($mom['summary'] ?? '')) !== '');
+    $hasWbsOrTasks = count($modules) > 0 || (int) ($workspaceTaskTotal ?? 0) > 0;
+    $hasQc = (int) ($qcSummary['total'] ?? count($testCases ?? [])) > 0;
+
+    if (! $hasTeamAssignments) {
+        $nextStep = [
+            'label' => 'Assign tim proyek terlebih dahulu.',
+            'desc' => 'Tambahkan SA/QA, satu fullstack, dan UI/UX bila dibutuhkan agar ownership project jelas.',
+            'href' => $isReadOnlyProjectDetail ? route('team.index') : '#overview',
+            'cta' => $isReadOnlyProjectDetail ? 'Buka Team Management' : 'Lihat Team',
+        ];
+    } elseif (! $hasMom) {
+        $nextStep = [
+            'label' => 'Tambahkan MoM/notulensi mentah pertama.',
+            'desc' => 'Paste catatan meeting apa adanya, lalu gunakan AI MoM Fixer untuk merapikan.',
+            'href' => '#aiplanning',
+            'cta' => $isReadOnlyProjectDetail ? 'Lihat AI Planning' : 'Tambah MoM',
+        ];
+    } elseif (! $hasAiMomSummary) {
+        $nextStep = [
+            'label' => 'Rapikan MoM dengan AI MoM Fixer.',
+            'desc' => 'Gunakan MoM terbaru sebagai sumber ringkasan formal sebelum membuat WBS.',
+            'href' => '#aiplanning',
+            'cta' => $isReadOnlyProjectDetail ? 'Lihat AI Planning' : 'Buka AI Planning',
+        ];
+    } elseif (! $hasWbsOrTasks) {
+        $nextStep = [
+            'label' => 'Buat draf WBS dari MoM.',
+            'desc' => 'Generate draf WBS dari MoM terbaru atau tambahkan modul manual jika scope sudah jelas.',
+            'href' => '#aiplanning',
+            'cta' => $isReadOnlyProjectDetail ? 'Lihat AI Planning' : 'Buat WBS',
+        ];
+    } elseif (! $hasQc) {
+        $nextStep = [
+            'label' => 'Buat test case dari WBS/task.',
+            'desc' => 'Setelah task tersimpan, siapkan test case agar scope bisa divalidasi.',
+            'href' => '#qc',
+            'cta' => $isReadOnlyProjectDetail ? 'Lihat QC' : 'Buka QC',
+        ];
+    } else {
+        $nextStep = [
+            'label' => 'Lanjutkan validasi QC dan export bukti PDF.',
+            'desc' => 'Update hasil pengujian, lalu export WBS/Test Case sebagai bukti walkthrough.',
+            'href' => '#qc',
+            'cta' => $isReadOnlyProjectDetail ? 'Lihat QC' : 'Validasi QC',
+        ];
+    }
+
+    $kanbanById = collect($kanban)->keyBy('id');
+    $taskStatusCounts = [
+        'planned' => count($kanbanById->get('todo')['tasks'] ?? []),
+        'in_progress' => count($kanbanById->get('doing')['tasks'] ?? []),
+        'review' => count($kanbanById->get('testing')['tasks'] ?? []),
+        'done' => count($kanbanById->get('done')['tasks'] ?? []),
+    ];
+
+    $qcStatusCounts = [
+        'pending' => (int) ($qcSummary['pending'] ?? 0),
+        'passed' => (int) ($qcSummary['passed'] ?? $qcSummary['lulus'] ?? 0),
+        'failed' => (int) ($qcSummary['failed'] ?? $qcSummary['gagal'] ?? 0),
+        'retest' => (int) ($qcSummary['retest'] ?? 0),
+    ];
+
+    $latestMomSummary = '';
+    if (! empty($moms)) {
+        $latestMom = $moms[0] ?? null;
+        $latestMomSummary = is_array($latestMom)
+            ? trim((string) ($latestMom['summary'] ?? ''))
+            : '';
+    }
+
+    $latestMomSummaryText = $latestMomSummary !== ''
+        ? \Illuminate\Support\Str::limit(trim(preg_replace('/\s+/', ' ', $latestMomSummary)), 220, '...')
+        : 'Belum ada ringkasan MoM terbaru.';
+
+    $projectStatusLabel = $statusUi['label'] ?? \Illuminate\Support\Str::headline((string) ($project->status ?? 'on-track'));
+    $projectUpdateText = implode("\n", [
+        'Project: ' . trim((string) ($project->code ? $project->code . ' - ' : '') . $project->name),
+        'Client: ' . ($project->client?->name ?? '-'),
+        'Status: ' . $project->phase . ' / ' . $projectStatusLabel,
+        'Progress: ' . (int) $project->progress . '% (estimasi manual PM)',
+        'WBS: ' . count($modules) . ' modul, ' . (int) ($workspaceTaskTotal ?? array_sum($taskStatusCounts)) . ' task',
+        'Task: ' . $taskStatusCounts['planned'] . ' planned, ' . $taskStatusCounts['in_progress'] . ' in progress, ' . $taskStatusCounts['review'] . ' review, ' . $taskStatusCounts['done'] . ' done',
+        'QC: ' . $qcStatusCounts['pending'] . ' pending, ' . $qcStatusCounts['passed'] . ' passed, ' . $qcStatusCounts['failed'] . ' failed, ' . $qcStatusCounts['retest'] . ' retest',
+        'Catatan terakhir: ' . $latestMomSummaryText,
+        'Next step: ' . ($nextStep['label'] ?? '-'),
+    ]);
 @endphp
 
 <x-layouts.authenticated :title="$title">
@@ -253,7 +347,7 @@
             <span class="h-3 w-px bg-slate-200"></span>
             <span class="text-[12px] text-slate-500 inline-flex items-center gap-1.5">
                 <x-heroicon-o-user class="w-3.5 h-3.5 opacity-60" />
-                Dibuat oleh: <span class="font-semibold text-slate-700">{{ $createdBy }}</span>
+                Lead Proyek: <span class="font-semibold text-slate-700">{{ $leadDisplay ?? 'Belum ditentukan' }}</span>
             </span>
             <span class="text-[12px] text-slate-500 inline-flex items-center gap-1.5">
                 <x-heroicon-o-calendar class="w-3.5 h-3.5 opacity-60" />
@@ -291,6 +385,9 @@
             </div>
         </div>
         <p class="mt-4 text-[14px] text-slate-500 max-w-3xl leading-relaxed">{{ $desc }}</p>
+        <p class="mt-2 text-[12px] text-slate-400 max-w-3xl leading-relaxed">
+            Due date merupakan target saat ini dan dapat disesuaikan jika ada revisi atau perubahan scope.
+        </p>
 
         <div class="mt-5 flex flex-wrap items-center gap-2">
             <a href="{{ route('projects.export.wbs', $project) }}" title="Unduh WBS sebagai PDF" data-loading-link data-loading-label="Menyiapkan PDF..." data-loading-reset-after="3000" data-download-timestamp-param="download_ts"
@@ -303,7 +400,13 @@
                 <x-heroicon-o-beaker class="w-4 h-4" />
                 <span data-loading-text>Export Test Case (PDF)</span>
             </a>
-            @if ($project->archived_at)
+            @if ($canQuickAssign)
+                <button type="button" data-quick-assign-open class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
+                    <x-heroicon-o-user-plus class="w-4 h-4" />
+                    Quick Assign Team
+                </button>
+            @endif
+            @if ($project->archived_at && ! $isReadOnlyProjectDetail)
                 <form method="POST" action="{{ route('projects.restore', $project) }}">
                     @csrf
                     @method('PATCH')
@@ -314,6 +417,12 @@
                 </form>
             @endif
         </div>
+        @if ($isReadOnlyProjectDetail)
+            <div class="mt-4 inline-flex items-start gap-2 rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-[12.5px] text-violet-700 max-w-3xl">
+                <x-heroicon-o-eye class="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>Mode hanya lihat: CEO/PM dapat memantau detail proyek, sedangkan perubahan operasional dilakukan oleh user yang ditugaskan.</span>
+            </div>
+        @endif
     </section>
 
     {{-- =============== STITCH-STYLE STEPPER =============== --}}
@@ -419,6 +528,38 @@
     {{-- =============== OVERVIEW =============== --}}
     <div id="overview" data-panel="overview" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="lg:col-span-2 space-y-6">
+            <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
+                <div class="flex items-start justify-between gap-4 flex-wrap">
+                    <div class="flex items-start gap-4 min-w-0">
+                        <div class="w-11 h-11 rounded-xl bg-violet-50 text-violet-700 border border-violet-100 flex items-center justify-center flex-shrink-0">
+                            <x-heroicon-o-arrow-trending-up class="w-5 h-5" />
+                        </div>
+                        <div class="min-w-0">
+                            <div class="text-[10.5px] font-bold tracking-[0.14em] uppercase text-violet-600">Langkah Berikutnya</div>
+                            <h3 class="mt-1 text-[17px] font-extrabold text-[#1E1B4B] leading-tight">{{ $nextStep['label'] }}</h3>
+                            <p class="mt-1.5 text-[13px] text-slate-500 leading-relaxed max-w-2xl">{{ $nextStep['desc'] }}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <button type="button" data-project-summary-open class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-violet-700 hover:border-violet-400 transition cursor-pointer">
+                            <x-heroicon-o-clipboard-document-list class="w-4 h-4" />
+                            Salin Ringkasan Proyek
+                        </button>
+                        @if (($nextStep['cta'] ?? '') === 'Quick Assign Team' && $canQuickAssign)
+                            <button type="button" data-quick-assign-open class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-violet-600 text-white text-[13px] font-semibold hover:bg-violet-700 transition cursor-pointer">
+                                <x-heroicon-o-user-plus class="w-4 h-4" />
+                                {{ $nextStep['cta'] }}
+                            </button>
+                        @else
+                            <a href="{{ $nextStep['href'] }}" @if (str_starts_with($nextStep['href'], '#')) data-pd-nav="{{ ltrim($nextStep['href'], '#') }}" @endif class="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-violet-200 bg-white text-[13px] font-semibold text-violet-700 hover:border-violet-400 transition no-underline">
+                                {{ $nextStep['cta'] }}
+                                <x-heroicon-o-arrow-right class="w-4 h-4" />
+                            </a>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
             <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
                 <div class="flex items-center justify-between mb-6">
                     <h3 class="text-[16px] font-bold text-[#1E1B4B]">Pipeline WBS</h3>
@@ -547,7 +688,7 @@
                         </div>
                     @empty
                         <div class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
-                            Belum ada WBS. Generate draf dari MoM atau tambahkan modul manual.
+                            Belum ada WBS. Buat dari MoM terbaru dengan AI WBS Generator, atau tambahkan modul manual jika scope sudah jelas.
                         </div>
                     @endforelse
                 </div>
@@ -627,6 +768,9 @@
         @if ($canEdit && ! $useReferenceProjectData)
             <form method="POST" action="{{ route('projects.tasks.store', $project) }}" class="mb-6 rounded-xl border border-violet-100 bg-violet-50/30 p-4">
                 @csrf
+                <p class="mb-3 text-[12px] text-slate-500 leading-relaxed">
+                    Revisi desain masuk ke task UI/design, revisi development ke task fitur/bugfix, dan revisi copywriting bisa dicatat sebagai notes atau support task.
+                </p>
                 <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                     <div class="md:col-span-2">
                         <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Judul Task</label>
@@ -675,6 +819,7 @@
                     <div>
                         <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Due Date</label>
                         <input name="due_date" type="date" value="{{ old('due_date') }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        <p class="mt-1 text-[11px] text-slate-400">Target task saat ini, bisa disesuaikan saat scope berubah.</p>
                         @error('due_date')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
                     </div>
                     <div>
@@ -791,6 +936,7 @@
                                                 <div>
                                                     <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Due</label>
                                                     <input name="due_date" type="date" value="{{ $task['due_date'] ?? '' }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                                    <p class="mt-1 text-[10.5px] text-slate-400 leading-tight">Target task saat ini.</p>
                                                 </div>
                                                 <div>
                                                     <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Jam</label>
@@ -810,7 +956,7 @@
                                 @endif
                             </div>
                         @empty
-                            <div data-col-empty class="text-[12.5px] text-slate-400 text-center py-8">Belum ada task di workspace.</div>
+                            <div data-col-empty class="text-[12.5px] text-slate-400 text-center py-8 leading-relaxed">Belum ada task di workspace. Task akan muncul setelah WBS/task disimpan.</div>
                         @endforelse
                         <div data-col-filtered-empty class="hidden text-[12.5px] text-slate-400 text-center py-8 italic">Tidak ada task untuk anggota ini</div>
                     </div>
@@ -941,6 +1087,9 @@
                     </div>
                     <span class="px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold">{{ count($moms) }} TOTAL</span>
                 </div>
+                <p class="text-[12px] text-slate-400 leading-relaxed">
+                    Dokumentasikan revisi klien di MoM, lalu ubah menjadi task baru atau update task yang sudah ada.
+                </p>
 
                 @if ($canEdit && ! $useReferenceProjectData)
                     <form method="POST" action="{{ route('projects.moms.store', $project) }}" class="space-y-3 pt-1">
@@ -951,8 +1100,18 @@
                             @error('meeting_date') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
                         </div>
                         <div>
-                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Notulensi Mentah</label>
-                            <textarea name="notes" rows="4" required placeholder="Ketik atau tempelkan seluruh catatan rapat di sini..." class="w-full rounded-xl border border-violet-100 px-4 py-3 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('notes') }}</textarea>
+                            <div class="flex items-center justify-between gap-2 mb-2">
+                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500">Notulensi Mentah</label>
+                                <button type="button" data-mom-template class="text-[11.5px] font-semibold text-violet-700 hover:text-violet-900 cursor-pointer">Gunakan Template MoM</button>
+                            </div>
+                            <textarea name="notes" data-mom-notes rows="5" required placeholder="Judul rapat:
+Peserta:
+Kebutuhan utama:
+Masalah/kendala:
+Keputusan:
+Action item:
+Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('notes') }}</textarea>
+                            <p class="mt-1 text-[11px] text-slate-400">Paste catatan mentah dulu; AI MoM Fixer bisa merapikannya setelah disimpan.</p>
                             @error('notes') <p class="mt-1 text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
                         </div>
                         <div>
@@ -1054,7 +1213,7 @@
                         </div>
                     @empty
                         <div data-mom-empty class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
-                            Belum ada MoM. Tambahkan notulensi untuk memulai perencanaan.
+                            Belum ada MoM. Paste notulensi mentah pertama, lalu gunakan AI MoM Fixer untuk membuat ringkasan proper.
                         </div>
                     @endforelse
                 </div>
@@ -1102,6 +1261,10 @@
                                 <span data-loading-text>{{ $momFixerState['label'] }}</span>
                             </button>
                         </form>
+                    @elseif (! $canEdit)
+                        <p class="w-full rounded-xl border border-violet-100 bg-white/70 px-4 py-3 text-center text-[12.5px] text-slate-500">
+                            Mode hanya lihat: AI MoM Fixer dijalankan oleh user operasional yang ditugaskan.
+                        </p>
                     @else
                         <button
                             type="button"
@@ -1135,6 +1298,9 @@
                 @if ($canEdit && ! $useReferenceProjectData)
                     <form method="POST" action="{{ route('projects.modules.store', $project) }}" class="rounded-xl border border-violet-100 bg-violet-50/30 p-4">
                         @csrf
+                        <p class="mb-3 text-[12px] text-slate-500 leading-relaxed">
+                            Revisi desain, development, atau copywriting bisa diterjemahkan menjadi modul/task baru sesuai scope.
+                        </p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Judul Modul</label>
@@ -1242,7 +1408,7 @@
                         </div>
                     @empty
                         <div class="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-8 text-center text-[13px] font-medium text-slate-400">
-                            Belum ada WBS. Generate draf dari MoM atau tambahkan modul manual.
+                            Belum ada WBS. Buat draf dari MoM terbaru dengan AI WBS Generator, atau tambahkan modul manual jika scope sudah jelas.
                         </div>
                     @endforelse
                 </div>
@@ -1283,7 +1449,7 @@
                 @endphp
                 <div class="p-5 rounded-2xl border border-dashed border-violet-300 bg-violet-50/40 flex flex-col gap-3">
                     <p class="text-[12px] text-slate-500 leading-relaxed text-center font-medium">
-                        Generate draft WBS dari MoM tersimpan. Hasil tetap bisa diedit manual.
+                        Draf WBS dibuat dari MoM terbaru/proper MoM yang tersedia. Tinjau dan sunting sebelum disimpan.
                     </p>
 
                     @if ($wbsBtnState['tone'] === 'ready' && $canEdit && ! $useReferenceProjectData)
@@ -1306,6 +1472,10 @@
                                 Project ini sudah memiliki WBS. Generate ulang akan menambahkan draft baru tanpa menghapus data lama.
                             </p>
                         @endif
+                    @elseif (! $canEdit)
+                        <p class="w-full rounded-xl border border-violet-100 bg-white/70 px-4 py-3 text-center text-[12.5px] text-slate-500">
+                            Mode hanya lihat: AI WBS Generator dijalankan oleh user operasional yang ditugaskan.
+                        </p>
                     @else
                         <button
                             type="button"
@@ -1414,6 +1584,9 @@
         @endif
 
         <div class="overflow-x-auto">
+            <p class="px-7 pt-5 pb-2 text-[12px] text-slate-400 leading-relaxed">
+                QC membantu memvalidasi revisi; jika ada bug atau perubahan scope, update status test case atau buat retest.
+            </p>
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="bg-violet-50/40">
@@ -1548,7 +1721,7 @@
                     @empty
                         <tr>
                             <td colspan="{{ $canEdit && ! $useReferenceProjectData ? 6 : 5 }}" class="px-7 py-10 text-center text-[13px] font-medium text-slate-400">
-                                Belum ada test case. Generate dari WBS/task atau tambahkan manual.
+                                Belum ada test case. Setelah WBS/task tersedia, gunakan AI Test Case Generator atau tambahkan test case manual.
                             </td>
                         </tr>
                     @endforelse
@@ -1663,6 +1836,33 @@
         </div>
     </div>
 
+    {{-- =============== PROJECT UPDATE SUMMARY MODAL =============== --}}
+    <div data-project-summary-modal class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="project-summary-title">
+        <div data-project-summary-close class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
+        <div class="relative w-full max-w-2xl rounded-2xl bg-white border border-violet-100 shadow-[0_20px_60px_-15px_rgba(124,58,237,0.35)] overflow-hidden">
+            <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-violet-100/70 bg-violet-50/40">
+                <div class="min-w-0">
+                    <h3 id="project-summary-title" class="text-[15px] font-extrabold tracking-tight text-[#1E1B4B] leading-tight">Ringkasan Proyek</h3>
+                    <p class="text-[11.5px] text-slate-500 mt-1">Review dan edit sebelum ditempel ke WhatsApp, email, atau catatan follow-up.</p>
+                </div>
+                <button type="button" data-project-summary-close class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white transition cursor-pointer" aria-label="Tutup">
+                    <x-heroicon-o-x-mark class="w-5 h-5" />
+                </button>
+            </div>
+            <div class="px-5 py-4 space-y-3">
+                <textarea data-project-summary-text rows="10" class="w-full rounded-xl border border-violet-100 bg-white px-4 py-3 text-[13px] leading-relaxed text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $projectUpdateText }}</textarea>
+                <p class="text-[11px] text-slate-400 leading-relaxed">Helper ini tidak mengirim WhatsApp/email otomatis dan tidak memanggil AI.</p>
+                <div class="flex items-center justify-end gap-2">
+                    <button type="button" data-project-summary-close class="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer">Tutup</button>
+                    <button type="button" data-project-summary-copy class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-violet-600 text-white text-[12.5px] font-semibold hover:bg-violet-700 transition cursor-pointer">
+                        <x-heroicon-o-clipboard-document-check class="w-4 h-4" />
+                        <span data-project-summary-copy-label>Copy</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- =============== QC EDIT MODAL (shared, satu untuk semua baris) =============== --}}
     @if ($canEdit && ! $useReferenceProjectData)
         <div id="qc-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="qc-edit-modal-title">
@@ -1727,6 +1927,100 @@
         </div>
     @endif
 
+    @if ($canQuickAssign)
+        <div data-quick-assign-modal class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="quick-assign-title">
+            <div data-quick-assign-close class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
+            <form method="POST" action="{{ route('projects.quick-assign', $project) }}" class="relative w-full max-w-5xl max-h-[90vh] rounded-3xl bg-white border border-violet-100 shadow-[0_24px_70px_rgba(124,58,237,0.24)] overflow-hidden flex flex-col">
+                @csrf
+                <div class="px-6 py-4 border-b border-violet-100 bg-violet-50/40 flex items-center justify-between gap-4">
+                    <div class="min-w-0">
+                        <h3 id="quick-assign-title" class="text-[17px] font-extrabold text-[#1E1B4B] leading-tight">Quick Assign Team</h3>
+                        <p class="text-[12.5px] text-slate-500 mt-1">Pilih anggota operasional dan sesuaikan ringkasan bila perlu. Jika sudah ada, penugasan akan diperbarui.</p>
+                    </div>
+                    <button type="button" data-quick-assign-close class="w-9 h-9 rounded-full hover:bg-white flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer flex-shrink-0" aria-label="Tutup">
+                        <x-heroicon-o-x-mark class="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div class="px-6 py-5 overflow-y-auto space-y-4">
+                    @forelse ($quickAssignUsers ?? [] as $idx => $member)
+                        <div data-quick-assign-row data-qa-user-id="{{ $member['id'] }}" class="rounded-2xl border border-violet-100 bg-white p-4 shadow-[0_2px_8px_rgba(124,58,237,0.05)]">
+                            <div class="flex items-start gap-4">
+                                <label class="pt-2 flex-shrink-0">
+                                    <input type="checkbox" name="assignments[{{ $idx }}][include]" value="1" @checked($member['checked']) class="w-4 h-4 rounded border-violet-200 text-violet-600 focus:ring-violet-300 cursor-pointer">
+                                    <input type="hidden" name="assignments[{{ $idx }}][user_id]" value="{{ $member['id'] }}">
+                                </label>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-start justify-between gap-3 flex-wrap">
+                                        <div class="flex items-center gap-3 min-w-0">
+                                            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#C084FC] text-white font-bold text-[12px] flex items-center justify-center flex-shrink-0">{{ $member['initials'] }}</div>
+                                            <div class="min-w-0">
+                                                <div class="text-[14px] font-bold text-[#1E1B4B] truncate">{{ $member['name'] }}</div>
+                                                <div class="text-[12px] text-slate-500">{{ $member['role'] }}</div>
+                                            </div>
+                                        </div>
+                                        @if (count($member['presets']) > 1)
+                                            <select data-qa-preset class="h-9 rounded-lg border border-violet-100 bg-violet-50/40 px-3 text-[12.5px] font-semibold text-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
+                                                @foreach ($member['presets'] as $key => $preset)
+                                                    <option value="{{ $key }}">{{ $preset['label'] }}</option>
+                                                @endforeach
+                                            </select>
+                                        @endif
+                                    </div>
+
+                                    <div class="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-3">
+                                        <div class="lg:col-span-5">
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Ringkasan</label>
+                                            <input name="assignments[{{ $idx }}][title]" data-qa-field="title" value="{{ $member['title'] }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                        </div>
+                                        <div class="lg:col-span-2">
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Tipe</label>
+                                            <select name="assignments[{{ $idx }}][type]" data-qa-field="type" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                <option value="task" @selected($member['type'] === 'task')>Task</option>
+                                                <option value="review" @selected($member['type'] === 'review')>Review</option>
+                                                <option value="support" @selected($member['type'] === 'support')>Support</option>
+                                            </select>
+                                        </div>
+                                        <div class="lg:col-span-2">
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Status</label>
+                                            <select name="assignments[{{ $idx }}][status]" data-qa-field="status" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                <option value="planned" @selected($member['status'] === 'planned')>Planned</option>
+                                                <option value="in_progress" @selected($member['status'] === 'in_progress')>In Progress</option>
+                                                <option value="done" @selected($member['status'] === 'done')>Done</option>
+                                            </select>
+                                        </div>
+                                        <div class="lg:col-span-1">
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Jam</label>
+                                            <input type="number" min="0" max="200" name="assignments[{{ $idx }}][estimated_hours]" data-qa-field="estimated_hours" value="{{ $member['estimated_hours'] }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                        </div>
+                                        <div class="lg:col-span-2">
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Due</label>
+                                            <input type="date" name="assignments[{{ $idx }}][due_date]" value="{{ $member['due_date'] }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                        </div>
+                                        <div class="lg:col-span-12">
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan</label>
+                                            <textarea name="assignments[{{ $idx }}][notes]" data-qa-field="notes" rows="2" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $member['notes'] }}</textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="rounded-2xl border border-dashed border-violet-200 bg-violet-50/40 p-8 text-center text-[13px] text-slate-500">Belum ada anggota operasional aktif untuk di-assign.</div>
+                    @endforelse
+                </div>
+
+                <div class="px-6 py-4 border-t border-violet-100 bg-violet-50/30 flex items-center justify-between gap-3 flex-wrap">
+                    <p class="text-[11.5px] text-slate-500">Quick Assign tidak membuat duplikat untuk user dan project yang sama.</p>
+                    <div class="flex items-center gap-2">
+                        <button type="button" data-quick-assign-close class="h-10 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer">Batal</button>
+                        <button type="submit" class="h-10 px-5 rounded-lg bg-violet-600 text-white text-[13px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan Assignments</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    @endif
+
     <script>
         (function () {
             const wire = () => {
@@ -1784,6 +2078,95 @@
                         }
                     });
                 });
+
+                const projectSummaryModal = document.querySelector('[data-project-summary-modal]');
+                if (projectSummaryModal) {
+                    const summaryText = projectSummaryModal.querySelector('[data-project-summary-text]');
+                    const copyButton = projectSummaryModal.querySelector('[data-project-summary-copy]');
+                    const copyLabel = projectSummaryModal.querySelector('[data-project-summary-copy-label]');
+                    const openSummary = () => {
+                        projectSummaryModal.classList.remove('hidden');
+                        projectSummaryModal.classList.add('flex');
+                        document.body.style.overflow = 'hidden';
+                        window.setTimeout(() => summaryText?.focus(), 0);
+                    };
+                    const closeSummary = () => {
+                        projectSummaryModal.classList.add('hidden');
+                        projectSummaryModal.classList.remove('flex');
+                        document.body.style.overflow = '';
+                        if (copyLabel) copyLabel.textContent = 'Copy';
+                    };
+
+                    document.querySelectorAll('[data-project-summary-open]').forEach(btn => btn.addEventListener('click', openSummary));
+                    projectSummaryModal.querySelectorAll('[data-project-summary-close]').forEach(btn => btn.addEventListener('click', closeSummary));
+                    copyButton?.addEventListener('click', async () => {
+                        if (! summaryText) return;
+                        try {
+                            await navigator.clipboard.writeText(summaryText.value);
+                        } catch (error) {
+                            summaryText.select();
+                            document.execCommand('copy');
+                        }
+                        if (copyLabel) copyLabel.textContent = 'Copied';
+                    });
+                    document.addEventListener('keydown', (event) => {
+                        if (event.key === 'Escape' && ! projectSummaryModal.classList.contains('hidden')) closeSummary();
+                    });
+                }
+
+                const momTemplateButton = document.querySelector('[data-mom-template]');
+                const momNotesInput = document.querySelector('[data-mom-notes]');
+                if (momTemplateButton && momNotesInput) {
+                    const momTemplate = [
+                        'Judul rapat:',
+                        'Peserta:',
+                        'Kebutuhan utama:',
+                        'Masalah/kendala:',
+                        'Keputusan:',
+                        'Action item:',
+                        'Catatan tambahan:'
+                    ].join('\n');
+
+                    momTemplateButton.addEventListener('click', () => {
+                        if (momNotesInput.value.trim() !== '' && ! window.confirm('Ganti isi notulensi dengan template MoM?')) {
+                            return;
+                        }
+
+                        momNotesInput.value = momTemplate;
+                        momNotesInput.focus();
+                    });
+                }
+
+                const quickAssignModal = document.querySelector('[data-quick-assign-modal]');
+                if (quickAssignModal) {
+                    const quickAssignPresets = @json(collect($quickAssignUsers ?? [])->mapWithKeys(fn ($member) => [$member['id'] => $member['presets']])->all());
+                    const openQuickAssign = () => {
+                        quickAssignModal.classList.remove('hidden');
+                        quickAssignModal.classList.add('flex');
+                        document.body.style.overflow = 'hidden';
+                    };
+                    const closeQuickAssign = () => {
+                        quickAssignModal.classList.add('hidden');
+                        quickAssignModal.classList.remove('flex');
+                        document.body.style.overflow = '';
+                    };
+                    document.querySelectorAll('[data-quick-assign-open]').forEach(btn => btn.addEventListener('click', openQuickAssign));
+                    quickAssignModal.querySelectorAll('[data-quick-assign-close]').forEach(btn => btn.addEventListener('click', closeQuickAssign));
+                    quickAssignModal.querySelectorAll('[data-qa-preset]').forEach(select => {
+                        select.addEventListener('change', () => {
+                            const row = select.closest('[data-quick-assign-row]');
+                            const preset = quickAssignPresets[row?.dataset.qaUserId || '']?.[select.value];
+                            if (! row || ! preset) return;
+                            ['title', 'type', 'status', 'estimated_hours', 'notes'].forEach(field => {
+                                const input = row.querySelector('[data-qa-field="' + field + '"]');
+                                if (input && preset[field] !== undefined) input.value = preset[field];
+                            });
+                        });
+                    });
+                    document.addEventListener('keydown', (event) => {
+                        if (event.key === 'Escape' && ! quickAssignModal.classList.contains('hidden')) closeQuickAssign();
+                    });
+                }
 
                 const tabs       = document.querySelectorAll('.pd-tab');
                 const sideLinks  = document.querySelectorAll('[data-pd-nav]');

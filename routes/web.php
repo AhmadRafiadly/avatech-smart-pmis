@@ -71,6 +71,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
         Route::patch('/projects/{project}/archive', [ProjectController::class, 'archive'])->name('projects.archive');
         Route::patch('/projects/{project}/restore', [ProjectController::class, 'restore'])->name('projects.restore');
+        Route::post('/projects/{project}/quick-assign', [ProjectController::class, 'quickAssignTeam'])->name('projects.quick-assign');
     });
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');

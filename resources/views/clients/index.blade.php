@@ -732,7 +732,7 @@
 
     <div data-draft-modal class="hidden fixed inset-0 z-[60] items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
         <div data-draft-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
-        <div data-draft-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-xl flex flex-col overflow-hidden border border-violet-100">
+        <div data-draft-panel class="relative bg-white rounded-3xl shadow-[0_24px_64px_rgba(124,58,237,0.18)] w-full max-w-3xl flex flex-col overflow-hidden border border-violet-100">
             <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
                 <div>
                     <div data-draft-kicker class="text-[10.5px] font-bold tracking-[0.12em] uppercase text-violet-600">Draft AI</div>
@@ -757,23 +757,27 @@
                     <span>Smart-PMIS tidak mengirim WhatsApp atau email otomatis. Draft ini hanya untuk disalin dan ditinjau manual.</span>
                 </div>
             </div>
-            <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex items-center justify-end gap-2">
-                <button type="button" data-draft-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Tutup</button>
-                <button type="button" data-draft-regenerate class="h-9 px-4 rounded-lg bg-white border border-violet-200 text-[12.5px] font-semibold text-violet-700 hover:border-violet-400 transition cursor-pointer">
-                    <span data-draft-button-text>Regenerate</span>
-                </button>
-                <button type="button" data-draft-open-channel data-channel="whatsapp" class="hidden inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-[12.5px] hover:bg-emerald-100 transition cursor-pointer">
-                    <x-heroicon-o-chat-bubble-oval-left class="w-4 h-4" />
-                    Buka WhatsApp
-                </button>
-                <button type="button" data-draft-open-channel data-channel="email" class="hidden inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-violet-200 bg-white text-violet-700 font-semibold text-[12.5px] hover:border-violet-400 transition cursor-pointer">
-                    <x-heroicon-o-envelope class="w-4 h-4" />
-                    Buka Gmail
-                </button>
-                <button type="button" data-draft-copy class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12.5px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
-                    <x-heroicon-o-clipboard-document class="w-4 h-4" />
-                    Copy Draft
-                </button>
+            <div class="px-6 py-3 border-t border-violet-100 bg-violet-50/30 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <button type="button" data-draft-close class="h-9 px-4 rounded-lg text-[12.5px] font-semibold text-slate-500 hover:text-slate-700 transition cursor-pointer">Tutup</button>
+                    <button type="button" data-draft-regenerate class="h-9 px-4 rounded-lg bg-white border border-violet-200 text-[12.5px] font-semibold text-violet-700 hover:border-violet-400 transition cursor-pointer">
+                        <span data-draft-button-text>Regenerate</span>
+                    </button>
+                </div>
+                <div class="flex flex-col sm:flex-row sm:items-center lg:justify-end gap-2 min-w-0">
+                    <button type="button" data-draft-open-channel data-channel="whatsapp" class="hidden inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-[12px] hover:bg-emerald-100 transition cursor-pointer whitespace-nowrap">
+                        <x-heroicon-o-chat-bubble-oval-left class="w-4 h-4 flex-shrink-0" />
+                        <span>Buka WhatsApp untuk kirim manual</span>
+                    </button>
+                    <button type="button" data-draft-open-channel data-channel="email" class="hidden inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg border border-violet-200 bg-white text-violet-700 font-semibold text-[12px] hover:border-violet-400 transition cursor-pointer whitespace-nowrap">
+                        <x-heroicon-o-envelope class="w-4 h-4 flex-shrink-0" />
+                        <span>Buka Gmail untuk kirim manual</span>
+                    </button>
+                    <button type="button" data-draft-copy class="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[12px] shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer whitespace-nowrap">
+                        <x-heroicon-o-clipboard-document class="w-4 h-4" />
+                        Copy Draft
+                    </button>
+                </div>
             </div>
         </div>
     </div>

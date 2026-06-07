@@ -288,7 +288,7 @@ class DashboardController extends Controller
                 'roleLabel'        => 'UI/UX Designer',
                 'firstName'        => $firstName,
                 'initials'         => $initials,
-                'subtitle'         => 'Lanjutkan revisi desain dan upload mockup terbaru untuk tim eksekusi.',
+                'subtitle'         => 'Lanjutkan revisi desain melalui task/Kanban untuk tim eksekusi.',
                 'focusLine'        => $primaryProject ? 'Revisi desain ' . $primaryProject->name : 'Belum ada proyek yang menunggu desain.',
                 'insightTitle'     => 'Priority Insight',
                 'insightSubtitle'  => 'Catatan dari sistem untuk Anda',
@@ -320,7 +320,7 @@ class DashboardController extends Controller
                 ],
                 'quickActions'     => [
                     ['label' => 'Buka Kanban',    'sub' => 'Workspace task aktif',          'icon' => 'squares-2x2',   'tileBg' => '#DBEAFE', 'tileFg' => '#1E40AF', 'href' => $primaryKanban],
-                    ['label' => 'Task Saya',      'sub' => 'Lihat semua task Anda',         'icon' => 'list-bullet',   'tileBg' => '#EDE9FE', 'tileFg' => '#6D28D9', 'href' => $primaryShow],
+                    ['label' => 'Task Saya',      'sub' => 'Lihat semua task Anda',         'icon' => 'list-bullet',   'tileBg' => '#EDE9FE', 'tileFg' => '#6D28D9', 'href' => $primaryKanban],
                     ['label' => 'Projects',       'sub' => 'Semua proyek yang ditugaskan',  'icon' => 'rectangle-stack','tileBg' => '#DCFCE7', 'tileFg' => '#166534', 'href' => $projectsRoute],
                     ['label' => 'Activity Log',   'sub' => 'Riwayat aktivitas Anda',        'icon' => 'clock',         'tileBg' => '#FEF3C7', 'tileFg' => '#92400E', 'href' => $auditUrl],
                 ],

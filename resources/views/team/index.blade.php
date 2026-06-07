@@ -258,7 +258,10 @@
                 <span class="bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#A855F7]">Management</span>
             </h1>
             <p class="mt-3 text-[15px] text-slate-500 max-w-2xl">
-                Pantau kapasitas, alokasi, dan kemampuan tim Avatech. AI Workload Balancer mendeteksi risiko burnout otomatis.
+                Pantau kapasitas, alokasi, dan kemampuan tim Avatech. Sistem Workload mendeteksi risiko burnout otomatis.
+            </p>
+            <p class="mt-2 text-[12px] text-slate-400 max-w-2xl">
+                Team Load menunjukkan estimasi alokasi jam/minggu untuk membantu pembagian beban kerja, bukan batas kerja mutlak.
             </p>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
@@ -441,6 +444,7 @@
                         <div class="h-full rounded-full" style="width: {{ $m['load'] }}%; background: {{ $loadFill($m['load']) }};"></div>
                     </div>
                     <div class="text-[11.5px] text-slate-400 mt-1.5 tabular-nums">{{ $m['load_hours'] }}h / {{ $m['capacity_hours'] }}h minggu ini</div>
+                    <div class="text-[10.5px] text-slate-400 mt-1 leading-tight">Estimasi alokasi mingguan, bukan batas kerja mutlak.</div>
                 </div>
 
                 <div class="flex flex-wrap gap-1.5 mb-5">
@@ -747,6 +751,9 @@
 
                         {{-- Beban Kerja --}}
                         <div data-tm-panel="load" class="hidden">
+                            <p class="mb-4 text-[12px] text-slate-400 leading-relaxed">
+                                Team Load menunjukkan estimasi alokasi jam/minggu untuk membantu pembagian beban kerja, bukan batas kerja mutlak.
+                            </p>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
                                 <div class="rounded-2xl border border-violet-100 p-5">
                                     <div class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-2">Kapasitas Minggu Ini</div>

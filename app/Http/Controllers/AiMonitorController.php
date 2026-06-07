@@ -82,7 +82,7 @@ class AiMonitorController extends Controller
             'gemini' => 'Gemini',
             'groq' => 'Groq',
             'openrouter' => 'OpenRouter',
-            'unknown' => 'Unknown / Tidak tersedia',
+            'unknown' => 'Diagnostic: Provider tidak tersedia',
         ];
 
         return collect($labels)
@@ -99,6 +99,7 @@ class AiMonitorController extends Controller
                     'failed' => $items->where('status', 'failed')->count(),
                 ];
             })
+            ->reject(fn (array $row) => $row['provider'] === 'unknown' && $row['count'] === 0)
             ->values()
             ->all();
     }
