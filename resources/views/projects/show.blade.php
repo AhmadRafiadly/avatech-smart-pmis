@@ -65,7 +65,7 @@
         ['id' => 'todo',    'label' => 'Todo',    'color' => '#475569', 'bg' => '#F1F5F9', 'tasks' => [
             ['module' => 'Modul Autentikasi dan Ak...',     'priority' => 'High',   'title' => 'Validasi proteksi akses resource',  'assignee' => 'Belum Ditugaskan'],
             ['module' => 'Project Hub dan Kanban O...',     'priority' => 'Medium', 'title' => 'Tampilkan ringkasan proyek terpadu','assignee' => 'Belum Ditugaskan'],
-            ['module' => 'Project Hub dan Kanban O...',     'priority' => 'High',   'title' => 'Pastikan CEO hanya read-only',      'assignee' => 'Belum Ditugaskan'],
+            ['module' => 'Project Hub dan Kanban O...',     'priority' => 'High',   'title' => 'Validasi hak akses dashboard',      'assignee' => 'Belum Ditugaskan'],
             ['module' => 'Quality Control Black-Bo...',     'priority' => 'High',   'title' => 'Siapkan daftar test case per modul','assignee' => 'Belum Ditugaskan'],
             ['module' => 'Quality Control Black-Bo...',     'priority' => 'Medium', 'title' => 'Catat hasil eksekusi Pass atau Fail','assignee' => 'Belum Ditugaskan'],
             ['module' => 'Modul Autentikasi dan Ak...',     'priority' => 'High',   'title' => 'Implementasi login berbasis role',  'assignee' => 'Belum Ditugaskan'],

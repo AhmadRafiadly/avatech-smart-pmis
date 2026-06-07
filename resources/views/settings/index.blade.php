@@ -216,12 +216,6 @@
                                     Buka AI Monitor
                                 </a>
                             @endif
-                            @if (\Illuminate\Support\Facades\Route::has('system-health.index'))
-                                <a href="{{ route('system-health.index') }}" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-100 bg-white text-violet-700 text-[12px] font-semibold hover:border-violet-300 transition">
-                                    <x-heroicon-o-server-stack class="w-4 h-4" />
-                                    Buka System Health
-                                </a>
-                            @endif
                             @if ($aiReady)
                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold tracking-wider uppercase">
                                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
