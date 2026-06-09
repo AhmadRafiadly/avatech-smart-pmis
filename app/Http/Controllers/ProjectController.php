@@ -898,13 +898,21 @@ class ProjectController extends Controller
 
         $backUrl = route('projects.show', $project) . '#aiplanning';
 
-        $latestMom = $project->moms()
-            ->orderByDesc('meeting_date')
-            ->orderByDesc('id')
-            ->first();
-        if (! $latestMom) {
+        // Explicit source selection: the user may choose which MoM to use as the
+        // WBS source (meeting history). Default to the latest MoM when none chosen.
+        $validated = $request->validate([
+            'source_mom_id' => ['nullable', Rule::exists('project_moms', 'id')->where('project_id', $project->id)],
+        ], [
+            'source_mom_id.exists' => 'MoM sumber tidak ditemukan pada proyek ini.',
+        ]);
+
+        $sourceMom = ! empty($validated['source_mom_id'])
+            ? $project->moms()->whereKey($validated['source_mom_id'])->first()
+            : $project->moms()->orderByDesc('meeting_date')->orderByDesc('id')->first();
+
+        if (! $sourceMom) {
             return redirect()->to($backUrl)
-                ->with('status', 'Tambahkan MoM terlebih dahulu sebelum generate WBS.');
+                ->with('status', 'Buat MoM terlebih dahulu sebelum menggunakan AI WBS Generator.');
         }
 
         if (! AiPlanner::isConfigured()) {
@@ -927,9 +935,9 @@ class ProjectController extends Controller
             'project_status'      => (string) ($project->status ?: ''),
             'existing_module_titles' => $existingModuleTitles,
             'existing_task_titles'   => $existingTaskTitles,
-            'mom_date'           => optional($latestMom->meeting_date)->format('Y-m-d'),
-            'mom_summary'        => (string) ($latestMom->summary ?: ''),
-            'mom_notes'          => (string) $latestMom->notes,
+            'mom_date'           => optional($sourceMom->meeting_date)->format('Y-m-d'),
+            'mom_summary'        => (string) ($sourceMom->summary ?: ''),
+            'mom_notes'          => (string) $sourceMom->notes,
         ];
 
         $result = AiPlanner::generateWbsDraft($context);
@@ -950,9 +958,10 @@ class ProjectController extends Controller
          * AI metadata sudah dicatat AiPlanner saat request (tetap metadata-only). */
         return redirect()->to($backUrl)
             ->with('ai_wbs_preview', [
-                'modules'       => $modules,
-                'source_mom_id' => $latestMom->id,
-                'provider'      => $result['provider'] ?? null,
+                'modules'         => $modules,
+                'source_mom_id'   => $sourceMom->id,
+                'source_mom_date' => optional($sourceMom->meeting_date)->format('d M Y'),
+                'provider'        => $result['provider'] ?? null,
             ])
             ->with('status', 'Draf WBS AI siap ditinjau. Sunting/pilih item, lalu klik Simpan.');
     }
@@ -971,6 +980,7 @@ class ProjectController extends Controller
         $backUrl = route('projects.show', $project) . '#aiplanning';
 
         $validated = $request->validate([
+            'source_mom_id'                 => ['nullable', Rule::exists('project_moms', 'id')->where('project_id', $project->id)],
             'modules'                       => ['required', 'array', 'min:1'],
             'modules.*.include'             => ['nullable'],
             'modules.*.title'               => ['nullable', 'string', 'max:180'],
@@ -983,6 +993,8 @@ class ProjectController extends Controller
             'modules.*.tasks.*.description' => ['nullable', 'string', 'max:2000'],
             'modules.*.tasks.*.priority'    => ['nullable', Rule::in(AiPlanner::ALLOWED_TASK_PRIORITY)],
             'modules.*.tasks.*.estimate_hours' => ['nullable', 'integer', 'min:0', 'max:999'],
+        ], [
+            'source_mom_id.exists' => 'MoM sumber tidak ditemukan pada proyek ini.',
         ]);
 
         $existingModuleByLower = $project->modules()
@@ -1092,9 +1104,10 @@ class ProjectController extends Controller
             $project,
             null,
             [
-                'project_id'   => $project->id,
-                'module_count' => $createdModules,
-                'task_count'   => $createdTasks,
+                'project_id'    => $project->id,
+                'module_count'  => $createdModules,
+                'task_count'    => $createdTasks,
+                'source_mom_id' => $validated['source_mom_id'] ?? null,
             ],
         );
 
@@ -1120,7 +1133,7 @@ class ProjectController extends Controller
 
         if ($project->modules->isEmpty() && $project->tasks->isEmpty()) {
             return redirect()->to($backUrl)
-                ->with('status', 'Tambahkan WBS/task terlebih dahulu sebelum generate test case.');
+                ->with('status', 'Buat atau simpan WBS terlebih dahulu sebelum menggunakan AI Test Case Generator.');
         }
 
         if (! AiPlanner::isConfigured()) {
@@ -1128,7 +1141,32 @@ class ProjectController extends Controller
                 ->with('status', 'AI belum dikonfigurasi.');
         }
 
-        $moduleContext = $project->modules
+        // Explicit source scope: the user may choose which WBS module to use as the
+        // test-case source. Default to the first available module; if none selected
+        // and no module exists, fall back to whole-project task context.
+        $validated = $request->validate([
+            'source_module_id' => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
+        ], [
+            'source_module_id.exists' => 'Modul sumber tidak ditemukan pada proyek ini.',
+        ]);
+
+        $sourceModule = null;
+        if (! empty($validated['source_module_id'])) {
+            $sourceModule = $project->modules->firstWhere('id', (int) $validated['source_module_id']);
+        }
+
+        // Restrict the AI context to the chosen module (and its tasks) when set.
+        $modulesForContext = $sourceModule ? collect([$sourceModule]) : $project->modules;
+        $tasksForContext = $sourceModule
+            ? $project->tasks->where('project_module_id', $sourceModule->id)->values()
+            : $project->tasks;
+
+        if ($sourceModule && $modulesForContext->isEmpty() && $tasksForContext->isEmpty()) {
+            return redirect()->to($backUrl)
+                ->with('status', 'Modul yang dipilih belum memiliki konteks untuk generate test case.');
+        }
+
+        $moduleContext = $modulesForContext
             ->map(function (ProjectModule $module) {
                 $taskTitles = $module->tasks
                     ->pluck('title')
@@ -1145,7 +1183,7 @@ class ProjectController extends Controller
             ->values()
             ->all();
 
-        $taskContext = $project->tasks
+        $taskContext = $tasksForContext
             ->map(function (ProjectTask $task) {
                 return trim(($task->module?->title ? '[' . $task->module->title . '] ' : '')
                     . $task->title
@@ -1187,8 +1225,10 @@ class ProjectController extends Controller
          * AI metadata sudah dicatat AiPlanner saat request (tetap metadata-only). */
         return redirect()->to($backUrl)
             ->with('ai_testcase_preview', [
-                'test_cases' => $testCases,
-                'provider'   => $result['provider'] ?? null,
+                'test_cases'         => $testCases,
+                'source_module_id'   => $sourceModule?->id,
+                'source_module_name' => $sourceModule?->title,
+                'provider'           => $result['provider'] ?? null,
             ])
             ->with('status', 'Draf test case AI siap ditinjau. Sunting/pilih item, lalu klik Simpan.');
     }
@@ -1207,6 +1247,7 @@ class ProjectController extends Controller
         $backUrl = route('projects.show', $project) . '#qc';
 
         $validated = $request->validate([
+            'source_module_id'               => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
             'test_cases'                     => ['required', 'array', 'min:1'],
             'test_cases.*.include'           => ['nullable'],
             'test_cases.*.title'             => ['nullable', 'string', 'max:180'],
@@ -1214,6 +1255,8 @@ class ProjectController extends Controller
             'test_cases.*.expected_result'   => ['nullable', 'string', 'max:4000'],
             'test_cases.*.priority'          => ['nullable', Rule::in(AiPlanner::ALLOWED_TASK_PRIORITY)],
             'test_cases.*.project_module_id' => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
+        ], [
+            'source_module_id.exists' => 'Modul sumber tidak ditemukan pada proyek ini.',
         ]);
 
         $existingTitles = $project->qcTests()
@@ -1282,9 +1325,10 @@ class ProjectController extends Controller
             $project,
             null,
             [
-                'project_id'      => $project->id,
-                'test_case_count' => $createdCases,
-                'module_count'    => count($moduleIdsUsed),
+                'project_id'       => $project->id,
+                'test_case_count'  => $createdCases,
+                'module_count'     => count($moduleIdsUsed),
+                'source_module_id' => $validated['source_module_id'] ?? null,
             ],
         );
 

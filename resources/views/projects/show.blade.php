@@ -1449,12 +1449,32 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 @endphp
                 <div class="p-5 rounded-2xl border border-dashed border-violet-300 bg-violet-50/40 flex flex-col gap-3">
                     <p class="text-[12px] text-slate-500 leading-relaxed text-center font-medium">
-                        Draf WBS dibuat dari MoM terbaru/proper MoM yang tersedia. Tinjau dan sunting sebelum disimpan.
+                        WBS akan dibuat berdasarkan MoM yang dipilih. Hasil AI tetap berupa draf dan harus ditinjau sebelum disimpan.
                     </p>
 
                     @if ($wbsBtnState['tone'] === 'ready' && $canEdit && ! $useReferenceProjectData)
-                        <form method="POST" action="{{ route('projects.ai-wbs.generate', $project) }}" class="w-full" data-loading-form data-loading-label="Menyusun WBS...">
+                        <form method="POST" action="{{ route('projects.ai-wbs.generate', $project) }}" class="w-full space-y-3" data-loading-form data-loading-label="Menyusun WBS...">
                             @csrf
+                            <div class="text-left">
+                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Pilih MoM sumber WBS</label>
+                                <select name="source_mom_id" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    @foreach ($moms as $loopMom)
+                                        @php
+                                            $momId = is_array($loopMom) ? ($loopMom['id'] ?? null) : null;
+                                            $momDate = is_array($loopMom) ? ($loopMom['date_label'] ?? '—') : '—';
+                                            $momCreator = is_array($loopMom) ? ($loopMom['creator'] ?? null) : null;
+                                            $momExcerptSrc = is_array($loopMom) ? trim((string) ($loopMom['summary'] ?? '')) : '';
+                                            if ($momExcerptSrc === '') { $momExcerptSrc = is_array($loopMom) ? trim((string) ($loopMom['notes'] ?? '')) : ''; }
+                                            $momExcerpt = \Illuminate\Support\Str::limit(preg_replace('/\s+/', ' ', $momExcerptSrc), 60, '…');
+                                        @endphp
+                                        @if ($momId)
+                                            <option value="{{ $momId }}" @selected($loop->first)>
+                                                {{ $momDate }}{{ $momCreator ? ' · ' . $momCreator : '' }}{{ $momExcerpt !== '' ? ' — ' . $momExcerpt : '' }}
+                                            </option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                            </div>
                             <button
                                 type="submit"
                                 title="{{ $wbsBtnState['tooltip'] }}"
@@ -1465,7 +1485,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                             </button>
                         </form>
                         <p class="text-[11px] text-violet-600 italic text-center leading-relaxed">
-                            Sumber: {{ $wbsSourceLabel }}. Modul/task dengan judul yang sudah ada akan dilewati.
+                            Default: MoM terbaru. Modul/task dengan judul yang sudah ada akan dilewati.
                         </p>
                         @if ($projectHasWbs)
                             <p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-center leading-relaxed">
@@ -1805,14 +1825,24 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     }
                 @endphp
 
-                <div class="flex flex-col items-end gap-1.5">
+                <div class="flex flex-col items-end gap-1.5 w-full sm:w-auto">
                     @if ($qcAiState['tone'] === 'ready')
-                        <form method="POST" action="{{ route('projects.ai-test-cases.generate', $project) }}" data-loading-form data-loading-label="Membuat Test Case...">
+                        @php $qcSourceModules = collect($modules)->filter(fn ($m) => ! empty($m['id']))->values(); @endphp
+                        <form method="POST" action="{{ route('projects.ai-test-cases.generate', $project) }}" class="flex flex-col sm:flex-row sm:items-end gap-2 w-full sm:w-auto" data-loading-form data-loading-label="Membuat Test Case...">
                             @csrf
+                            <div class="text-left">
+                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Pilih sumber test case</label>
+                                <select name="source_module_id" class="w-full sm:w-64 h-10 rounded-xl border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    <option value="">Semua modul/task</option>
+                                    @foreach ($qcSourceModules as $srcMod)
+                                        <option value="{{ $srcMod['id'] }}" @selected($loop->first)>{{ \Illuminate\Support\Str::limit($srcMod['name'] ?? 'Modul', 50, '…') }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
                             <button
                                 type="submit"
                                 title="{{ $qcAiState['tooltip'] }}"
-                                class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-violet-500 to-pink-500 text-white font-semibold text-[13px] shadow-lg shadow-violet-500/20 hover:scale-[1.02] transition cursor-pointer disabled:opacity-70 disabled:cursor-wait"
+                                class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-violet-500 to-pink-500 text-white font-semibold text-[13px] shadow-lg shadow-violet-500/20 hover:scale-[1.02] transition cursor-pointer disabled:opacity-70 disabled:cursor-wait"
                             >
                                 <x-heroicon-o-sparkles class="w-4 h-4" />
                                 <span data-loading-text>{{ $qcAiState['label'] }}</span>
@@ -1830,7 +1860,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                             {{ $qcAiState['label'] }}
                         </button>
                     @endif
-                    <span class="text-[11px] text-slate-400 italic">Hasil AI tetap bisa direview dan diedit manual.</span>
+                    <span class="text-[11px] text-slate-400 italic">Test case akan dibuat berdasarkan modul atau task yang dipilih. Hasil AI tetap berupa draf dan harus ditinjau sebelum disimpan.</span>
                 </div>
             @endif
         </div>
