@@ -12,9 +12,7 @@ use App\Http\Controllers\SystemHealthController;
 use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::redirect('/', '/login');
 
 /*
  * Normal Smart-PMIS login (CEO/PM + operational roles). Admin-tier users
