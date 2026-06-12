@@ -513,7 +513,7 @@
 
     {{-- =============== TABS =============== --}}
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-2 mb-6">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
             @foreach ($tabs as $idx => $t)
                 <button
                     type="button"
@@ -2284,6 +2284,188 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
     </div>
 
+    {{-- =============== CLIENT REVIEW PORTAL =============== --}}
+    @php
+        $reviewRows = $clientReviews ?? [];
+        $reviewCanManage = (bool) ($canManageClientReviews ?? false);
+        $reviewStatusBadge = [
+            'draft' => 'bg-slate-100 text-slate-600',
+            'active' => 'bg-emerald-100 text-emerald-700',
+            'approved' => 'bg-violet-100 text-violet-700',
+            'revision_requested' => 'bg-amber-100 text-amber-700',
+            'expired' => 'bg-slate-200 text-slate-600',
+            'revoked' => 'bg-rose-100 text-rose-700',
+        ];
+    @endphp
+    <div id="clientportal" data-panel="clientportal" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+        <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
+            <div class="flex items-center gap-3">
+                <span class="pd-section-bar"></span>
+                <div>
+                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Client Portal</h3>
+                    <p class="text-[12px] text-slate-500 mt-0.5">Bagikan halaman review terbatas untuk approval client tanpa membuka detail internal tim.</p>
+                </div>
+            </div>
+            <div class="text-[13px] text-slate-500 font-medium">
+                {{ count($reviewRows) }} review link
+            </div>
+        </div>
+
+        @if ($reviewCanManage && ! $useReferenceProjectData)
+            <div class="px-6 md:px-7 pt-5">
+                <details class="rounded-2xl border border-violet-100 bg-violet-50/30 overflow-hidden" @if ($errors->any() && old('_form') === 'client_review') open @endif>
+                    <summary class="cursor-pointer select-none px-5 py-3.5 text-[13px] font-bold text-violet-700 flex items-center gap-2">
+                        <x-heroicon-o-link class="w-5 h-5" />
+                        Buat Review Link
+                    </summary>
+                    <form method="POST" action="{{ route('projects.client-reviews.store', $project) }}" class="px-5 pb-5 pt-1 grid grid-cols-1 md:grid-cols-12 gap-3">
+                        @csrf
+                        <input type="hidden" name="_form" value="client_review">
+                        <div class="md:col-span-7">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Judul Review</label>
+                            <input name="title" value="{{ old('_form') === 'client_review' ? old('title') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Review mockup homepage / Approval UAT" />
+                            @if (old('_form') === 'client_review') @error('title')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror @endif
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tipe</label>
+                            <select name="review_type" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                @foreach ($clientReviewTypes as $value => $label)
+                                    <option value="{{ $value }}" @selected(old('_form') === 'client_review' && old('review_type', 'general') === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Status Awal</label>
+                            <select name="status" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="draft" @selected(old('_form') === 'client_review' && old('status') === 'draft')>Draft</option>
+                                <option value="active" @selected(old('_form') !== 'client_review' || old('status') === 'active')>Aktif</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-12">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Deskripsi untuk Client</label>
+                            <textarea name="description" rows="2" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Tuliskan konteks review yang aman untuk client.">{{ old('_form') === 'client_review' ? old('description') : '' }}</textarea>
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Nama Client (opsional)</label>
+                            <input name="client_name" value="{{ old('_form') === 'client_review' ? old('client_name') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Email Client (opsional)</label>
+                            <input name="client_email" type="email" value="{{ old('_form') === 'client_review' ? old('client_email') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Kadaluarsa (opsional)</label>
+                            <input name="expires_at" type="datetime-local" value="{{ old('_form') === 'client_review' ? old('expires_at') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        </div>
+                        <div class="md:col-span-12">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Konten yang Ditampilkan</label>
+                            <div class="flex flex-wrap gap-2">
+                                @foreach ([
+                                    'include_mom' => 'MoM summary',
+                                    'include_design_deliverables' => 'Design deliverables',
+                                    'include_progress' => 'Progress',
+                                    'include_qc_summary' => 'QC summary',
+                                    'include_change_requests' => 'Change Requests',
+                                ] as $field => $label)
+                                    <label class="inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 cursor-pointer">
+                                        <input type="checkbox" name="{{ $field }}" value="1" @checked(old('_form') !== 'client_review' || old($field)) class="rounded border-violet-200 text-violet-600 focus:ring-violet-300">
+                                        {{ $label }}
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+                        <div class="md:col-span-12">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Catatan Internal (tidak tampil ke client)</label>
+                            <textarea name="internal_notes" rows="2" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Catatan follow-up internal tim Avatech.">{{ old('_form') === 'client_review' ? old('internal_notes') : '' }}</textarea>
+                        </div>
+                        <div class="md:col-span-12 flex justify-end">
+                            <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
+                                <x-heroicon-o-link class="w-4 h-4" />
+                                Buat Review Link
+                            </button>
+                        </div>
+                    </form>
+                </details>
+            </div>
+        @endif
+
+        <div class="p-6 md:p-7 space-y-4">
+            @forelse ($reviewRows as $review)
+                <div class="rounded-2xl border border-violet-100 bg-white shadow-[0_1px_4px_rgba(124,58,237,0.05)] overflow-hidden">
+                    <div class="px-5 py-4">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap mb-1">
+                                    <span class="text-[10px] font-bold rounded-full px-2 py-0.5 {{ $reviewStatusBadge[$review['status']] ?? 'bg-slate-100 text-slate-600' }}">{{ $review['status_label'] }}</span>
+                                    <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-violet-50 text-violet-600">{{ $review['review_type_label'] }}</span>
+                                    @foreach ($review['includes'] as $inc)
+                                        <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-slate-50 text-slate-500">{{ $inc }}</span>
+                                    @endforeach
+                                </div>
+                                <p class="text-[14px] font-bold text-[#1E1B4B] leading-snug">{{ $review['title'] }}</p>
+                                @if ($review['description'])
+                                    <p class="text-[12.5px] text-slate-500 mt-1 leading-relaxed whitespace-pre-line">{{ $review['description'] }}</p>
+                                @endif
+                            </div>
+                            <div class="text-right text-[11px] text-slate-400 shrink-0">
+                                @if ($review['created_by']) <div>oleh {{ $review['created_by'] }}</div> @endif
+                                <div>{{ $review['created_at'] }}</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 grid grid-cols-1 lg:grid-cols-12 gap-2">
+                            <input readonly value="{{ $review['url'] }}" class="lg:col-span-9 h-9 rounded-lg border border-violet-100 bg-slate-50 px-3 text-[12px] text-slate-600">
+                            <button type="button" data-copy-review-link="{{ $review['url'] }}" class="lg:col-span-3 h-9 rounded-lg border border-violet-100 bg-white text-[12px] font-semibold text-violet-700 hover:bg-violet-50 transition cursor-pointer">Salin Link Review</button>
+                        </div>
+
+                        <div class="mt-3 flex flex-wrap items-center gap-3 text-[11.5px] text-slate-500">
+                            <span>Dibuka: <strong class="text-slate-700">{{ $review['opened_count'] }}x</strong></span>
+                            <span>Terakhir: <strong class="text-slate-700">{{ $review['last_opened_at'] ?? '-' }}</strong></span>
+                            <span>Kadaluarsa: <strong class="text-slate-700">{{ $review['expires_at'] ?? '-' }}</strong></span>
+                            @if ($review['client_name']) <span>Client: <strong class="text-slate-700">{{ $review['client_name'] }}</strong></span> @endif
+                        </div>
+
+                        @if ($review['approved_at'] || $review['revision_requested_at'] || $review['client_feedback'])
+                            <div class="mt-3 rounded-xl border border-violet-100 bg-violet-50/40 px-4 py-3 text-[12.5px] text-slate-600 leading-relaxed">
+                                @if ($review['approved_at']) <p><strong>Disetujui:</strong> {{ $review['approved_at'] }}</p> @endif
+                                @if ($review['revision_requested_at']) <p><strong>Minta Revisi:</strong> {{ $review['revision_requested_at'] }}</p> @endif
+                                @if ($review['client_feedback']) <p class="mt-1 whitespace-pre-line"><strong>Feedback Client:</strong> {{ $review['client_feedback'] }}</p> @endif
+                            </div>
+                        @endif
+
+                        @if ($review['internal_notes'])
+                            <p class="mt-2 text-[11.5px] text-slate-400"><strong>Catatan internal:</strong> {{ $review['internal_notes'] }}</p>
+                        @endif
+
+                        @if ($reviewCanManage && ! $useReferenceProjectData)
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                @if (in_array($review['status'], ['draft', 'revoked'], true))
+                                    <form method="POST" action="{{ route('projects.client-reviews.status', [$project, $review['id']]) }}">
+                                        @csrf @method('PATCH')
+                                        <input type="hidden" name="status" value="active">
+                                        <button type="submit" class="h-8 px-3 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 transition cursor-pointer">Aktifkan</button>
+                                    </form>
+                                @endif
+                                @if ($review['status'] === 'active')
+                                    <form method="POST" action="{{ route('projects.client-reviews.status', [$project, $review['id']]) }}" onsubmit="return confirm('Cabut review link ini? Client tidak dapat membuka link setelah dicabut.');">
+                                        @csrf @method('PATCH')
+                                        <input type="hidden" name="status" value="revoked">
+                                        <button type="submit" class="h-8 px-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 transition cursor-pointer">Cabut</button>
+                                    </form>
+                                @endif
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            @empty
+                <div class="text-[13px] text-slate-400 text-center py-10 leading-relaxed">
+                    Belum ada client review link untuk project ini.
+                    @if ($reviewCanManage && ! $useReferenceProjectData) Buat link pertama lewat panel di atas. @endif
+                </div>
+            @endforelse
+        </div>
+    </div>
+
     {{-- =============== PROJECT UPDATE SUMMARY MODAL =============== --}}
     <div data-project-summary-modal class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="project-summary-title">
         <div data-project-summary-close class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
@@ -2697,7 +2879,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
 
                 /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc', 'scope'];
+                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc', 'scope', 'clientportal'];
                 const setHash = (id) => {
                     if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
                 };
@@ -2718,6 +2900,20 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
                 hashToTab();
                 window.addEventListener('hashchange', hashToTab);
+
+                document.querySelectorAll('[data-copy-review-link]').forEach((button) => {
+                    button.addEventListener('click', async () => {
+                        const link = button.dataset.copyReviewLink || '';
+                        try {
+                            await navigator.clipboard.writeText(link);
+                            const original = button.textContent;
+                            button.textContent = 'Link tersalin';
+                            window.setTimeout(() => { button.textContent = original; }, 1600);
+                        } catch (error) {
+                            window.prompt('Salin link review:', link);
+                        }
+                    });
+                });
 
                 /* === Kanban Filter Anggota === */
                 const kbnSelect = document.querySelector('[data-kanban-filter]');

@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\AuditLog;
 use App\Models\Project;
 use App\Models\ProjectChangeRequest;
+use App\Models\ProjectClientReview;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
@@ -22,6 +23,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 
@@ -138,6 +140,26 @@ class ProjectController extends Controller
         'approved'     => 'Disetujui',
         'rejected'     => 'Ditolak',
         'converted'    => 'Jadi Task',
+    ];
+
+    private const CLIENT_REVIEW_MANAGER_ROLES = ['ceo_pm', 'sa_qa', 'admin', 'super_admin', 'developer'];
+
+    private const CLIENT_REVIEW_STATUS_LABELS = [
+        'draft' => 'Draft',
+        'active' => 'Aktif',
+        'approved' => 'Disetujui Client',
+        'revision_requested' => 'Minta Revisi',
+        'expired' => 'Kadaluarsa',
+        'revoked' => 'Dicabut',
+    ];
+
+    private const CLIENT_REVIEW_TYPE_LABELS = [
+        'mom' => 'MoM',
+        'design' => 'Design',
+        'progress' => 'Progress',
+        'uat' => 'UAT',
+        'handover' => 'Handover',
+        'general' => 'General',
     ];
 
     public function __construct(private readonly SmartInsightService $insights)
@@ -351,6 +373,7 @@ class ProjectController extends Controller
                 'affectedModule:id,title',
                 'createdTask:id,title',
             ])->orderByDesc('created_at')->orderByDesc('id'),
+            'clientReviews' => fn ($query) => $query->with('creator:id,name')->orderByDesc('created_at')->orderByDesc('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -407,6 +430,10 @@ class ProjectController extends Controller
             'crStatusOptions'    => self::CR_STATUS_LABELS,
             'crCanContribute'    => $this->crCanContribute($project),
             'crCanDecide'        => $this->crCanDecide(),
+            'clientReviews'      => $this->projectClientReviewRows($project),
+            'clientReviewTypes'  => self::CLIENT_REVIEW_TYPE_LABELS,
+            'clientReviewStatuses' => self::CLIENT_REVIEW_STATUS_LABELS,
+            'canManageClientReviews' => $this->canManageClientReviews($project),
         ]);
     }
 
@@ -503,6 +530,105 @@ class ProjectController extends Controller
         return redirect()
             ->to(route('projects.show', $project) . '#overview')
             ->with('status', 'Quick Assign selesai: ' . $created . ' dibuat, ' . $updated . ' diperbarui.');
+    }
+
+    public function storeClientReview(Request $request, Project $project)
+    {
+        $this->ensureCanManageClientReviews($project);
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:180'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'review_type' => ['nullable', Rule::in(ProjectClientReview::REVIEW_TYPES)],
+            'status' => ['required', Rule::in(['draft', 'active'])],
+            'expires_at' => ['nullable', 'date', 'after:now'],
+            'client_name' => ['nullable', 'string', 'max:160'],
+            'client_email' => ['nullable', 'email', 'max:190'],
+            'internal_notes' => ['nullable', 'string', 'max:2000'],
+            'include_mom' => ['nullable', 'boolean'],
+            'include_design_deliverables' => ['nullable', 'boolean'],
+            'include_progress' => ['nullable', 'boolean'],
+            'include_qc_summary' => ['nullable', 'boolean'],
+            'include_change_requests' => ['nullable', 'boolean'],
+        ], [
+            'title.required' => 'Judul review wajib diisi.',
+            'review_type.in' => 'Tipe review client tidak valid.',
+            'expires_at.after' => 'Tanggal kadaluarsa harus setelah waktu saat ini.',
+        ]);
+
+        $review = $project->clientReviews()->create([
+            'created_by_user_id' => auth()->id(),
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'token' => $this->generateClientReviewToken(),
+            'status' => $validated['status'],
+            'review_type' => $validated['review_type'] ?? 'general',
+            'expires_at' => $validated['expires_at'] ?? null,
+            'client_name' => $validated['client_name'] ?? null,
+            'client_email' => $validated['client_email'] ?? null,
+            'internal_notes' => $validated['internal_notes'] ?? null,
+            'include_mom' => $request->boolean('include_mom'),
+            'include_design_deliverables' => $request->boolean('include_design_deliverables'),
+            'include_progress' => $request->boolean('include_progress'),
+            'include_qc_summary' => $request->boolean('include_qc_summary'),
+            'include_change_requests' => $request->boolean('include_change_requests'),
+        ]);
+
+        AuditLogger::log(
+            'client_review_created',
+            'Client Review',
+            'Membuat Client Review <strong>' . e($review->title) . '</strong> untuk proyek <strong>' . e($project->name) . '</strong>',
+            $review,
+            null,
+            ['project_id' => $project->id, 'status' => $review->status, 'review_type' => $review->review_type],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#clientportal')
+            ->with('status', 'Client Review Link berhasil dibuat.');
+    }
+
+    public function updateClientReviewStatus(Request $request, Project $project, ProjectClientReview $clientReview)
+    {
+        $this->ensureCanManageClientReviews($project);
+        abort_unless((int) $clientReview->project_id === (int) $project->id, 404);
+
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(['active', 'revoked'])],
+        ]);
+
+        if ($validated['status'] === 'active') {
+            if (! in_array($clientReview->status, ['draft', 'revoked'], true)) {
+                return redirect()
+                    ->to(route('projects.show', $project) . '#clientportal')
+                    ->with('status', 'Review final tidak dapat diaktifkan ulang. Buat review link baru untuk ronde berikutnya.');
+            }
+
+            if ($clientReview->isExpired()) {
+                return redirect()
+                    ->to(route('projects.show', $project) . '#clientportal')
+                    ->with('status', 'Review link sudah kadaluarsa. Buat review link baru dengan tanggal aktif yang valid.');
+            }
+        }
+
+        $original = $clientReview->getOriginal();
+        $clientReview->update(['status' => $validated['status']]);
+
+        $action = $validated['status'] === 'active' ? 'client_review_activated' : 'client_review_revoked';
+        $verb = $validated['status'] === 'active' ? 'Mengaktifkan' : 'Mencabut';
+
+        AuditLogger::log(
+            $action,
+            'Client Review',
+            $verb . ' Client Review <strong>' . e($clientReview->title) . '</strong> untuk proyek <strong>' . e($project->name) . '</strong>',
+            $clientReview,
+            ['status' => $original['status'] ?? null],
+            ['status' => $clientReview->status],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#clientportal')
+            ->with('status', $validated['status'] === 'active' ? 'Client Review Link diaktifkan.' : 'Client Review Link dicabut.');
     }
 
     public function storeModule(Request $request, Project $project)
@@ -2838,6 +2964,75 @@ class ProjectController extends Controller
         })->all();
     }
 
+    private function projectClientReviewRows(Project $project): array
+    {
+        $col = $project->relationLoaded('clientReviews')
+            ? $project->clientReviews
+            : $project->clientReviews()->with('creator:id,name')->orderByDesc('created_at')->get();
+
+        return $col->map(function (ProjectClientReview $review) {
+            $status = $review->isExpired() && ! in_array($review->status, ['approved', 'revision_requested', 'revoked'], true)
+                ? 'expired'
+                : $review->status;
+
+            return [
+                'id' => $review->id,
+                'title' => $review->title,
+                'description' => $review->description,
+                'status' => $status,
+                'status_label' => self::CLIENT_REVIEW_STATUS_LABELS[$status] ?? $status,
+                'review_type' => $review->review_type,
+                'review_type_label' => $review->review_type ? (self::CLIENT_REVIEW_TYPE_LABELS[$review->review_type] ?? $review->review_type) : 'General',
+                'url' => route('client-reviews.show', $review->token),
+                'client_name' => $review->client_name,
+                'client_email' => $review->client_email,
+                'client_feedback' => $review->client_feedback,
+                'internal_notes' => $review->internal_notes,
+                'opened_count' => (int) $review->opened_count,
+                'last_opened_at' => $review->last_opened_at ? AppTime::diff($review->last_opened_at) : null,
+                'expires_at' => $review->expires_at ? AppTime::cast($review->expires_at)?->format('d M Y H:i') : null,
+                'approved_at' => $review->approved_at ? AppTime::cast($review->approved_at)?->format('d M Y H:i') : null,
+                'revision_requested_at' => $review->revision_requested_at ? AppTime::cast($review->revision_requested_at)?->format('d M Y H:i') : null,
+                'created_by' => $review->creator?->name,
+                'created_at' => AppTime::diff($review->created_at),
+                'includes' => collect([
+                    'MoM' => $review->include_mom,
+                    'Design' => $review->include_design_deliverables,
+                    'Progress' => $review->include_progress,
+                    'QC' => $review->include_qc_summary,
+                    'Change Request' => $review->include_change_requests,
+                ])->filter()->keys()->values()->all(),
+            ];
+        })->all();
+    }
+
+    private function canManageClientReviews(Project $project): bool
+    {
+        if ($this->ensureOperationalCanAccessProject($project)) {
+            return false;
+        }
+
+        return in_array($this->currentRoleName(), self::CLIENT_REVIEW_MANAGER_ROLES, true);
+    }
+
+    private function ensureCanManageClientReviews(Project $project): void
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            abort(403);
+        }
+
+        abort_unless(in_array($this->currentRoleName(), self::CLIENT_REVIEW_MANAGER_ROLES, true), 403);
+    }
+
+    private function generateClientReviewToken(): string
+    {
+        do {
+            $token = Str::random(48);
+        } while (ProjectClientReview::where('token', $token)->exists());
+
+        return $token;
+    }
+
     private function ensureCanEditProjectDetail(): void
     {
         abort_unless(in_array(auth()->user()?->roles?->first()?->name, self::OPERATIONAL_ROLES, true), 403);
@@ -2981,6 +3176,7 @@ class ProjectController extends Controller
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
         $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
         $crTotal = $project->relationLoaded('changeRequests') ? $project->changeRequests->count() : $project->changeRequests()->count();
+        $reviewTotal = $project->relationLoaded('clientReviews') ? $project->clientReviews->count() : $project->clientReviews()->count();
 
         return [
             ['id' => 'overview',   'label' => 'Overview',         'count' => $moduleTotal],
@@ -2988,6 +3184,7 @@ class ProjectController extends Controller
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
             ['id' => 'scope',      'label' => 'Scope Control',    'count' => $crTotal],
+            ['id' => 'clientportal', 'label' => 'Client Portal',   'count' => $reviewTotal],
         ];
     }
 

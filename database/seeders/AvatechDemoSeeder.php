@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Project;
 use App\Models\ProjectChangeRequest;
+use App\Models\ProjectClientReview;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
@@ -641,6 +642,7 @@ class AvatechDemoSeeder extends Seeder
         $this->seedMoms($project, $bp['moms'] ?? [], $lead);
         $this->seedQc($project, $modules, $tasks, $bp['qc'] ?? [], $users['adly'] ?? $lead);
         $this->seedChangeRequests($project, $users);
+        $this->seedClientReviews($project, $users);
 
         // keep stored progress in sync with hour-weighted "done" tasks
         // (runs after change requests so a converted CR task is counted)
@@ -987,6 +989,106 @@ class AvatechDemoSeeder extends Seeder
             'low'            => 'low',
             default          => 'medium',
         };
+    }
+
+    /**
+     * Client Review Portal demo links. Tokens are stable so documentation and
+     * thesis screenshots can reference them, while updateOrCreate keeps reruns
+     * idempotent. Emails use demo-only domains.
+     *
+     * @param array<string, User> $users
+     */
+    private function seedClientReviews(Project $project, array $users): void
+    {
+        $map = [
+            'DM01' => [[
+                'title' => 'DM01 Company Profile - Design Review',
+                'token' => 'demo-dm01-company-profile-design-review',
+                'status' => 'active',
+                'review_type' => 'design',
+                'description' => 'Mohon review mockup halaman utama dan struktur company profile sebelum development final.',
+                'client_name' => 'Bu Rina - Ava Teknologi',
+                'client_email' => 'rina@demo.avatech.local',
+                'include_mom' => true,
+                'include_design_deliverables' => true,
+                'include_progress' => true,
+                'include_qc_summary' => false,
+                'include_change_requests' => true,
+            ]],
+            'DM02' => [[
+                'title' => 'DM02 Aloka - Design Review',
+                'token' => 'demo-dm02-aloka-design-review',
+                'status' => 'active',
+                'review_type' => 'design',
+                'description' => 'Review layout donasi dan halaman katalog program sebelum masuk development penuh.',
+                'client_name' => 'Pak Arif - Aloka Foundation',
+                'client_email' => 'arif@demo.avatech.local',
+                'include_mom' => true,
+                'include_design_deliverables' => true,
+                'include_progress' => true,
+                'include_qc_summary' => false,
+                'include_change_requests' => true,
+            ]],
+            'DM03' => [[
+                'title' => 'DM03 Stullo - UAT Review',
+                'token' => 'demo-dm03-stullo-uat-approved',
+                'status' => 'approved',
+                'review_type' => 'uat',
+                'description' => 'Review hasil UAT modul katalog course, enrollment, dan wishlist.',
+                'client_name' => 'Bu Maya - Stullo Learning',
+                'client_email' => 'maya@demo.avatech.local',
+                'client_feedback' => 'Alur utama sudah sesuai untuk kebutuhan demo UAT. Catatan minor akan dibahas di batch berikutnya.',
+                'approved_at' => AppTime::now()->copy()->subDays(1),
+                'include_mom' => true,
+                'include_design_deliverables' => false,
+                'include_progress' => true,
+                'include_qc_summary' => true,
+                'include_change_requests' => true,
+            ]],
+            'DM08' => [[
+                'title' => 'DM08 Property Listing - Progress Review',
+                'token' => 'demo-dm08-property-progress-revision',
+                'status' => 'revision_requested',
+                'review_type' => 'progress',
+                'description' => 'Review progress listing properti dan filter pencarian untuk checkpoint mingguan.',
+                'client_name' => 'Pak Dimas - Properti Sejahtera',
+                'client_email' => 'dimas@demo.avatech.local',
+                'client_feedback' => 'Mohon revisi wording filter lokasi dan tambahkan penjelasan singkat pada card properti unggulan.',
+                'revision_requested_at' => AppTime::now()->copy()->subHours(12),
+                'include_mom' => true,
+                'include_design_deliverables' => true,
+                'include_progress' => true,
+                'include_qc_summary' => true,
+                'include_change_requests' => false,
+            ]],
+        ];
+
+        foreach ($map[$project->code] ?? [] as $row) {
+            ProjectClientReview::updateOrCreate(
+                ['project_id' => $project->id, 'title' => $row['title']],
+                [
+                    'created_by_user_id' => ($users['joshua'] ?? $users['adly'] ?? null)?->id,
+                    'description' => $row['description'],
+                    'token' => $row['token'],
+                    'status' => $row['status'],
+                    'review_type' => $row['review_type'],
+                    'expires_at' => $row['expires_at'] ?? AppTime::now()->copy()->addDays(14),
+                    'approved_at' => $row['approved_at'] ?? null,
+                    'revision_requested_at' => $row['revision_requested_at'] ?? null,
+                    'client_name' => $row['client_name'] ?? null,
+                    'client_email' => $row['client_email'] ?? null,
+                    'client_feedback' => $row['client_feedback'] ?? null,
+                    'internal_notes' => 'Demo review link untuk walkthrough Client Review & Approval Portal.',
+                    'last_opened_at' => in_array($row['status'], ['approved', 'revision_requested'], true) ? AppTime::now()->copy()->subHours(8) : null,
+                    'opened_count' => in_array($row['status'], ['approved', 'revision_requested'], true) ? 2 : 0,
+                    'include_mom' => (bool) $row['include_mom'],
+                    'include_design_deliverables' => (bool) $row['include_design_deliverables'],
+                    'include_progress' => (bool) $row['include_progress'],
+                    'include_qc_summary' => (bool) $row['include_qc_summary'],
+                    'include_change_requests' => (bool) $row['include_change_requests'],
+                ],
+            );
+        }
     }
 
     /* ===================================================================

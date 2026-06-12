@@ -57,4 +57,9 @@ class Project extends Model
     {
         return $this->hasMany(ProjectChangeRequest::class);
     }
+
+    public function clientReviews(): HasMany
+    {
+        return $this->hasMany(ProjectClientReview::class);
+    }
 }

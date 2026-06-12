@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuditController;
 use App\Http\Controllers\AiMonitorController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\ClientReviewController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExecutiveController;
 use App\Http\Controllers\ClientController;
@@ -22,6 +23,12 @@ Route::redirect('/', '/login');
  */
 Route::get('/login', [LoginController::class, 'show'])->name('login');
 Route::post('/login', [LoginController::class, 'store'])->name('login.store');
+
+Route::get('/client-reviews/{token}', [ClientReviewController::class, 'show'])->name('client-reviews.show');
+Route::post('/client-reviews/{token}/approve', [ClientReviewController::class, 'approve'])->name('client-reviews.approve');
+Route::post('/client-reviews/{token}/revision', [ClientReviewController::class, 'requestRevision'])->name('client-reviews.revision');
+Route::get('/client-reviews/{token}/design-deliverables/{deliverable}/preview', [ClientReviewController::class, 'previewDesignDeliverable'])->name('client-reviews.design-deliverables.preview');
+Route::get('/client-reviews/{token}/design-deliverables/{deliverable}/download', [ClientReviewController::class, 'downloadDesignDeliverable'])->name('client-reviews.design-deliverables.download');
 
 Route::middleware('auth')->group(function () {
     /*
@@ -99,6 +106,8 @@ Route::middleware('auth')->group(function () {
     Route::put('/projects/{project}/change-requests/{changeRequest}', [ProjectController::class, 'updateChangeRequest'])->name('projects.change-requests.update');
     Route::patch('/projects/{project}/change-requests/{changeRequest}/transition', [ProjectController::class, 'transitionChangeRequest'])->name('projects.change-requests.transition');
     Route::post('/projects/{project}/change-requests/{changeRequest}/convert', [ProjectController::class, 'convertChangeRequest'])->name('projects.change-requests.convert');
+    Route::post('/projects/{project}/client-reviews', [ProjectController::class, 'storeClientReview'])->name('projects.client-reviews.store');
+    Route::patch('/projects/{project}/client-reviews/{clientReview}/status', [ProjectController::class, 'updateClientReviewStatus'])->name('projects.client-reviews.status');
     Route::post('/projects/{project}/qc', [ProjectController::class, 'storeQcTest'])->name('projects.qc.store');
     Route::patch('/projects/{project}/qc/{qc}', [ProjectController::class, 'updateQcTest'])->name('projects.qc.update');
     Route::put('/projects/{project}/qc/{qc}', [ProjectController::class, 'editQcTest'])->name('projects.qc.edit');
