@@ -11,8 +11,10 @@ use App\Models\ProjectClientReview;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
+use App\Models\ProjectSignoff;
 use App\Models\ProjectTask;
 use App\Models\ProjectTaskDesignDeliverable;
+use App\Models\ProjectUatItem;
 use App\Models\TeamAssignment;
 use App\Models\User;
 use App\Support\AppTime;
@@ -643,6 +645,7 @@ class AvatechDemoSeeder extends Seeder
         $this->seedQc($project, $modules, $tasks, $bp['qc'] ?? [], $users['adly'] ?? $lead);
         $this->seedChangeRequests($project, $users);
         $this->seedClientReviews($project, $users);
+        $this->seedUatAndSignoffs($project, $users);
 
         // keep stored progress in sync with hour-weighted "done" tasks
         // (runs after change requests so a converted CR task is counted)
@@ -1086,6 +1089,91 @@ class AvatechDemoSeeder extends Seeder
                     'include_progress' => (bool) $row['include_progress'],
                     'include_qc_summary' => (bool) $row['include_qc_summary'],
                     'include_change_requests' => (bool) $row['include_change_requests'],
+                ],
+            );
+        }
+    }
+
+    /**
+     * Formal UAT / Sign-off demo rows for milestone-gate walkthroughs.
+     * Kept intentionally small: one project with blockers, one completed gate.
+     *
+     * @param array<string, User> $users
+     */
+    private function seedUatAndSignoffs(Project $project, array $users): void
+    {
+        $tester = $users['adly'] ?? null;
+
+        $uatMap = [
+            'DM03' => [
+                ['title' => 'Validasi katalog course dan enrollment', 'category' => 'functional', 'priority' => 'high', 'status' => 'passed', 'notes' => 'Alur browse course, detail, dan enrollment sudah sesuai skenario utama.'],
+                ['title' => 'Validasi sertifikat dan wishlist learner', 'category' => 'functional', 'priority' => 'medium', 'status' => 'passed', 'notes' => 'Wishlist dan sertifikat demo dapat diakses oleh learner.'],
+                ['title' => 'Revisi copy dashboard customer support', 'category' => 'content', 'priority' => 'medium', 'status' => 'revision_needed', 'notes' => 'Client meminta wording status tiket dibuat lebih sederhana sebelum sign-off.'],
+            ],
+            'DM05' => [
+                ['title' => 'Validasi Project Master dan Project Detail', 'category' => 'functional', 'priority' => 'high', 'status' => 'passed', 'notes' => 'CRUD, akses detail, dan progress task-based sudah sesuai.'],
+                ['title' => 'Validasi AI MoM/WBS HITL', 'category' => 'functional', 'priority' => 'high', 'status' => 'passed', 'notes' => 'AI tetap preview-before-save dan metadata-only.'],
+                ['title' => 'Validasi Kanban, QC, Audit Trail, dan AI Monitor', 'category' => 'functional', 'priority' => 'high', 'status' => 'passed', 'notes' => 'Workflow internal siap dipakai untuk demo operasional.'],
+            ],
+        ];
+
+        foreach ($uatMap[$project->code] ?? [] as $index => $row) {
+            $tested = $row['status'] !== 'pending';
+            ProjectUatItem::updateOrCreate(
+                ['project_id' => $project->id, 'title' => $row['title']],
+                [
+                    'description' => 'Checklist UAT demo untuk gate formal approval project.',
+                    'category' => $row['category'],
+                    'priority' => $row['priority'],
+                    'status' => $row['status'],
+                    'tested_by_user_id' => $tested ? $tester?->id : null,
+                    'tested_at' => $tested ? AppTime::now()->copy()->subDays(max(1, 4 - $index)) : null,
+                    'notes' => $row['notes'],
+                    'evidence_url' => null,
+                    'sort_order' => $index + 1,
+                ],
+            );
+        }
+
+        if ($project->code !== 'DM05') {
+            return;
+        }
+
+        $project->forceFill([
+            'phase' => 'Done',
+            'status' => 'on-track',
+        ])->save();
+
+        $signedAt = AppTime::now()->copy()->subDay();
+        foreach ([
+            'uat' => [
+                'signed_by_name' => 'Ahmad Rafiadly Arlisyah',
+                'signed_by_email' => 'adly@avatech.demo',
+                'signed_by_role' => 'SA/QA Lead',
+                'notes' => 'Seluruh item UAT utama sudah lulus dan siap handover internal.',
+                'handover_summary' => null,
+            ],
+            'handover' => [
+                'signed_by_name' => 'Joshua Raphael',
+                'signed_by_email' => 'joshua@avatech.demo',
+                'signed_by_role' => 'CEO / PM',
+                'notes' => null,
+                'handover_summary' => 'Dokumentasi demo, akun, dan alur presentasi Smart-PMIS sudah disiapkan untuk final walkthrough.',
+            ],
+        ] as $type => $row) {
+            ProjectSignoff::updateOrCreate(
+                ['project_id' => $project->id, 'type' => $type],
+                [
+                    'status' => 'signed',
+                    'signed_by_name' => $row['signed_by_name'],
+                    'signed_by_email' => $row['signed_by_email'],
+                    'signed_by_role' => $row['signed_by_role'],
+                    'signed_at' => $signedAt,
+                    'client_review_id' => null,
+                    'notes' => $row['notes'],
+                    'handover_summary' => $row['handover_summary'],
+                    'created_by_user_id' => ($users['joshua'] ?? $tester)?->id,
+                    'approved_by_user_id' => ($users['joshua'] ?? $tester)?->id,
                 ],
             );
         }

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProjectClientReview extends Model
 {
@@ -55,6 +56,11 @@ class ProjectClientReview extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function signoffs(): HasMany
+    {
+        return $this->hasMany(ProjectSignoff::class, 'client_review_id');
     }
 
     public function isExpired(): bool

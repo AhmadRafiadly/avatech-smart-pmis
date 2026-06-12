@@ -108,6 +108,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{project}/change-requests/{changeRequest}/convert', [ProjectController::class, 'convertChangeRequest'])->name('projects.change-requests.convert');
     Route::post('/projects/{project}/client-reviews', [ProjectController::class, 'storeClientReview'])->name('projects.client-reviews.store');
     Route::patch('/projects/{project}/client-reviews/{clientReview}/status', [ProjectController::class, 'updateClientReviewStatus'])->name('projects.client-reviews.status');
+    Route::post('/projects/{project}/uat/generate', [ProjectController::class, 'generateUatChecklist'])->name('projects.uat.generate');
+    Route::post('/projects/{project}/uat-items', [ProjectController::class, 'storeUatItem'])->name('projects.uat-items.store');
+    Route::patch('/projects/{project}/uat-items/{uatItem}', [ProjectController::class, 'updateUatItem'])->name('projects.uat-items.update');
+    Route::post('/projects/{project}/signoffs', [ProjectController::class, 'storeSignoff'])->name('projects.signoffs.store');
+    Route::post('/projects/{project}/complete', [ProjectController::class, 'completeProject'])->name('projects.complete');
     Route::post('/projects/{project}/qc', [ProjectController::class, 'storeQcTest'])->name('projects.qc.store');
     Route::patch('/projects/{project}/qc/{qc}', [ProjectController::class, 'updateQcTest'])->name('projects.qc.update');
     Route::put('/projects/{project}/qc/{qc}', [ProjectController::class, 'editQcTest'])->name('projects.qc.edit');

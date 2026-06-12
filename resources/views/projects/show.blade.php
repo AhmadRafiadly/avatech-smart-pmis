@@ -513,7 +513,7 @@
 
     {{-- =============== TABS =============== --}}
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-2 mb-6">
-        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-2">
             @foreach ($tabs as $idx => $t)
                 <button
                     type="button"
@@ -2284,6 +2284,291 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
     </div>
 
+    {{-- =============== UAT & SIGN-OFF =============== --}}
+    @php
+        $uatRows = $uatItems ?? [];
+        $signoffRows = $signoffs ?? [];
+        $uatGate = $signoffGate ?? ['can_run_uat' => false, 'can_sign_uat' => false, 'can_sign_handover' => false, 'can_complete' => false, 'missing' => [], 'status_label' => 'QC belum siap'];
+        $uatCanManage = (bool) ($canManageUatSignoff ?? false);
+        $uatStatusBadge = [
+            'pending' => 'bg-amber-50 text-amber-700 border border-amber-100',
+            'passed' => 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+            'failed' => 'bg-rose-50 text-rose-700 border border-rose-100',
+            'blocked' => 'bg-slate-100 text-slate-700 border border-slate-200',
+            'revision_needed' => 'bg-violet-50 text-violet-700 border border-violet-100',
+        ];
+        $uatPriorityBadge = [
+            'low' => 'bg-slate-50 text-slate-600 border border-slate-100',
+            'medium' => 'bg-amber-50 text-amber-700 border border-amber-100',
+            'high' => 'bg-rose-50 text-rose-700 border border-rose-100',
+            'critical' => 'bg-rose-100 text-rose-800 border border-rose-200',
+        ];
+        $signoffBadge = [
+            'draft' => 'bg-slate-100 text-slate-600',
+            'ready' => 'bg-blue-100 text-blue-700',
+            'signed' => 'bg-emerald-100 text-emerald-700',
+            'revision_requested' => 'bg-amber-100 text-amber-700',
+            'revoked' => 'bg-rose-100 text-rose-700',
+        ];
+    @endphp
+    <div id="signoff" data-panel="signoff" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+        <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
+            <div class="flex items-center gap-3">
+                <span class="pd-section-bar"></span>
+                <div>
+                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">UAT & Sign-off</h3>
+                    <p class="text-[12px] text-slate-500 mt-0.5">Formal approval gate sebelum project ditandai selesai.</p>
+                </div>
+            </div>
+            <div class="text-[13px] text-slate-500 font-medium">
+                {{ $uatSummary['passed'] ?? 0 }}/{{ $uatSummary['total'] ?? 0 }} UAT lulus
+            </div>
+        </div>
+
+        <div class="p-6 md:p-7 space-y-5">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                <div class="rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-violet-500">Gate Status</div>
+                    <div class="mt-1 text-[20px] font-extrabold text-[#1E1B4B]">{{ $uatGate['status_label'] }}</div>
+                    <p class="mt-2 text-[11.5px] text-slate-500 leading-relaxed">UAT aktif setelah project masuk fase QC. Handover dicatat setelah UAT sign-off.</p>
+                </div>
+                <div class="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Lulus</div>
+                    <div class="mt-1 text-[24px] font-extrabold text-emerald-700">{{ $uatSummary['passed'] ?? 0 }}</div>
+                </div>
+                <div class="rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-amber-600">Open</div>
+                    <div class="mt-1 text-[24px] font-extrabold text-amber-700">{{ $uatSummary['open'] ?? 0 }}</div>
+                </div>
+                <div class="rounded-2xl border border-rose-100 bg-rose-50/40 p-4">
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-rose-600">Blocking</div>
+                    <div class="mt-1 text-[24px] font-extrabold text-rose-700">{{ $uatSummary['blocking'] ?? 0 }}</div>
+                </div>
+            </div>
+
+            @if (! empty($uatGate['missing']))
+                <div class="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-[12.5px] text-amber-800 leading-relaxed">
+                    <strong>Belum siap Done:</strong> {{ implode(', ', $uatGate['missing']) }}.
+                </div>
+            @endif
+
+            @if ($uatCanManage && ! $useReferenceProjectData)
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div class="rounded-2xl border border-violet-100 bg-violet-50/30 p-5">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h4 class="text-[14px] font-extrabold text-[#1E1B4B]">Generate Checklist UAT</h4>
+                                <p class="mt-1 text-[12px] text-slate-500 leading-relaxed">Membuat checklist dari modul yang sudah tersimpan. Aman dijalankan ulang, tidak membuat duplikat.</p>
+                            </div>
+                            <form method="POST" action="{{ route('projects.uat.generate', $project) }}">
+                                @csrf
+                                <button type="submit" @disabled(! ($uatGate['can_run_uat'] ?? false)) class="h-9 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed transition cursor-pointer">
+                                    Generate
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <details class="rounded-2xl border border-violet-100 bg-white p-5" @if ($errors->any() && old('_form') === 'uat_item') open @endif>
+                        <summary class="cursor-pointer select-none text-[13px] font-bold text-violet-700">Tambah Item UAT Manual</summary>
+                        <form method="POST" action="{{ route('projects.uat-items.store', $project) }}" class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+                            @csrf
+                            <input type="hidden" name="_form" value="uat_item">
+                            <div class="md:col-span-8">
+                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Judul</label>
+                                <input name="title" value="{{ old('_form') === 'uat_item' ? old('title') : '' }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                            </div>
+                            <div class="md:col-span-4">
+                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Prioritas</label>
+                                <select name="priority" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    @foreach ($uatPriorityOptions as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('priority', 'medium') === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="md:col-span-4">
+                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Kategori</label>
+                                <select name="category" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    @foreach ($uatCategoryOptions as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('category', 'functional') === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="md:col-span-8">
+                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Evidence URL</label>
+                                <input name="evidence_url" value="{{ old('_form') === 'uat_item' ? old('evidence_url') : '' }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="https://..." />
+                            </div>
+                            <div class="md:col-span-12">
+                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Deskripsi / Catatan</label>
+                                <textarea name="description" rows="2" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('_form') === 'uat_item' ? old('description') : '' }}</textarea>
+                            </div>
+                            <div class="md:col-span-12 flex justify-end">
+                                <button type="submit" @disabled(! ($uatGate['can_run_uat'] ?? false)) class="h-9 px-4 rounded-lg bg-violet-600 text-white text-[12.5px] font-semibold hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed transition cursor-pointer">Simpan Item</button>
+                            </div>
+                        </form>
+                    </details>
+                </div>
+            @endif
+
+            <div class="rounded-2xl border border-violet-100 overflow-hidden">
+                <div class="px-5 py-4 border-b border-violet-100 bg-violet-50/30 flex items-center justify-between">
+                    <h4 class="text-[14px] font-extrabold text-[#1E1B4B]">Checklist UAT</h4>
+                    <span class="text-[12px] text-slate-500">{{ count($uatRows) }} item</span>
+                </div>
+                <div class="divide-y divide-violet-100/60">
+                    @forelse ($uatRows as $item)
+                        <div class="p-5">
+                            <div class="flex items-start justify-between gap-4 flex-wrap">
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap mb-1.5">
+                                        <span class="text-[10px] font-bold text-violet-600">{{ $item['code'] }}</span>
+                                        <span class="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 {{ $uatStatusBadge[$item['status']] ?? $uatStatusBadge['pending'] }}">{{ $item['status_label'] }}</span>
+                                        <span class="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 {{ $uatPriorityBadge[$item['priority']] ?? $uatPriorityBadge['medium'] }}">{{ $item['priority_label'] }}</span>
+                                        <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-slate-50 text-slate-500">{{ $item['category_label'] }}</span>
+                                    </div>
+                                    <p class="text-[14px] font-bold text-[#1E1B4B] leading-snug">{{ $item['title'] }}</p>
+                                    @if ($item['description'])
+                                        <p class="mt-1 text-[12.5px] text-slate-500 leading-relaxed">{{ $item['description'] }}</p>
+                                    @endif
+                                    <div class="mt-2 flex flex-wrap gap-3 text-[11.5px] text-slate-400">
+                                        @if ($item['tester']) <span>Tester: <strong class="text-slate-600">{{ $item['tester'] }}</strong></span> @endif
+                                        @if ($item['tested_at']) <span>Tested: <strong class="text-slate-600">{{ $item['tested_at'] }}</strong></span> @endif
+                                        @if ($item['evidence_url']) <a href="{{ $item['evidence_url'] }}" target="_blank" rel="noopener" class="font-semibold text-violet-600 no-underline hover:text-violet-800">Evidence</a> @endif
+                                    </div>
+                                    @if ($item['notes'])
+                                        <p class="mt-2 text-[12px] text-slate-500 italic">{{ $item['notes'] }}</p>
+                                    @endif
+                                </div>
+
+                                @if ($uatCanManage && ! $useReferenceProjectData && ($uatGate['can_run_uat'] ?? false))
+                                    <form method="POST" action="{{ route('projects.uat-items.update', [$project, $item['id']]) }}" class="w-full lg:w-[460px] rounded-xl border border-violet-100 bg-violet-50/20 p-3 grid grid-cols-1 md:grid-cols-12 gap-2">
+                                        @csrf @method('PATCH')
+                                        <div class="md:col-span-4">
+                                            <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Status</label>
+                                            <select name="status" class="w-full h-8 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                @foreach ($uatStatusOptions as $value => $label)
+                                                    <option value="{{ $value }}" @selected($item['status'] === $value)>{{ $label }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="md:col-span-8">
+                                            <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Evidence URL</label>
+                                            <input name="evidence_url" value="{{ $item['evidence_url'] }}" class="w-full h-8 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                        </div>
+                                        <div class="md:col-span-12">
+                                            <label class="block text-[9.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan</label>
+                                            <textarea name="notes" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-2 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $item['notes'] }}</textarea>
+                                        </div>
+                                        <div class="md:col-span-12 flex justify-end">
+                                            <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Update UAT</button>
+                                        </div>
+                                    </form>
+                                @endif
+                            </div>
+                        </div>
+                    @empty
+                        <div class="px-5 py-10 text-center text-[13px] text-slate-400 leading-relaxed">
+                            Belum ada checklist UAT.
+                            @if ($uatCanManage && ! $useReferenceProjectData)
+                                Masuk fase QC lalu generate checklist dari modul project.
+                            @endif
+                        </div>
+                    @endforelse
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                @foreach (['uat' => 'Sign-off UAT', 'handover' => 'Sign-off Handover'] as $type => $label)
+                    @php
+                        $row = collect($signoffRows)->firstWhere('type', $type);
+                        $canSubmitSignoff = $type === 'uat' ? ($uatGate['can_sign_uat'] ?? false) : ($uatGate['can_sign_handover'] ?? false);
+                    @endphp
+                    <div class="rounded-2xl border border-violet-100 bg-white p-5">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h4 class="text-[14px] font-extrabold text-[#1E1B4B]">{{ $label }}</h4>
+                                @if ($row)
+                                    <span class="mt-1 inline-flex text-[10px] font-bold rounded-full px-2 py-0.5 {{ $signoffBadge[$row['status']] ?? 'bg-slate-100 text-slate-600' }}">{{ $row['status_label'] }}</span>
+                                @else
+                                    <p class="mt-1 text-[12px] text-slate-500">Belum dicatat.</p>
+                                @endif
+                            </div>
+                            @if ($row && $row['signed_at'])
+                                <div class="text-right text-[11.5px] text-slate-400">{{ $row['signed_at'] }}</div>
+                            @endif
+                        </div>
+
+                        @if ($row)
+                            <div class="mt-3 rounded-xl border border-violet-100 bg-violet-50/30 px-4 py-3 text-[12.5px] text-slate-600 leading-relaxed">
+                                <p><strong>Penandatangan:</strong> {{ $row['signed_by_name'] }}{{ $row['signed_by_role'] ? ' - ' . $row['signed_by_role'] : '' }}</p>
+                                @if ($row['client_review_title']) <p><strong>Bukti Client Review:</strong> {{ $row['client_review_title'] }}</p> @endif
+                                @if ($row['handover_summary']) <p class="mt-1 whitespace-pre-line"><strong>Handover:</strong> {{ $row['handover_summary'] }}</p> @endif
+                                @if ($row['notes']) <p class="mt-1 whitespace-pre-line"><strong>Catatan:</strong> {{ $row['notes'] }}</p> @endif
+                            </div>
+                        @endif
+
+                        @if ($uatCanManage && ! $useReferenceProjectData)
+                            <form method="POST" action="{{ route('projects.signoffs.store', $project) }}" class="mt-4 space-y-3">
+                                @csrf
+                                <input type="hidden" name="type" value="{{ $type }}">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Nama</label>
+                                        <input name="signed_by_name" value="{{ old('type') === $type ? old('signed_by_name') : ($row['signed_by_name'] ?? '') }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Email</label>
+                                        <input name="signed_by_email" type="email" value="{{ old('type') === $type ? old('signed_by_email') : ($row['signed_by_email'] ?? '') }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Role</label>
+                                        <input name="signed_by_role" value="{{ old('type') === $type ? old('signed_by_role') : ($row['signed_by_role'] ?? '') }}" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="PIC Client / PM">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Bukti Client Review</label>
+                                        <select name="client_review_id" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                            <option value="">Tanpa link review</option>
+                                            @foreach ($approvedClientReviews as $approved)
+                                                <option value="{{ $approved['id'] }}">{{ $approved['title'] }}{{ $approved['approved_at'] ? ' - ' . $approved['approved_at'] : '' }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">{{ $type === 'handover' ? 'Ringkasan Handover' : 'Catatan' }}</label>
+                                    <textarea name="{{ $type === 'handover' ? 'handover_summary' : 'notes' }}" rows="2" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('type') === $type ? old($type === 'handover' ? 'handover_summary' : 'notes') : ($type === 'handover' ? ($row['handover_summary'] ?? '') : ($row['notes'] ?? '')) }}</textarea>
+                                </div>
+                                <div class="flex items-center justify-between gap-3">
+                                    @unless ($canSubmitSignoff)
+                                        <p class="text-[11.5px] text-amber-700">Belum memenuhi gate untuk {{ strtolower($label) }}.</p>
+                                    @endunless
+                                    <button type="submit" @disabled(! $canSubmitSignoff) class="ml-auto h-9 px-4 rounded-lg bg-[#1E1B4B] text-white text-[12.5px] font-semibold hover:bg-violet-900 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed transition cursor-pointer">
+                                        Catat {{ $label }}
+                                    </button>
+                                </div>
+                            </form>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+
+            <div class="rounded-2xl border border-violet-100 bg-violet-50/30 p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h4 class="text-[14px] font-extrabold text-[#1E1B4B]">Final Gate: Project Done</h4>
+                    <p class="mt-1 text-[12px] text-slate-500 leading-relaxed">Project dapat ditandai Done setelah UAT lulus, sign-off UAT tercatat, dan handover selesai.</p>
+                </div>
+                @if ($uatCanManage && ! $useReferenceProjectData)
+                    <form method="POST" action="{{ route('projects.complete', $project) }}" onsubmit="return confirm('Tandai project ini sebagai Done?');">
+                        @csrf
+                        <button type="submit" @disabled(! ($uatGate['can_complete'] ?? false)) class="h-10 px-4 rounded-xl bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed transition cursor-pointer">
+                            Tandai Project Done
+                        </button>
+                    </form>
+                @endif
+            </div>
+        </div>
+    </div>
+
     {{-- =============== CLIENT REVIEW PORTAL =============== --}}
     @php
         $reviewRows = $clientReviews ?? [];
@@ -2879,7 +3164,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
 
                 /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc', 'scope', 'clientportal'];
+                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc', 'signoff', 'scope', 'clientportal'];
                 const setHash = (id) => {
                     if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
                 };

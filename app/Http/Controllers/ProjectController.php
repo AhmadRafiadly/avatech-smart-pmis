@@ -10,8 +10,10 @@ use App\Models\ProjectClientReview;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
+use App\Models\ProjectSignoff;
 use App\Models\ProjectTask;
 use App\Models\ProjectTaskDesignDeliverable;
+use App\Models\ProjectUatItem;
 use App\Models\TeamAssignment;
 use App\Models\User;
 use App\Services\AiPlanner;
@@ -160,6 +162,48 @@ class ProjectController extends Controller
         'uat' => 'UAT',
         'handover' => 'Handover',
         'general' => 'General',
+    ];
+
+    private const UAT_MANAGER_ROLES = ['ceo_pm', 'sa_qa', 'admin', 'super_admin', 'developer'];
+
+    private const UAT_CATEGORY_LABELS = [
+        'functional' => 'Functional',
+        'content' => 'Content',
+        'design' => 'Design',
+        'performance' => 'Performance',
+        'security' => 'Security',
+        'integration' => 'Integration',
+        'deployment' => 'Deployment',
+        'other' => 'Other',
+    ];
+
+    private const UAT_PRIORITY_LABELS = [
+        'low' => 'Low',
+        'medium' => 'Medium',
+        'high' => 'High',
+        'critical' => 'Critical',
+    ];
+
+    private const UAT_STATUS_LABELS = [
+        'pending' => 'Pending',
+        'passed' => 'Lulus',
+        'failed' => 'Gagal',
+        'blocked' => 'Tertahan',
+        'revision_needed' => 'Butuh Revisi',
+    ];
+
+    private const SIGNOFF_TYPE_LABELS = [
+        'uat' => 'Sign-off UAT',
+        'handover' => 'Sign-off Handover',
+        'final' => 'Final Sign-off',
+    ];
+
+    private const SIGNOFF_STATUS_LABELS = [
+        'draft' => 'Draft',
+        'ready' => 'Ready',
+        'signed' => 'Signed',
+        'revision_requested' => 'Minta Revisi',
+        'revoked' => 'Dicabut',
     ];
 
     public function __construct(private readonly SmartInsightService $insights)
@@ -374,6 +418,8 @@ class ProjectController extends Controller
                 'createdTask:id,title',
             ])->orderByDesc('created_at')->orderByDesc('id'),
             'clientReviews' => fn ($query) => $query->with('creator:id,name')->orderByDesc('created_at')->orderByDesc('id'),
+            'uatItems' => fn ($query) => $query->with('tester:id,name')->orderBy('sort_order')->orderBy('id'),
+            'signoffs' => fn ($query) => $query->with(['creator:id,name', 'approver:id,name', 'clientReview:id,title,status'])->orderBy('type')->orderByDesc('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -434,6 +480,16 @@ class ProjectController extends Controller
             'clientReviewTypes'  => self::CLIENT_REVIEW_TYPE_LABELS,
             'clientReviewStatuses' => self::CLIENT_REVIEW_STATUS_LABELS,
             'canManageClientReviews' => $this->canManageClientReviews($project),
+            'uatItems' => $this->projectUatItemRows($project),
+            'signoffs' => $this->projectSignoffRows($project),
+            'uatSummary' => $this->projectUatSummary($project),
+            'signoffGate' => $this->projectSignoffGate($project),
+            'approvedClientReviews' => $this->approvedClientReviewOptions($project),
+            'canManageUatSignoff' => $this->canManageUatSignoff($project),
+            'uatCategoryOptions' => self::UAT_CATEGORY_LABELS,
+            'uatPriorityOptions' => self::UAT_PRIORITY_LABELS,
+            'uatStatusOptions' => self::UAT_STATUS_LABELS,
+            'signoffTypeOptions' => self::SIGNOFF_TYPE_LABELS,
         ]);
     }
 
@@ -629,6 +685,219 @@ class ProjectController extends Controller
         return redirect()
             ->to(route('projects.show', $project) . '#clientportal')
             ->with('status', $validated['status'] === 'active' ? 'Client Review Link diaktifkan.' : 'Client Review Link dicabut.');
+    }
+
+    public function generateUatChecklist(Project $project)
+    {
+        $this->ensureCanManageUatSignoff($project);
+        if (! $this->canRunUat($project)) {
+            return $this->backToSignoff($project, 'UAT aktif setelah project masuk fase QC.');
+        }
+
+        $project->loadMissing('modules.tasks', 'tasks');
+        $created = 0;
+
+        $modules = $project->modules->isNotEmpty()
+            ? $project->modules
+            : collect([(object) ['title' => 'Scope Project', 'description' => $project->description]]);
+
+        foreach ($modules as $index => $module) {
+            $title = 'Validasi modul ' . $module->title;
+            $item = ProjectUatItem::firstOrNew([
+                'project_id' => $project->id,
+                'title' => $title,
+            ]);
+
+            if (! $item->exists) {
+                $created++;
+            }
+
+            $category = $this->inferUatCategory($module->title . ' ' . (string) ($module->description ?? ''));
+            $item->fill([
+                'description' => 'Pastikan modul "' . $module->title . '" berjalan sesuai scope, MoM, dan hasil QC.',
+                'category' => $category,
+                'priority' => in_array($category, ['security', 'integration', 'deployment'], true) ? 'high' : 'medium',
+                'status' => $item->status ?: 'pending',
+                'sort_order' => $index + 1,
+            ])->save();
+        }
+
+        if ($created > 0) {
+            AuditLogger::log(
+                'uat_checklist_generated',
+                'UAT & Sign-off',
+                'Generate checklist UAT untuk proyek <strong>' . e($project->name) . '</strong>',
+                $project,
+                null,
+                ['project_id' => $project->id, 'created' => $created],
+            );
+        }
+
+        return $this->backToSignoff($project, $created > 0
+            ? 'Checklist UAT berhasil dibuat: ' . $created . ' item baru.'
+            : 'Checklist UAT sudah tersedia. Tidak ada item duplikat dibuat.');
+    }
+
+    public function storeUatItem(Request $request, Project $project)
+    {
+        $this->ensureCanManageUatSignoff($project);
+        if (! $this->canRunUat($project)) {
+            return $this->backToSignoff($project, 'UAT aktif setelah project masuk fase QC.');
+        }
+
+        $validated = $this->validateUatItem($request, $project);
+
+        $item = $project->uatItems()->create([
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'category' => $validated['category'] ?? 'functional',
+            'priority' => $validated['priority'] ?? 'medium',
+            'status' => 'pending',
+            'evidence_url' => $validated['evidence_url'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+            'sort_order' => ((int) $project->uatItems()->max('sort_order')) + 1,
+        ]);
+
+        AuditLogger::log(
+            'uat_item_created',
+            'UAT & Sign-off',
+            'Menambah item UAT <strong>' . e($item->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $item,
+            null,
+            ['project_id' => $project->id, 'status' => $item->status],
+        );
+
+        return $this->backToSignoff($project, 'Item UAT berhasil ditambahkan.');
+    }
+
+    public function updateUatItem(Request $request, Project $project, ProjectUatItem $uatItem)
+    {
+        $this->ensureCanManageUatSignoff($project);
+        abort_unless((int) $uatItem->project_id === (int) $project->id, 404);
+
+        if (! $this->canRunUat($project)) {
+            return $this->backToSignoff($project, 'UAT aktif setelah project masuk fase QC.');
+        }
+
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(ProjectUatItem::STATUSES)],
+            'notes' => ['nullable', 'string', 'max:4000'],
+            'evidence_url' => ['nullable', 'url', 'max:2048'],
+        ], [
+            'status.required' => 'Status UAT wajib dipilih.',
+            'status.in' => 'Status UAT tidak valid.',
+            'evidence_url.url' => 'Evidence URL harus berupa URL valid.',
+        ]);
+
+        $original = $uatItem->getOriginal();
+        $uatItem->fill([
+            'status' => $validated['status'],
+            'notes' => $validated['notes'] ?? $uatItem->notes,
+            'evidence_url' => $validated['evidence_url'] ?? $uatItem->evidence_url,
+            'tested_by_user_id' => auth()->id(),
+            'tested_at' => $validated['status'] !== 'pending' ? AppTime::now() : null,
+        ])->save();
+
+        AuditLogger::log(
+            'uat_item_status_updated',
+            'UAT & Sign-off',
+            'Mengubah status UAT <strong>' . e($uatItem->title) . '</strong> menjadi <strong>' . e(self::UAT_STATUS_LABELS[$uatItem->status] ?? $uatItem->status) . '</strong>',
+            $uatItem,
+            ['status' => $original['status'] ?? null],
+            ['status' => $uatItem->status, 'project_id' => $project->id],
+        );
+
+        return $this->backToSignoff($project, 'Status UAT berhasil diperbarui.');
+    }
+
+    public function storeSignoff(Request $request, Project $project)
+    {
+        $this->ensureCanManageUatSignoff($project);
+        if (! $this->canRunUat($project)) {
+            return $this->backToSignoff($project, 'Sign-off aktif setelah project masuk fase QC.');
+        }
+
+        $validated = $request->validate([
+            'type' => ['required', Rule::in(['uat', 'handover'])],
+            'signed_by_name' => ['required', 'string', 'max:160'],
+            'signed_by_email' => ['nullable', 'email', 'max:190'],
+            'signed_by_role' => ['nullable', 'string', 'max:120'],
+            'client_review_id' => ['nullable', Rule::exists('project_client_reviews', 'id')->where('project_id', $project->id)->where('status', 'approved')],
+            'notes' => ['nullable', 'string', 'max:4000'],
+            'handover_summary' => ['nullable', 'string', 'max:4000'],
+        ], [
+            'type.required' => 'Tipe sign-off wajib dipilih.',
+            'signed_by_name.required' => 'Nama penandatangan wajib diisi.',
+            'client_review_id.exists' => 'Client Review approval tidak valid untuk proyek ini.',
+        ]);
+
+        $gate = $this->projectSignoffGate($project->fresh(['uatItems', 'signoffs']));
+        if ($validated['type'] === 'uat' && ! $gate['can_sign_uat']) {
+            return $this->backToSignoff($project, 'Sign-off UAT belum bisa dicatat: ' . implode(', ', $gate['missing']));
+        }
+        if ($validated['type'] === 'handover' && ! $gate['can_sign_handover']) {
+            return $this->backToSignoff($project, 'Sign-off Handover belum bisa dicatat: ' . implode(', ', $gate['missing']));
+        }
+
+        $signoff = ProjectSignoff::updateOrCreate(
+            ['project_id' => $project->id, 'type' => $validated['type']],
+            [
+                'status' => 'signed',
+                'signed_by_name' => $validated['signed_by_name'],
+                'signed_by_email' => $validated['signed_by_email'] ?? null,
+                'signed_by_role' => $validated['signed_by_role'] ?? null,
+                'signed_at' => AppTime::now(),
+                'client_review_id' => $validated['client_review_id'] ?? null,
+                'notes' => $validated['notes'] ?? null,
+                'handover_summary' => $validated['handover_summary'] ?? null,
+                'created_by_user_id' => auth()->id(),
+                'approved_by_user_id' => auth()->id(),
+            ],
+        );
+
+        AuditLogger::log(
+            $validated['type'] === 'uat' ? 'uat_signoff_recorded' : 'handover_signoff_recorded',
+            'UAT & Sign-off',
+            (self::SIGNOFF_TYPE_LABELS[$validated['type']] ?? 'Sign-off') . ' dicatat untuk proyek <strong>' . e($project->name) . '</strong>',
+            $signoff,
+            null,
+            ['project_id' => $project->id, 'type' => $validated['type'], 'client_review_id' => $signoff->client_review_id],
+        );
+
+        return $this->backToSignoff($project, (self::SIGNOFF_TYPE_LABELS[$validated['type']] ?? 'Sign-off') . ' berhasil dicatat.');
+    }
+
+    public function completeProject(Project $project)
+    {
+        $this->ensureCanManageUatSignoff($project);
+        if ($this->phaseKey((string) $project->phase) === 'done') {
+            return $this->backToSignoff($project, 'Project sudah berada pada fase Done.');
+        }
+
+        $project->loadMissing('uatItems', 'signoffs');
+        $gate = $this->projectSignoffGate($project);
+
+        if (! $gate['can_complete']) {
+            return $this->backToSignoff($project, 'Project belum dapat diselesaikan: ' . implode(', ', $gate['missing']));
+        }
+
+        $before = ['phase' => $project->phase, 'status' => $project->status, 'progress' => $project->progress];
+        $project->forceFill([
+            'phase' => 'Done',
+            'status' => 'on-track',
+            'progress' => $this->projectProgress($project),
+        ])->save();
+
+        AuditLogger::log(
+            'project_marked_done',
+            'UAT & Sign-off',
+            'Menyelesaikan proyek <strong>' . e($project->name) . '</strong> setelah UAT dan handover disetujui',
+            $project,
+            $before,
+            ['phase' => $project->phase, 'status' => $project->status, 'progress' => $project->progress],
+        );
+
+        return $this->backToSignoff($project, 'Project berhasil ditandai Done.');
     }
 
     public function storeModule(Request $request, Project $project)
@@ -3024,6 +3293,220 @@ class ProjectController extends Controller
         abort_unless(in_array($this->currentRoleName(), self::CLIENT_REVIEW_MANAGER_ROLES, true), 403);
     }
 
+    private function canManageUatSignoff(Project $project): bool
+    {
+        if ($this->ensureOperationalCanAccessProject($project)) {
+            return false;
+        }
+
+        return in_array($this->currentRoleName(), self::UAT_MANAGER_ROLES, true);
+    }
+
+    private function ensureCanManageUatSignoff(Project $project): void
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            abort(403);
+        }
+
+        abort_unless(in_array($this->currentRoleName(), self::UAT_MANAGER_ROLES, true), 403);
+    }
+
+    private function canRunUat(Project $project): bool
+    {
+        return in_array($this->phaseKey((string) $project->phase), ['qc', 'done'], true);
+    }
+
+    private function backToSignoff(Project $project, string $status)
+    {
+        return redirect()
+            ->to(route('projects.show', $project) . '#signoff')
+            ->with('status', $status);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validateUatItem(Request $request, Project $project): array
+    {
+        return $request->validate([
+            'title' => [
+                'required',
+                'string',
+                'max:180',
+                Rule::unique('project_uat_items', 'title')->where('project_id', $project->id),
+            ],
+            'description' => ['nullable', 'string', 'max:4000'],
+            'category' => ['nullable', Rule::in(ProjectUatItem::CATEGORIES)],
+            'priority' => ['nullable', Rule::in(ProjectUatItem::PRIORITIES)],
+            'evidence_url' => ['nullable', 'url', 'max:2048'],
+            'notes' => ['nullable', 'string', 'max:4000'],
+        ], [
+            'title.required' => 'Judul item UAT wajib diisi.',
+            'title.unique' => 'Item UAT dengan judul tersebut sudah ada pada proyek ini.',
+            'category.in' => 'Kategori UAT tidak valid.',
+            'priority.in' => 'Prioritas UAT tidak valid.',
+            'evidence_url.url' => 'Evidence URL harus berupa URL valid.',
+        ]);
+    }
+
+    private function inferUatCategory(string $text): string
+    {
+        $normalized = mb_strtolower($text);
+
+        return match (true) {
+            str_contains($normalized, 'auth') || str_contains($normalized, 'login') || str_contains($normalized, 'password') || str_contains($normalized, 'security') || str_contains($normalized, 'akses') => 'security',
+            str_contains($normalized, 'api') || str_contains($normalized, 'integrasi') || str_contains($normalized, 'integration') || str_contains($normalized, 'webhook') || str_contains($normalized, 'payment') => 'integration',
+            str_contains($normalized, 'mockup') || str_contains($normalized, 'design') || str_contains($normalized, 'desain') || str_contains($normalized, 'ui/ux') || str_contains($normalized, 'figma') => 'design',
+            str_contains($normalized, 'content') || str_contains($normalized, 'konten') || str_contains($normalized, 'copywriting') || str_contains($normalized, 'artikel') => 'content',
+            str_contains($normalized, 'deploy') || str_contains($normalized, 'hosting') || str_contains($normalized, 'domain') || str_contains($normalized, 'server') => 'deployment',
+            str_contains($normalized, 'performa') || str_contains($normalized, 'performance') || str_contains($normalized, 'loading') || str_contains($normalized, 'speed') => 'performance',
+            default => 'functional',
+        };
+    }
+
+    private function projectUatItemRows(Project $project): array
+    {
+        $col = $project->relationLoaded('uatItems')
+            ? $project->uatItems
+            : $project->uatItems()->with('tester:id,name')->orderBy('sort_order')->orderBy('id')->get();
+
+        return $col->map(function (ProjectUatItem $item) {
+            return [
+                'id' => $item->id,
+                'code' => 'UAT-' . str_pad((string) $item->id, 4, '0', STR_PAD_LEFT),
+                'title' => $item->title,
+                'description' => $item->description,
+                'category' => $item->category ?: 'functional',
+                'category_label' => self::UAT_CATEGORY_LABELS[$item->category ?: 'functional'] ?? ($item->category ?: 'Functional'),
+                'priority' => $item->priority ?: 'medium',
+                'priority_label' => self::UAT_PRIORITY_LABELS[$item->priority ?: 'medium'] ?? ($item->priority ?: 'Medium'),
+                'status' => $item->status ?: 'pending',
+                'status_label' => self::UAT_STATUS_LABELS[$item->status ?: 'pending'] ?? ($item->status ?: 'Pending'),
+                'notes' => $item->notes,
+                'evidence_url' => $item->evidence_url,
+                'tester' => $item->tester?->name,
+                'tested_at' => $item->tested_at ? AppTime::cast($item->tested_at)?->format('d M Y H:i') : null,
+            ];
+        })->all();
+    }
+
+    private function projectUatSummary(Project $project): array
+    {
+        $col = $project->relationLoaded('uatItems') ? $project->uatItems : $project->uatItems()->get(['status', 'priority']);
+        $by = $col->countBy('status');
+        $blockingStatuses = ['failed', 'blocked', 'revision_needed'];
+
+        return [
+            'total' => (int) $col->count(),
+            'pending' => (int) ($by['pending'] ?? 0),
+            'passed' => (int) ($by['passed'] ?? 0),
+            'failed' => (int) ($by['failed'] ?? 0),
+            'blocked' => (int) ($by['blocked'] ?? 0),
+            'revision_needed' => (int) ($by['revision_needed'] ?? 0),
+            'blocking' => (int) $col->whereIn('status', $blockingStatuses)->count(),
+            'open' => (int) $col->where('status', '!=', 'passed')->count(),
+            'high_open' => (int) $col
+                ->whereIn('priority', ['high', 'critical'])
+                ->whereIn('status', ['pending', 'failed', 'blocked', 'revision_needed'])
+                ->count(),
+            'all_passed' => $col->isNotEmpty() && $col->every(fn (ProjectUatItem $item) => $item->status === 'passed'),
+        ];
+    }
+
+    private function projectSignoffRows(Project $project): array
+    {
+        $col = $project->relationLoaded('signoffs')
+            ? $project->signoffs
+            : $project->signoffs()->with(['creator:id,name', 'approver:id,name', 'clientReview:id,title,status'])->orderBy('type')->orderByDesc('id')->get();
+
+        return $col->map(function (ProjectSignoff $signoff) {
+            return [
+                'id' => $signoff->id,
+                'type' => $signoff->type,
+                'type_label' => self::SIGNOFF_TYPE_LABELS[$signoff->type] ?? $signoff->type,
+                'status' => $signoff->status,
+                'status_label' => self::SIGNOFF_STATUS_LABELS[$signoff->status] ?? $signoff->status,
+                'signed_by_name' => $signoff->signed_by_name,
+                'signed_by_email' => $signoff->signed_by_email,
+                'signed_by_role' => $signoff->signed_by_role,
+                'signed_at' => $signoff->signed_at ? AppTime::cast($signoff->signed_at)?->format('d M Y H:i') : null,
+                'notes' => $signoff->notes,
+                'handover_summary' => $signoff->handover_summary,
+                'client_review_title' => $signoff->clientReview?->title,
+                'created_by' => $signoff->creator?->name,
+            ];
+        })->all();
+    }
+
+    private function approvedClientReviewOptions(Project $project): array
+    {
+        $col = $project->relationLoaded('clientReviews')
+            ? $project->clientReviews
+            : $project->clientReviews()->where('status', 'approved')->orderByDesc('approved_at')->get();
+
+        return $col
+            ->where('status', 'approved')
+            ->map(fn (ProjectClientReview $review) => [
+                'id' => $review->id,
+                'title' => $review->title,
+                'approved_at' => $review->approved_at ? AppTime::cast($review->approved_at)?->format('d M Y H:i') : null,
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function projectSignoffGate(Project $project): array
+    {
+        $project->loadMissing('uatItems', 'signoffs');
+
+        $summary = $this->projectUatSummary($project);
+        $canRun = $this->canRunUat($project);
+        $uatSigned = $project->signoffs->contains(fn (ProjectSignoff $signoff) => $signoff->type === 'uat' && $signoff->status === 'signed');
+        $handoverSigned = $project->signoffs->contains(fn (ProjectSignoff $signoff) => $signoff->type === 'handover' && $signoff->status === 'signed');
+
+        $missing = [];
+        if (! $canRun) {
+            $missing[] = 'project belum masuk fase QC';
+        }
+        if ($summary['total'] === 0) {
+            $missing[] = 'checklist UAT belum tersedia';
+        }
+        if ($summary['blocking'] > 0) {
+            $missing[] = 'masih ada UAT gagal/tertahan/revisi';
+        }
+        if ($summary['open'] > 0) {
+            $missing[] = 'belum semua UAT lulus';
+        }
+
+        $canSignUat = $canRun && $summary['total'] > 0 && $summary['blocking'] === 0 && $summary['open'] === 0;
+        $canSignHandover = $uatSigned;
+
+        if (! $uatSigned) {
+            $missing[] = 'sign-off UAT belum dicatat';
+        }
+        if (! $handoverSigned) {
+            $missing[] = 'handover belum dicatat';
+        }
+
+        $canComplete = $canSignUat && $uatSigned && $handoverSigned;
+        $statusLabel = match (true) {
+            ! $canRun => 'QC belum siap',
+            $summary['total'] === 0 || $summary['blocking'] > 0 || $summary['open'] > 0 => 'UAT berjalan',
+            ! $uatSigned => 'Menunggu sign-off UAT',
+            ! $handoverSigned => 'Menunggu handover',
+            default => 'Siap Done',
+        };
+
+        return [
+            'can_run_uat' => $canRun,
+            'can_sign_uat' => $canSignUat,
+            'can_sign_handover' => $canSignHandover,
+            'can_complete' => $canComplete,
+            'missing' => array_values(array_unique($missing)),
+            'status_label' => $statusLabel,
+        ];
+    }
+
     private function generateClientReviewToken(): string
     {
         do {
@@ -3175,6 +3658,7 @@ class ProjectController extends Controller
         $taskTotal = $project->relationLoaded('tasks') ? $project->tasks->count() : $project->tasks()->count();
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
         $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
+        $uatTotal = $project->relationLoaded('uatItems') ? $project->uatItems->count() : $project->uatItems()->count();
         $crTotal = $project->relationLoaded('changeRequests') ? $project->changeRequests->count() : $project->changeRequests()->count();
         $reviewTotal = $project->relationLoaded('clientReviews') ? $project->clientReviews->count() : $project->clientReviews()->count();
 
@@ -3183,6 +3667,7 @@ class ProjectController extends Controller
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $taskTotal],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
+            ['id' => 'signoff',    'label' => 'UAT & Sign-off',   'count' => $uatTotal],
             ['id' => 'scope',      'label' => 'Scope Control',    'count' => $crTotal],
             ['id' => 'clientportal', 'label' => 'Client Portal',   'count' => $reviewTotal],
         ];

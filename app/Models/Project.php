@@ -62,4 +62,14 @@ class Project extends Model
     {
         return $this->hasMany(ProjectClientReview::class);
     }
+
+    public function uatItems(): HasMany
+    {
+        return $this->hasMany(ProjectUatItem::class);
+    }
+
+    public function signoffs(): HasMany
+    {
+        return $this->hasMany(ProjectSignoff::class);
+    }
 }
