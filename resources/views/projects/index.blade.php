@@ -8,8 +8,8 @@
         ['id' => 'all',      'label' => 'Semua'],
         ['id' => 'planning', 'label' => 'Planning'],
         ['id' => 'design',   'label' => 'Design'],
-        ['id' => 'dev',      'label' => 'Development'],
-        ['id' => 'qa',       'label' => 'QA'],
+        ['id' => 'development', 'label' => 'Development'],
+        ['id' => 'qc',          'label' => 'QC'],
         ['id' => 'done',     'label' => 'Done'],
     ];
 
@@ -17,11 +17,11 @@
 
     $filterCounts = [
         'all'      => count($projects),
-        'planning' => $col->where('phase_key', 'planning')->count(),
-        'design'   => $col->where('phase_key', 'design')->count(),
-        'dev'      => $col->where('phase_key', 'dev')->count(),
-        'qa'       => $col->where('phase_key', 'qa')->count(),
-        'done'     => $col->where('phase_key', 'done')->count(),
+        'planning'    => $col->where('phase_key', 'planning')->count(),
+        'design'      => $col->where('phase_key', 'design')->count(),
+        'development' => $col->where('phase_key', 'development')->count(),
+        'qc'          => $col->where('phase_key', 'qc')->count(),
+        'done'        => $col->where('phase_key', 'done')->count(),
     ];
 
     $stats = [

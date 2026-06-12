@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Client;
 use App\Models\AuditLog;
 use App\Models\Project;
+use App\Models\ProjectChangeRequest;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
@@ -97,6 +98,46 @@ class ProjectController extends Controller
         'fullstack_dev' => 'Fullstack Dev',
         'wordpress_support' => 'WordPress Support',
         'copywriting_support' => 'Copywriting Support',
+    ];
+
+    /* ---- Change Request / Scope Control ---------------------------------
+     * Scope decisions (classify/approve/reject/convert) are limited to PM/SA
+     * and admin-tier. Operational roles (dev/ui-ux) may file & submit internal
+     * change requests but cannot make scope decisions. Enforced server-side. */
+    private const CR_DECISION_ROLES = ['ceo_pm', 'sa_qa', 'admin', 'super_admin', 'developer'];
+
+    private const CR_SOURCE_LABELS = [
+        'whatsapp'    => 'WhatsApp',
+        'meeting'     => 'Meeting',
+        'client_call' => 'Telepon Klien',
+        'internal'    => 'Internal',
+        'email'       => 'Email',
+        'other'       => 'Lainnya',
+    ];
+
+    private const CR_TYPE_LABELS = [
+        'new_scope'            => 'Scope Baru',
+        'revision'             => 'Revisi',
+        'bug'                  => 'Bug',
+        'content_update'       => 'Update Konten',
+        'design_change'        => 'Perubahan Desain',
+        'technical_adjustment' => 'Penyesuaian Teknis',
+        'other'                => 'Lainnya',
+    ];
+
+    private const CR_PRIORITY_LABELS = [
+        'low'    => 'Low',
+        'medium' => 'Medium',
+        'high'   => 'High',
+        'urgent' => 'Urgent',
+    ];
+
+    private const CR_STATUS_LABELS = [
+        'draft'        => 'Draft',
+        'needs_review' => 'Perlu Review',
+        'approved'     => 'Disetujui',
+        'rejected'     => 'Ditolak',
+        'converted'    => 'Jadi Task',
     ];
 
     public function __construct(private readonly SmartInsightService $insights)
@@ -304,6 +345,12 @@ class ProjectController extends Controller
             'qcTests' => fn ($query) => $query->with(['module:id,title', 'task:id,title', 'creator:id,name'])
                 ->orderBy('created_at')
                 ->orderBy('id'),
+            'changeRequests' => fn ($query) => $query->with([
+                'requester:id,name',
+                'approver:id,name',
+                'affectedModule:id,title',
+                'createdTask:id,title',
+            ])->orderByDesc('created_at')->orderByDesc('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -352,6 +399,14 @@ class ProjectController extends Controller
             'taskPriorityOptions' => self::TASK_PRIORITY_LABELS,
             'assigneeOptions' => $this->projectAssignedUsers($project),
             'quickAssignUsers' => $this->canQuickAssignTeam() ? $this->quickAssignUserRows($project) : [],
+            'dbChangeRequests'   => $this->projectChangeRequestRows($project),
+            'changeRequestSummary' => $this->projectChangeRequestSummary($project),
+            'crSourceOptions'    => self::CR_SOURCE_LABELS,
+            'crTypeOptions'      => self::CR_TYPE_LABELS,
+            'crPriorityOptions'  => self::CR_PRIORITY_LABELS,
+            'crStatusOptions'    => self::CR_STATUS_LABELS,
+            'crCanContribute'    => $this->crCanContribute($project),
+            'crCanDecide'        => $this->crCanDecide(),
         ]);
     }
 
@@ -1856,6 +1911,279 @@ class ProjectController extends Controller
             ->with('status', 'Test case "' . $title . '" berhasil dihapus.');
     }
 
+    /* ===================== Change Request / Scope Control ===================== */
+
+    /**
+     * Create a change request. Anyone with project access may file one
+     * (operational users record internal notes); it always starts as draft.
+     */
+    public function storeChangeRequest(Request $request, Project $project)
+    {
+        if ($redirect = $this->ensureCanAccessChangeRequests($project)) {
+            return $redirect;
+        }
+        abort_unless($this->crCanContribute($project), 403);
+
+        $validated = $this->validateChangeRequest($request, $project);
+
+        $cr = $project->changeRequests()->create([
+            'requested_by_user_id' => $request->user()?->id,
+            'title'                => $validated['title'],
+            'description'          => $validated['description'] ?? null,
+            'source'               => $validated['source'] ?? null,
+            'type'                 => $validated['type'] ?? null,
+            'priority'             => $validated['priority'] ?? null,
+            'status'               => 'draft',
+            'affected_module_id'   => $validated['affected_module_id'] ?? null,
+            'estimated_hours'      => $validated['estimated_hours'] ?? null,
+            'timeline_impact_days' => $validated['timeline_impact_days'] ?? null,
+            'impact_summary'       => $validated['impact_summary'] ?? null,
+        ]);
+
+        AuditLogger::log(
+            'change_request_created',
+            'Project Master',
+            'Menambah Change Request <strong>' . e($cr->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $cr,
+            null,
+            ['project_id' => $project->id, 'change_request_id' => $cr->id, 'status' => $cr->status],
+        );
+
+        return $this->backToScope($project, 'Change Request "' . $cr->title . '" berhasil dibuat sebagai draft.');
+    }
+
+    /**
+     * Edit change request fields. Full edit while not yet converted; once
+     * converted only decision notes may be amended (no heavy edits).
+     */
+    public function updateChangeRequest(Request $request, Project $project, ProjectChangeRequest $changeRequest)
+    {
+        if ($redirect = $this->ensureCanAccessChangeRequests($project)) {
+            return $redirect;
+        }
+        abort_unless($changeRequest->project_id === $project->id, 404);
+
+        // Edit rights: PM/SA may always edit; the creator may edit only their own draft.
+        $isOwnerDraft = $changeRequest->status === 'draft'
+            && (int) $changeRequest->requested_by_user_id === (int) $request->user()?->id;
+        abort_unless($this->crCanDecide() || $isOwnerDraft, 403);
+
+        if ($changeRequest->status === 'converted') {
+            $validated = $request->validate([
+                'decision_notes' => ['nullable', 'string', 'max:4000'],
+            ]);
+            $original = $changeRequest->getOriginal();
+            $changeRequest->update(['decision_notes' => $validated['decision_notes'] ?? null]);
+
+            AuditLogger::log(
+                'change_request_updated',
+                'Project Master',
+                'Memperbarui catatan Change Request <strong>' . e($changeRequest->title) . '</strong>',
+                $changeRequest,
+                ['project_id' => $project->id, 'change_request_id' => $changeRequest->id],
+                ['project_id' => $project->id, 'change_request_id' => $changeRequest->id],
+            );
+
+            return $this->backToScope($project, 'Catatan Change Request diperbarui.');
+        }
+
+        $validated = $this->validateChangeRequest($request, $project);
+
+        $changeRequest->update([
+            'title'                => $validated['title'],
+            'description'          => $validated['description'] ?? null,
+            'source'               => $validated['source'] ?? null,
+            'type'                 => $validated['type'] ?? null,
+            'priority'             => $validated['priority'] ?? null,
+            'affected_module_id'   => $validated['affected_module_id'] ?? null,
+            'estimated_hours'      => $validated['estimated_hours'] ?? null,
+            'timeline_impact_days' => $validated['timeline_impact_days'] ?? null,
+            'impact_summary'       => $validated['impact_summary'] ?? null,
+            'decision_notes'       => $validated['decision_notes'] ?? $changeRequest->decision_notes,
+        ]);
+
+        AuditLogger::log(
+            'change_request_updated',
+            'Project Master',
+            'Memperbarui Change Request <strong>' . e($changeRequest->title) . '</strong>',
+            $changeRequest,
+            ['project_id' => $project->id, 'change_request_id' => $changeRequest->id],
+            ['project_id' => $project->id, 'change_request_id' => $changeRequest->id],
+        );
+
+        return $this->backToScope($project, 'Change Request "' . $changeRequest->title . '" diperbarui.');
+    }
+
+    /**
+     * Safe status transitions:
+     *   draft        -> needs_review   (contributor may submit)
+     *   needs_review -> approved       (decision roles)
+     *   needs_review -> rejected       (decision roles)
+     *   rejected     -> needs_review   (decision roles, reopen for re-review)
+     * Conversion (approved -> converted) is a separate action.
+     */
+    public function transitionChangeRequest(Request $request, Project $project, ProjectChangeRequest $changeRequest)
+    {
+        if ($redirect = $this->ensureCanAccessChangeRequests($project)) {
+            return $redirect;
+        }
+        abort_unless($changeRequest->project_id === $project->id, 404);
+
+        $validated = $request->validate([
+            'to'             => ['required', Rule::in(['needs_review', 'approved', 'rejected'])],
+            'decision_notes' => ['nullable', 'string', 'max:4000'],
+        ]);
+
+        $from = $changeRequest->status;
+        $to = $validated['to'];
+
+        $allowed = [
+            'needs_review' => ['draft', 'rejected'],
+            'approved'     => ['needs_review'],
+            'rejected'     => ['needs_review'],
+        ];
+
+        if (! in_array($from, $allowed[$to] ?? [], true)) {
+            return $this->backToScope($project, 'Transisi status Change Request tidak valid.');
+        }
+
+        // Only PM/SA (decision roles) may approve/reject/reopen; submitting a
+        // draft for review is allowed for any contributor (e.g. the creator).
+        if (in_array($to, ['approved', 'rejected'], true) || $from === 'rejected') {
+            abort_unless($this->crCanDecide(), 403);
+        } else {
+            abort_unless($this->crCanContribute($project), 403);
+        }
+
+        $changeRequest->status = $to;
+        if (filled($validated['decision_notes'] ?? null)) {
+            $changeRequest->decision_notes = $validated['decision_notes'];
+        }
+
+        if ($to === 'approved') {
+            $changeRequest->approved_by_user_id = $request->user()?->id;
+            $changeRequest->approved_at = now();
+        } elseif ($to === 'needs_review') {
+            // reopening clears the previous approval stamp
+            $changeRequest->approved_by_user_id = null;
+            $changeRequest->approved_at = null;
+        }
+
+        $changeRequest->save();
+
+        $action = match ($to) {
+            'needs_review' => 'change_request_review',
+            'approved'     => 'change_request_approved',
+            'rejected'     => 'change_request_rejected',
+        };
+        $verb = match ($to) {
+            'needs_review' => 'mengirim ke review',
+            'approved'     => 'menyetujui',
+            'rejected'     => 'menolak',
+        };
+
+        AuditLogger::log(
+            $action,
+            'Project Master',
+            ucfirst($verb) . ' Change Request <strong>' . e($changeRequest->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $changeRequest,
+            ['project_id' => $project->id, 'change_request_id' => $changeRequest->id, 'status' => $from],
+            ['project_id' => $project->id, 'change_request_id' => $changeRequest->id, 'status' => $to],
+        );
+
+        return $this->backToScope($project, 'Change Request "' . $changeRequest->title . '" ' . $verb . '.');
+    }
+
+    /**
+     * Convert an approved change request into a project task. Idempotent: a CR
+     * already converted will not create a second task.
+     */
+    public function convertChangeRequest(Request $request, Project $project, ProjectChangeRequest $changeRequest)
+    {
+        if ($redirect = $this->ensureCanAccessChangeRequests($project)) {
+            return $redirect;
+        }
+        abort_unless($changeRequest->project_id === $project->id, 404);
+        abort_unless($this->crCanDecide(), 403);
+
+        if ($changeRequest->status === 'converted' || $changeRequest->created_task_id) {
+            return $this->backToScope($project, 'Change Request ini sudah dikonversi menjadi task.');
+        }
+
+        if ($changeRequest->status !== 'approved') {
+            return $this->backToScope($project, 'Hanya Change Request yang sudah disetujui yang dapat dikonversi menjadi task.');
+        }
+
+        // Do not silently inject active scope into a finished project.
+        if ($this->phaseKey($project->phase) === 'done') {
+            return $this->backToScope($project, 'Project sudah selesai (Done). Aktifkan kembali fase project sebelum menambah scope dari Change Request.');
+        }
+
+        $createdTask = null;
+        try {
+            DB::transaction(function () use ($project, $changeRequest, &$createdTask) {
+                // Use the chosen affected module, otherwise a dedicated bucket module.
+                $module = $changeRequest->affected_module_id
+                    ? $project->modules()->whereKey($changeRequest->affected_module_id)->first()
+                    : null;
+
+                if (! $module) {
+                    $module = $project->modules()->firstOrCreate(
+                        ['title' => 'Scope Tambahan'],
+                        [
+                            'description'    => 'Task tambahan hasil konversi Change Request (scope di luar WBS awal).',
+                            'status'         => 'approved',
+                            'estimate_hours' => 0,
+                            'sort_order'     => (int) $project->modules()->max('sort_order') + 1,
+                        ],
+                    );
+                }
+
+                $descriptionParts = array_filter([
+                    'Permintaan: ' . trim((string) ($changeRequest->description ?: $changeRequest->title)),
+                    filled($changeRequest->impact_summary) ? 'Dampak: ' . trim((string) $changeRequest->impact_summary) : null,
+                    filled($changeRequest->decision_notes) ? 'Catatan keputusan: ' . trim((string) $changeRequest->decision_notes) : null,
+                ]);
+
+                $createdTask = $project->tasks()->create([
+                    'project_module_id' => $module->id,
+                    'assigned_to'       => null,
+                    'title'             => $changeRequest->title,
+                    'description'       => implode("\n\n", $descriptionParts),
+                    'status'            => 'planned',
+                    'priority'          => $this->mapCrPriorityToTaskPriority($changeRequest->priority),
+                    'estimate_hours'    => (int) round((float) ($changeRequest->estimated_hours ?? 0)),
+                    'sort_order'        => (int) $project->tasks()->max('sort_order') + 1,
+                ]);
+
+                $changeRequest->forceFill([
+                    'status'          => 'converted',
+                    'converted_at'    => now(),
+                    'created_task_id' => $createdTask->id,
+                ])->save();
+            });
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->backToScope($project, 'Gagal mengonversi Change Request: ' . $e->getMessage());
+        }
+
+        AuditLogger::log(
+            'change_request_converted',
+            'Project Master',
+            'Mengonversi Change Request <strong>' . e($changeRequest->title) . '</strong> menjadi task pada proyek <strong>' . e($project->name) . '</strong>',
+            $changeRequest,
+            ['project_id' => $project->id, 'change_request_id' => $changeRequest->id, 'status' => 'approved'],
+            ['project_id' => $project->id, 'change_request_id' => $changeRequest->id, 'status' => 'converted', 'created_task_id' => $createdTask?->id],
+        );
+
+        $note = $this->phaseKey($project->phase) === 'design'
+            ? ' Task masuk sebagai backlog dan akan dapat dieksekusi setelah project masuk fase Development.'
+            : '';
+
+        return $this->backToScope($project, 'Change Request dikonversi menjadi task baru.' . $note);
+    }
+
     /* ===================== PDF Exports ===================== */
 
     public function exportWbsPdf(Request $request, Project $project)
@@ -2217,7 +2545,7 @@ class ProjectController extends Controller
 
     private function transitionProjectPhaseAfterDevelopmentDone(Project $project): void
     {
-        if ($this->phaseKey($project->phase) !== 'dev') {
+        if ($this->phaseKey($project->phase) !== 'development') {
             return;
         }
 
@@ -2370,6 +2698,146 @@ class ProjectController extends Controller
             && ! $project->qcTests()->exists();
     }
 
+    /* ---- Change Request helpers ---------------------------------------- */
+
+    private function currentRoleName(): ?string
+    {
+        return auth()->user()?->roles()->first()?->name;
+    }
+
+    /**
+     * Project access gate for Change Requests. Operational users are limited
+     * to their assigned projects (reusing the existing convention); CEO/PM and
+     * admin-tier pass through. Returns a redirect to short-circuit, or null.
+     */
+    private function ensureCanAccessChangeRequests(Project $project)
+    {
+        return $this->ensureOperationalCanAccessProject($project);
+    }
+
+    /** PM/SA + admin-tier may make scope decisions (classify/approve/reject/convert). */
+    private function crCanDecide(): bool
+    {
+        return in_array($this->currentRoleName(), self::CR_DECISION_ROLES, true);
+    }
+
+    /** Anyone with project access may file/view a change request (incl. operational notes). */
+    private function crCanContribute(Project $project): bool
+    {
+        if ($this->crCanDecide()) {
+            return true;
+        }
+
+        // operational contributors must be assigned to the project
+        $role = $this->currentRoleName();
+        if (! in_array($role, self::OPERATIONAL_ROLES, true)) {
+            return false;
+        }
+
+        return TeamAssignment::query()
+            ->where('user_id', auth()->id())
+            ->where('project_id', $project->id)
+            ->exists();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validateChangeRequest(Request $request, Project $project): array
+    {
+        return $request->validate([
+            'title'                => ['required', 'string', 'max:180'],
+            'description'          => ['nullable', 'string', 'max:6000'],
+            'source'               => ['nullable', Rule::in(ProjectChangeRequest::SOURCES)],
+            'type'                 => ['nullable', Rule::in(ProjectChangeRequest::TYPES)],
+            'priority'             => ['nullable', Rule::in(ProjectChangeRequest::PRIORITIES)],
+            'affected_module_id'   => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
+            'estimated_hours'      => ['nullable', 'numeric', 'min:0', 'max:9999'],
+            'timeline_impact_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
+            'impact_summary'       => ['nullable', 'string', 'max:4000'],
+            'decision_notes'       => ['nullable', 'string', 'max:4000'],
+        ], [
+            'title.required'             => 'Judul change request wajib diisi.',
+            'source.in'                  => 'Sumber change request tidak valid.',
+            'type.in'                    => 'Tipe change request tidak valid.',
+            'priority.in'                => 'Prioritas change request tidak valid.',
+            'affected_module_id.exists'  => 'Modul terdampak tidak ditemukan pada proyek ini.',
+            'estimated_hours.numeric'    => 'Estimasi jam harus berupa angka.',
+            'timeline_impact_days.integer' => 'Dampak timeline harus berupa angka hari.',
+        ]);
+    }
+
+    private function mapCrPriorityToTaskPriority(?string $priority): string
+    {
+        return match ($priority) {
+            'urgent', 'high' => 'high',
+            'low'            => 'low',
+            default          => 'medium',
+        };
+    }
+
+    private function backToScope(Project $project, string $status)
+    {
+        return redirect()
+            ->to(route('projects.show', $project) . '#scope')
+            ->with('status', $status);
+    }
+
+    private function projectChangeRequestSummary(Project $project): array
+    {
+        $col = $project->relationLoaded('changeRequests') ? $project->changeRequests : $project->changeRequests()->get(['status']);
+        $by = $col->countBy('status');
+
+        return [
+            'total'        => (int) $col->count(),
+            'draft'        => (int) ($by['draft'] ?? 0),
+            'needs_review' => (int) ($by['needs_review'] ?? 0),
+            'approved'     => (int) ($by['approved'] ?? 0),
+            'rejected'     => (int) ($by['rejected'] ?? 0),
+            'converted'    => (int) ($by['converted'] ?? 0),
+        ];
+    }
+
+    private function projectChangeRequestRows(Project $project): array
+    {
+        $col = $project->relationLoaded('changeRequests')
+            ? $project->changeRequests
+            : $project->changeRequests()->with(['requester', 'approver', 'affectedModule', 'createdTask'])->get();
+
+        return $col->map(function (ProjectChangeRequest $cr) {
+            $estimated = $cr->estimated_hours !== null ? (float) $cr->estimated_hours : null;
+
+            return [
+                'id'             => $cr->id,
+                'code'           => 'CR-' . str_pad((string) $cr->id, 4, '0', STR_PAD_LEFT),
+                'title'          => $cr->title,
+                'description'    => $cr->description,
+                'source'         => $cr->source,
+                'source_label'   => $cr->source ? (self::CR_SOURCE_LABELS[$cr->source] ?? $cr->source) : null,
+                'type'           => $cr->type,
+                'type_label'     => $cr->type ? (self::CR_TYPE_LABELS[$cr->type] ?? $cr->type) : null,
+                'priority'       => $cr->priority,
+                'priority_label' => $cr->priority ? (self::CR_PRIORITY_LABELS[$cr->priority] ?? $cr->priority) : null,
+                'status'         => $cr->status,
+                'status_label'   => self::CR_STATUS_LABELS[$cr->status] ?? $cr->status,
+                'affected_module_id' => $cr->affected_module_id,
+                'affected_module'    => $cr->affectedModule?->title,
+                'estimated_hours'    => $estimated !== null ? rtrim(rtrim(number_format($estimated, 2, '.', ''), '0'), '.') : null,
+                'timeline_impact_days' => $cr->timeline_impact_days,
+                'impact_summary' => $cr->impact_summary,
+                'decision_notes' => $cr->decision_notes,
+                'requester'      => $cr->requester?->name,
+                'requester_id'   => $cr->requested_by_user_id,
+                'approver'       => $cr->approver?->name,
+                'created_task_id'=> $cr->created_task_id,
+                'created_task'   => $cr->createdTask?->title,
+                'approved_at'    => $cr->approved_at ? AppTime::cast($cr->approved_at)?->format('d M Y H:i') : null,
+                'converted_at'   => $cr->converted_at ? AppTime::cast($cr->converted_at)?->format('d M Y H:i') : null,
+                'created_at'     => AppTime::diff($cr->created_at),
+            ];
+        })->all();
+    }
+
     private function ensureCanEditProjectDetail(): void
     {
         abort_unless(in_array(auth()->user()?->roles?->first()?->name, self::OPERATIONAL_ROLES, true), 403);
@@ -2498,12 +2966,12 @@ class ProjectController extends Controller
 
     private function canPrepareQc(Project $project): bool
     {
-        return in_array($this->phaseKey($project->phase), ['dev', 'qa', 'done'], true);
+        return in_array($this->phaseKey($project->phase), ['development', 'qc', 'done'], true);
     }
 
     private function canExecuteQc(Project $project): bool
     {
-        return in_array($this->phaseKey($project->phase), ['qa', 'done'], true);
+        return in_array($this->phaseKey($project->phase), ['qc', 'done'], true);
     }
 
     private function projectTabs(Project $project): array
@@ -2512,12 +2980,14 @@ class ProjectController extends Controller
         $taskTotal = $project->relationLoaded('tasks') ? $project->tasks->count() : $project->tasks()->count();
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
         $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
+        $crTotal = $project->relationLoaded('changeRequests') ? $project->changeRequests->count() : $project->changeRequests()->count();
 
         return [
             ['id' => 'overview',   'label' => 'Overview',         'count' => $moduleTotal],
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $taskTotal],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
+            ['id' => 'scope',      'label' => 'Scope Control',    'count' => $crTotal],
         ];
     }
 
@@ -3065,14 +3535,26 @@ class ProjectController extends Controller
         ];
     }
 
+    /**
+     * Normalize a human phase label to a canonical internal phase key.
+     *
+     * Canonical keys: planning | design | development | qc | done.
+     * Punctuation/spacing/casing are ignored, so "QC", "Quality Control",
+     * "quality_control", "quality-control" and "QA/QC" all resolve to "qc".
+     * Gathering folds into "planning" (both are pre-execution discovery, and
+     * the projects list + phase locks group them together).
+     */
     private function phaseKey(string $phase): string
     {
-        return match (mb_strtolower($phase)) {
-            'design' => 'design',
-            'development' => 'dev',
-            'qa', 'qc' => 'qa',
-            'done' => 'done',
-            default => 'planning',
+        // strip every non-letter so spaces, "_", "-" and "/" don't matter
+        $normalized = preg_replace('/[^a-z]/', '', mb_strtolower(trim($phase)));
+
+        return match ($normalized) {
+            'design'                                        => 'design',
+            'development', 'dev'                            => 'development',
+            'qc', 'qa', 'qaqc', 'qcqa', 'qualitycontrol'    => 'qc',
+            'done', 'completed', 'complete', 'selesai'      => 'done',
+            default                                         => 'planning', // gathering, planning, discovery, unknown
         };
     }
 

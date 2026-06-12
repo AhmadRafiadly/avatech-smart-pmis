@@ -52,4 +52,9 @@ class Project extends Model
     {
         return $this->hasMany(ProjectQcTest::class);
     }
+
+    public function changeRequests(): HasMany
+    {
+        return $this->hasMany(ProjectChangeRequest::class);
+    }
 }

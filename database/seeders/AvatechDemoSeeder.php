@@ -6,6 +6,7 @@ use App\Models\AiRequestLog;
 use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Project;
+use App\Models\ProjectChangeRequest;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
@@ -639,8 +640,10 @@ class AvatechDemoSeeder extends Seeder
         $this->seedTeam($project, $bp['team'] ?? [], $users);
         $this->seedMoms($project, $bp['moms'] ?? [], $lead);
         $this->seedQc($project, $modules, $tasks, $bp['qc'] ?? [], $users['adly'] ?? $lead);
+        $this->seedChangeRequests($project, $users);
 
         // keep stored progress in sync with hour-weighted "done" tasks
+        // (runs after change requests so a converted CR task is counted)
         $project->forceFill(['progress' => $this->computeProgress($project)])->save();
 
         $this->seedAudit($project, $bp, $lead ?? ($users['joshua'] ?? null));
@@ -869,6 +872,121 @@ class AvatechDemoSeeder extends Seeder
                 'tested_at' => $tested ? AppTime::now()->copy()->subDays(random_int(1, 5)) : null,
             ])->save();
         }
+    }
+
+    /**
+     * Realistic Change Requests (Scope Control) for selected demo projects,
+     * with mixed statuses. Converted CRs also create the linked task. Keyed by
+     * project code; idempotent via updateOrCreate / firstOrCreate.
+     *
+     * @param array<string, User> $users
+     */
+    private function seedChangeRequests(Project $project, array $users): void
+    {
+        $map = [
+            'DM01' => [[
+                'title' => 'Tambah section testimonial client', 'desc' => 'Klien minta menambahkan section testimonial client di homepage.',
+                'source' => 'whatsapp', 'type' => 'new_scope', 'priority' => 'medium', 'status' => 'converted',
+                'module' => 'Homepage & Company Profile Pages', 'hours' => 6, 'days' => 2,
+                'impact' => 'Menambah satu section baru di homepage beserta CMS testimonial.',
+                'decision' => 'Disetujui sebagai scope tambahan kecil, dikonversi menjadi task.',
+            ]],
+            'DM02' => [[
+                'title' => 'Tambahan filter kategori program donasi', 'desc' => 'Klien minta filter kategori pada katalog program donasi.',
+                'source' => 'meeting', 'type' => 'new_scope', 'priority' => 'high', 'status' => 'needs_review',
+                'module' => 'Donation Program Catalog', 'hours' => 8, 'days' => 3,
+                'impact' => 'Menambah filter kategori dan penyesuaian query katalog program.',
+            ]],
+            'DM03' => [[
+                'title' => 'Wishlist ditampilkan di halaman utama', 'desc' => 'Tampilkan ringkasan wishlist learner pada halaman utama.',
+                'source' => 'client_call', 'type' => 'revision', 'priority' => 'medium', 'status' => 'approved',
+                'module' => 'Favorites & Wishlist', 'hours' => 5, 'days' => 1,
+                'impact' => 'Menambah widget ringkasan wishlist pada landing page.',
+                'decision' => 'Disetujui, dikerjakan setelah QC modul utama selesai.',
+            ]],
+            'DM04' => [[
+                'title' => 'Tambahan backup otomatis mingguan', 'desc' => 'Permintaan backup otomatis mingguan di luar scope migrasi awal.',
+                'source' => 'email', 'type' => 'technical_adjustment', 'priority' => 'low', 'status' => 'rejected',
+                'module' => null, 'hours' => 4, 'days' => 0,
+                'impact' => 'Membutuhkan konfigurasi server tambahan dan biaya storage.',
+                'decision' => 'Ditolak untuk scope saat ini; diusulkan masuk paket retainer maintenance.',
+            ]],
+        ];
+
+        $rows = $map[$project->code] ?? [];
+        if (empty($rows)) {
+            return;
+        }
+
+        $requester = $users['adly'] ?? null;
+        $approver = $users['joshua'] ?? null;
+
+        foreach ($rows as $row) {
+            $module = $row['module'] ? $project->modules()->where('title', $row['module'])->first() : null;
+
+            $attrs = [
+                'requested_by_user_id' => $requester?->id,
+                'description'          => $row['desc'],
+                'source'               => $row['source'],
+                'type'                 => $row['type'],
+                'priority'             => $row['priority'],
+                'status'               => $row['status'],
+                'affected_module_id'   => $module?->id,
+                'estimated_hours'      => $row['hours'],
+                'timeline_impact_days' => $row['days'],
+                'impact_summary'       => $row['impact'] ?? null,
+                'decision_notes'       => $row['decision'] ?? null,
+            ];
+
+            if (in_array($row['status'], ['approved', 'converted'], true)) {
+                $attrs['approved_by_user_id'] = $approver?->id;
+                $attrs['approved_at'] = AppTime::now()->copy()->subDays(3);
+            }
+
+            $cr = ProjectChangeRequest::updateOrCreate(
+                ['project_id' => $project->id, 'title' => $row['title']],
+                $attrs,
+            );
+
+            if ($row['status'] === 'converted') {
+                $taskModule = $module ?: $project->modules()->firstOrCreate(
+                    ['title' => 'Scope Tambahan'],
+                    [
+                        'description'    => 'Task tambahan hasil konversi Change Request (scope di luar WBS awal).',
+                        'status'         => 'approved',
+                        'estimate_hours' => 0,
+                        'sort_order'     => (int) $project->modules()->max('sort_order') + 1,
+                    ],
+                );
+
+                $task = $project->tasks()->firstOrCreate(
+                    ['title' => $row['title']],
+                    [
+                        'project_module_id' => $taskModule->id,
+                        'assigned_to'       => null,
+                        'description'       => 'Permintaan: ' . $row['desc'] . "\n\nDampak: " . ($row['impact'] ?? '-'),
+                        'status'            => 'planned',
+                        'priority'          => $this->crTaskPriority($row['priority']),
+                        'estimate_hours'    => (int) round((float) $row['hours']),
+                        'sort_order'        => (int) $project->tasks()->max('sort_order') + 1,
+                    ],
+                );
+
+                $cr->forceFill([
+                    'converted_at'    => AppTime::now()->copy()->subDays(2),
+                    'created_task_id' => $task->id,
+                ])->save();
+            }
+        }
+    }
+
+    private function crTaskPriority(?string $priority): string
+    {
+        return match ($priority) {
+            'urgent', 'high' => 'high',
+            'low'            => 'low',
+            default          => 'medium',
+        };
     }
 
     /* ===================================================================

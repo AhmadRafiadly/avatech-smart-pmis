@@ -49,6 +49,12 @@ class AuditController extends Controller
         'qc_status_updated'        => 'QC DIPERBARUI',
         'qc_updated'               => 'QC DETAIL DIUBAH',
         'qc_deleted'               => 'QC DIHAPUS',
+        'change_request_created'   => 'CHANGE REQUEST BARU',
+        'change_request_updated'   => 'CHANGE REQUEST DIUBAH',
+        'change_request_review'    => 'CR DIKIRIM KE REVIEW',
+        'change_request_approved'  => 'CR DISETUJUI',
+        'change_request_rejected'  => 'CR DITOLAK',
+        'change_request_converted' => 'CR JADI TASK',
         'wbs_pdf_exported'         => 'WBS PDF DIEKSPOR',
         'test_case_pdf_exported'   => 'TEST CASE PDF DIEKSPOR',
     ];
@@ -203,6 +209,7 @@ class AuditController extends Controller
     {
         return match (true) {
             str_starts_with($action, 'qc_')   => '#qc',
+            str_starts_with($action, 'change_request_') => '#scope',
             str_starts_with($action, 'mom_')  => '#aiplanning',
             $action === 'ai_mom_fixed'        => '#aiplanning',
             $action === 'ai_wbs_generated'    => '#aiplanning',

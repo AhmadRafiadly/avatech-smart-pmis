@@ -95,6 +95,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{project}/ai-wbs/apply', [ProjectController::class, 'applyWbs'])->name('projects.ai-wbs.apply');
     Route::post('/projects/{project}/ai-test-cases/generate', [ProjectController::class, 'generateTestCases'])->name('projects.ai-test-cases.generate');
     Route::post('/projects/{project}/ai-test-cases/apply', [ProjectController::class, 'applyTestCases'])->name('projects.ai-test-cases.apply');
+    Route::post('/projects/{project}/change-requests', [ProjectController::class, 'storeChangeRequest'])->name('projects.change-requests.store');
+    Route::put('/projects/{project}/change-requests/{changeRequest}', [ProjectController::class, 'updateChangeRequest'])->name('projects.change-requests.update');
+    Route::patch('/projects/{project}/change-requests/{changeRequest}/transition', [ProjectController::class, 'transitionChangeRequest'])->name('projects.change-requests.transition');
+    Route::post('/projects/{project}/change-requests/{changeRequest}/convert', [ProjectController::class, 'convertChangeRequest'])->name('projects.change-requests.convert');
     Route::post('/projects/{project}/qc', [ProjectController::class, 'storeQcTest'])->name('projects.qc.store');
     Route::patch('/projects/{project}/qc/{qc}', [ProjectController::class, 'updateQcTest'])->name('projects.qc.update');
     Route::put('/projects/{project}/qc/{qc}', [ProjectController::class, 'editQcTest'])->name('projects.qc.edit');

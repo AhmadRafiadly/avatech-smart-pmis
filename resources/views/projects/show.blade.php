@@ -1987,6 +1987,303 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
     </div>
 
+    {{-- =============== SCOPE CONTROL / CHANGE REQUESTS =============== --}}
+    @php
+        $crRows = $dbChangeRequests ?? [];
+        $crSummary = $changeRequestSummary ?? ['total' => 0, 'needs_review' => 0, 'approved' => 0, 'converted' => 0, 'rejected' => 0];
+        $crCanContribute = (bool) ($crCanContribute ?? false);
+        $crCanDecide = (bool) ($crCanDecide ?? false);
+        $crModules = collect($modules)->filter(fn ($m) => ! empty($m['id']))->values();
+        $myUserId = auth()->id();
+        $crSrcOpts = $crSourceOptions ?? [];
+        $crTypeOpts = $crTypeOptions ?? [];
+        $crPrioOpts = $crPriorityOptions ?? [];
+        $crStatusBadge = [
+            'draft'        => 'bg-slate-100 text-slate-600',
+            'needs_review' => 'bg-amber-100 text-amber-700',
+            'approved'     => 'bg-emerald-100 text-emerald-700',
+            'rejected'     => 'bg-rose-100 text-rose-700',
+            'converted'    => 'bg-violet-100 text-violet-700',
+        ];
+        $crPrioBadge = [
+            'low'    => 'bg-slate-100 text-slate-500',
+            'medium' => 'bg-amber-50 text-amber-700',
+            'high'   => 'bg-orange-100 text-orange-700',
+            'urgent' => 'bg-rose-100 text-rose-700',
+        ];
+    @endphp
+    <div id="scope" data-panel="scope" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+        <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
+            <div class="flex items-center gap-3">
+                <span class="pd-section-bar"></span>
+                <div>
+                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Scope Control · Change Request</h3>
+                    <p class="text-[12px] text-slate-500 mt-0.5">Catat, klasifikasikan, dan kendalikan permintaan perubahan sebelum masuk ke scope project.</p>
+                </div>
+            </div>
+            <div class="text-[13px] text-slate-500 font-medium">
+                {{ $crSummary['total'] }} request ·
+                <span class="text-amber-600 font-semibold">{{ $crSummary['needs_review'] }} review</span> ·
+                <span class="text-emerald-600 font-semibold">{{ $crSummary['approved'] }} disetujui</span> ·
+                <span class="text-violet-600 font-semibold">{{ $crSummary['converted'] }} jadi task</span>
+                @if (! empty($crSummary['rejected']))
+                    · <span class="text-rose-600 font-semibold">{{ $crSummary['rejected'] }} ditolak</span>
+                @endif
+            </div>
+        </div>
+
+        @if ($crCanContribute && ! $useReferenceProjectData)
+            {{-- Create form (collapsible) --}}
+            <div class="px-6 md:px-7 pt-5">
+                <details class="rounded-2xl border border-violet-100 bg-violet-50/30 overflow-hidden" @if ($errors->any() && old('_form') === 'change_request') open @endif>
+                    <summary class="cursor-pointer select-none px-5 py-3.5 text-[13px] font-bold text-violet-700 flex items-center gap-2">
+                        <x-heroicon-o-plus-circle class="w-5 h-5" />
+                        Catat Change Request Baru
+                    </summary>
+                    <form method="POST" action="{{ route('projects.change-requests.store', $project) }}" class="px-5 pb-5 pt-1 grid grid-cols-1 md:grid-cols-12 gap-3">
+                        @csrf
+                        <input type="hidden" name="_form" value="change_request">
+                        <div class="md:col-span-8">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Judul Permintaan</label>
+                            <input name="title" value="{{ old('_form') === 'change_request' ? old('title') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Mis. Tambah section testimonial client" />
+                            @if (old('_form') === 'change_request') @error('title')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror @endif
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Sumber</label>
+                            <select name="source" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">— pilih —</option>
+                                @foreach ($crSrcOpts as $val => $label)
+                                    <option value="{{ $val }}" @selected(old('_form') === 'change_request' && old('source') === $val)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-12">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Deskripsi / Permintaan Klien</label>
+                            <textarea name="description" rows="2" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Ringkas permintaan. Jangan menempel chat sensitif klien.">{{ old('_form') === 'change_request' ? old('description') : '' }}</textarea>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tipe</label>
+                            <select name="type" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">— pilih —</option>
+                                @foreach ($crTypeOpts as $val => $label)
+                                    <option value="{{ $val }}" @selected(old('_form') === 'change_request' && old('type') === $val)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Prioritas</label>
+                            <select name="priority" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">— pilih —</option>
+                                @foreach ($crPrioOpts as $val => $label)
+                                    <option value="{{ $val }}" @selected(old('_form') === 'change_request' && old('priority') === $val)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-6">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Modul Terdampak (opsional)</label>
+                            <select name="affected_module_id" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">— belum ditentukan —</option>
+                                @foreach ($crModules as $mod)
+                                    <option value="{{ $mod['id'] }}" @selected(old('_form') === 'change_request' && (string) old('affected_module_id') === (string) $mod['id'])>{{ $mod['name'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Estimasi Jam</label>
+                            <input name="estimated_hours" type="number" step="0.5" min="0" max="9999" value="{{ old('_form') === 'change_request' ? old('estimated_hours') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="0" />
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Dampak Timeline (hari)</label>
+                            <input name="timeline_impact_days" type="number" min="0" max="3650" value="{{ old('_form') === 'change_request' ? old('timeline_impact_days') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="0" />
+                        </div>
+                        <div class="md:col-span-6">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Ringkasan Dampak (opsional)</label>
+                            <textarea name="impact_summary" rows="2" class="w-full rounded-xl border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Dampak ke scope/timeline/modul.">{{ old('_form') === 'change_request' ? old('impact_summary') : '' }}</textarea>
+                        </div>
+                        <div class="md:col-span-12 flex justify-end">
+                            <button type="submit" class="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
+                                <x-heroicon-o-plus class="w-4 h-4" />
+                                Simpan sebagai Draft
+                            </button>
+                        </div>
+                    </form>
+                </details>
+            </div>
+        @endif
+
+        <div class="p-6 md:p-7 space-y-4">
+            @forelse ($crRows as $cr)
+                @php
+                    $canEditThisCr = $crCanDecide || ($cr['status'] === 'draft' && (int) ($cr['requester_id'] ?? 0) === (int) $myUserId);
+                @endphp
+                <div class="rounded-2xl border border-violet-100 bg-white shadow-[0_1px_4px_rgba(124,58,237,0.05)] overflow-hidden">
+                    <div class="px-5 py-4">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap mb-1">
+                                    <span class="text-[10.5px] font-bold tracking-wider text-slate-400">{{ $cr['code'] }}</span>
+                                    <span class="text-[10px] font-bold rounded-full px-2 py-0.5 {{ $crStatusBadge[$cr['status']] ?? 'bg-slate-100 text-slate-600' }}">{{ $cr['status_label'] }}</span>
+                                    @if ($cr['priority'])
+                                        <span class="text-[10px] font-bold rounded-full px-2 py-0.5 {{ $crPrioBadge[$cr['priority']] ?? 'bg-slate-100 text-slate-500' }}">{{ $cr['priority_label'] }}</span>
+                                    @endif
+                                    @if ($cr['type_label'])
+                                        <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-violet-50 text-violet-600">{{ $cr['type_label'] }}</span>
+                                    @endif
+                                    @if ($cr['source_label'])
+                                        <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-slate-50 text-slate-500">{{ $cr['source_label'] }}</span>
+                                    @endif
+                                </div>
+                                <p class="text-[14px] font-bold text-[#1E1B4B] leading-snug">{{ $cr['title'] }}</p>
+                                @if ($cr['description'])
+                                    <p class="text-[12.5px] text-slate-500 mt-1 leading-relaxed whitespace-pre-line">{{ $cr['description'] }}</p>
+                                @endif
+                            </div>
+                            <div class="text-right text-[11px] text-slate-400 shrink-0">
+                                @if ($cr['requester']) <div>oleh {{ $cr['requester'] }}</div> @endif
+                                <div>{{ $cr['created_at'] }}</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 flex flex-wrap items-center gap-2 text-[11.5px]">
+                            @if ($cr['affected_module'])
+                                <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-violet-50 text-violet-700 font-semibold"><x-heroicon-o-squares-2x2 class="w-3.5 h-3.5" /> {{ $cr['affected_module'] }}</span>
+                            @endif
+                            @if ($cr['estimated_hours'] !== null)
+                                <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 font-semibold">{{ $cr['estimated_hours'] }} jam</span>
+                            @endif
+                            @if ($cr['timeline_impact_days'] !== null)
+                                <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 font-semibold">+{{ $cr['timeline_impact_days'] }} hari</span>
+                            @endif
+                            @if ($cr['status'] === 'converted' && $cr['created_task'])
+                                <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-emerald-50 text-emerald-700 font-semibold"><x-heroicon-o-check-circle class="w-3.5 h-3.5" /> Task: {{ $cr['created_task'] }}</span>
+                            @endif
+                        </div>
+
+                        @if ($cr['impact_summary'])
+                            <p class="mt-2 text-[12px] text-slate-500"><span class="font-semibold text-slate-600">Dampak:</span> {{ $cr['impact_summary'] }}</p>
+                        @endif
+                        @if ($cr['decision_notes'])
+                            <p class="mt-1 text-[12px] text-slate-500"><span class="font-semibold text-slate-600">Catatan keputusan:</span> {{ $cr['decision_notes'] }}</p>
+                        @endif
+                        @if ($cr['approved_at'])
+                            <p class="mt-1 text-[11px] text-slate-400">Disetujui {{ $cr['approved_at'] }}@if ($cr['approver']) · {{ $cr['approver'] }} @endif</p>
+                        @endif
+
+                        {{-- Action buttons --}}
+                        @if (! $useReferenceProjectData)
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                @if ($cr['status'] === 'draft' && $crCanContribute)
+                                    <form method="POST" action="{{ route('projects.change-requests.transition', [$project, $cr['id']]) }}">
+                                        @csrf @method('PATCH')
+                                        <input type="hidden" name="to" value="needs_review">
+                                        <button type="submit" class="h-8 px-3 rounded-lg bg-amber-500 text-white text-[12px] font-semibold hover:bg-amber-600 transition cursor-pointer">Kirim ke Review</button>
+                                    </form>
+                                @endif
+                                @if ($cr['status'] === 'needs_review' && $crCanDecide)
+                                    <form method="POST" action="{{ route('projects.change-requests.transition', [$project, $cr['id']]) }}">
+                                        @csrf @method('PATCH')
+                                        <input type="hidden" name="to" value="approved">
+                                        <button type="submit" class="h-8 px-3 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 transition cursor-pointer">Setujui</button>
+                                    </form>
+                                    <form method="POST" action="{{ route('projects.change-requests.transition', [$project, $cr['id']]) }}" onsubmit="return confirm('Tolak change request ini?');">
+                                        @csrf @method('PATCH')
+                                        <input type="hidden" name="to" value="rejected">
+                                        <button type="submit" class="h-8 px-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 transition cursor-pointer">Tolak</button>
+                                    </form>
+                                @endif
+                                @if ($cr['status'] === 'approved' && $crCanDecide)
+                                    <form method="POST" action="{{ route('projects.change-requests.convert', [$project, $cr['id']]) }}" onsubmit="return confirm('Konversi change request ini menjadi task project?');">
+                                        @csrf
+                                        <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">
+                                            <x-heroicon-o-arrow-right-circle class="w-4 h-4" /> Convert ke Task
+                                        </button>
+                                    </form>
+                                @endif
+                                @if ($cr['status'] === 'rejected' && $crCanDecide)
+                                    <form method="POST" action="{{ route('projects.change-requests.transition', [$project, $cr['id']]) }}">
+                                        @csrf @method('PATCH')
+                                        <input type="hidden" name="to" value="needs_review">
+                                        <button type="submit" class="h-8 px-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-[12px] font-semibold hover:bg-amber-100 transition cursor-pointer">Buka Lagi (Review)</button>
+                                    </form>
+                                @endif
+                                @if ($canEditThisCr)
+                                    <details class="group">
+                                        <summary class="cursor-pointer select-none h-8 px-3 rounded-lg border border-violet-100 bg-white text-[12px] font-semibold text-violet-700 hover:bg-violet-50 transition inline-flex items-center">{{ $cr['status'] === 'converted' ? 'Catatan' : 'Edit' }}</summary>
+                                        <form method="POST" action="{{ route('projects.change-requests.update', [$project, $cr['id']]) }}" class="mt-3 rounded-xl border border-violet-100 bg-violet-50/30 p-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+                                            @csrf @method('PUT')
+                                            @if ($cr['status'] !== 'converted')
+                                                <div class="md:col-span-8">
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Judul</label>
+                                                    <input name="title" value="{{ $cr['title'] }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                                </div>
+                                                <div class="md:col-span-4">
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Sumber</label>
+                                                    <select name="source" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                        <option value="">— pilih —</option>
+                                                        @foreach ($crSrcOpts as $val => $label)<option value="{{ $val }}" @selected($cr['source'] === $val)>{{ $label }}</option>@endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="md:col-span-12">
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Deskripsi</label>
+                                                    <textarea name="description" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $cr['description'] }}</textarea>
+                                                </div>
+                                                <div class="md:col-span-3">
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Tipe</label>
+                                                    <select name="type" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                        <option value="">— pilih —</option>
+                                                        @foreach ($crTypeOpts as $val => $label)<option value="{{ $val }}" @selected($cr['type'] === $val)>{{ $label }}</option>@endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="md:col-span-3">
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Prioritas</label>
+                                                    <select name="priority" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                        <option value="">— pilih —</option>
+                                                        @foreach ($crPrioOpts as $val => $label)<option value="{{ $val }}" @selected($cr['priority'] === $val)>{{ $label }}</option>@endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="md:col-span-6">
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Modul Terdampak</label>
+                                                    <select name="affected_module_id" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                        <option value="">— belum ditentukan —</option>
+                                                        @foreach ($crModules as $mod)<option value="{{ $mod['id'] }}" @selected((string) ($cr['affected_module_id'] ?? '') === (string) $mod['id'])>{{ $mod['name'] }}</option>@endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="md:col-span-3">
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Estimasi Jam</label>
+                                                    <input name="estimated_hours" type="number" step="0.5" min="0" max="9999" value="{{ $cr['estimated_hours'] }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                                </div>
+                                                <div class="md:col-span-3">
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Dampak (hari)</label>
+                                                    <input name="timeline_impact_days" type="number" min="0" max="3650" value="{{ $cr['timeline_impact_days'] }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                                </div>
+                                                <div class="md:col-span-6">
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Ringkasan Dampak</label>
+                                                    <textarea name="impact_summary" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $cr['impact_summary'] }}</textarea>
+                                                </div>
+                                            @endif
+                                            <div class="md:col-span-12">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan Keputusan</label>
+                                                <textarea name="decision_notes" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $cr['decision_notes'] }}</textarea>
+                                            </div>
+                                            <div class="md:col-span-12 flex justify-end">
+                                                <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan</button>
+                                            </div>
+                                        </form>
+                                    </details>
+                                @endif
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            @empty
+                <div class="text-[13px] text-slate-400 text-center py-10 leading-relaxed">
+                    Belum ada change request untuk project ini.
+                    @if ($crCanContribute && ! $useReferenceProjectData) Catat permintaan perubahan pertama lewat tombol di atas. @endif
+                </div>
+            @endforelse
+        </div>
+    </div>
+
     {{-- =============== PROJECT UPDATE SUMMARY MODAL =============== --}}
     <div data-project-summary-modal class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="project-summary-title">
         <div data-project-summary-close class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
@@ -2400,7 +2697,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
 
                 /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc'];
+                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc', 'scope'];
                 const setHash = (id) => {
                     if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
                 };
