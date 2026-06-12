@@ -110,6 +110,9 @@ class AiPlanner
 
         $parsed = self::parseResponse((string) $providerResult['text']);
         if ($parsed['ok'] ?? false) {
+            if ((bool) ($context['requires_design'] ?? false)) {
+                $parsed['data']['modules'] = self::ensureDesignModule($parsed['data']['modules'] ?? []);
+            }
             $parsed['provider'] = $providerResult['provider'] ?? null;
             $parsed['model'] = $providerResult['model'] ?? null;
             $parsed['fallback_path'] = $providerResult['fallback_path'] ?? null;
@@ -788,6 +791,7 @@ class AiPlanner
         $momSourceText = $momSummary !== '' ? $momSummary : $momNotes;
         $existingModules = self::listContext($context['existing_module_titles'] ?? []);
         $existingTasks = self::listContext($context['existing_task_titles'] ?? []);
+        $requiresDesign = (bool) ($context['requires_design'] ?? false);
 
         $moduleStatuses = implode('|', self::ALLOWED_MODULE_STATUS);
         $taskStatuses   = implode('|', array_merge(['todo'], self::ALLOWED_TASK_STATUS));
@@ -811,6 +815,10 @@ class AiPlanner
             'Hindari duplikasi dengan judul modul/task yang sudah ada pada konteks aktual.',
             'Tidak boleh ada properti tambahan di luar yang disebut.',
         ];
+
+        $rules[] = $requiresDesign
+            ? 'Project ini membutuhkan mockup UI/UX. Modul pertama harus UI/UX Design dengan satu task utama "Siapkan Mockup UI/UX & Handover Desain". Jangan buat task default "Review dan Revisi Mockup Desain"; revisi desain dicatat sebagai deliverable/link/PDF tambahan pada task handover.'
+            : 'Project ini tidak mewajibkan mockup UI/UX. Jangan paksa modul UI/UX Design kecuali MoM eksplisit meminta desain.';
 
         $exampleInput = "Contoh input:\n"
             . "Project: Sistem Booking Ruang Meeting\n"
@@ -860,6 +868,7 @@ JSON;
             . '- Client: ' . ($projectClient !== '' ? $projectClient : '-') . "\n"
             . '- Phase: ' . ($projectPhase !== '' ? $projectPhase : '-') . "\n"
             . '- Status: ' . ($projectStatus !== '' ? $projectStatus : '-') . "\n"
+            . '- Membutuhkan UI/UX Design: ' . ($requiresDesign ? 'Ya' : 'Tidak') . "\n"
             . '- Deskripsi: ' . ($projectDesc !== '' ? $projectDesc : '-') . "\n"
             . '- Modul yang sudah ada: ' . $existingModules . "\n"
             . '- Task yang sudah ada: ' . $existingTasks . "\n\n"
@@ -1175,6 +1184,68 @@ JSON;
             ),
             'sort_order'     => $sortOrder,
         ];
+    }
+
+    private static function ensureDesignModule(array $modules): array
+    {
+        $designModuleIndex = null;
+
+        foreach ($modules as $idx => $module) {
+            $moduleText = self::str($module['title'] ?? '') . ' ' . self::str($module['description'] ?? '');
+            if (self::looksLikeDesignText($moduleText)) {
+                $designModuleIndex = $idx;
+                $modules[$idx]['include'] = '1';
+                $modules[$idx]['title'] = 'UI/UX Design';
+                $modules[$idx]['tasks'] = self::designHandoverTask();
+                break;
+            }
+        }
+
+        if ($designModuleIndex !== null) {
+            return array_values(array_filter(
+                $modules,
+                fn (array $module, int $idx) => $idx === $designModuleIndex
+                    || ! self::looksLikeDesignText(self::str($module['title'] ?? '') . ' ' . self::str($module['description'] ?? '')),
+                ARRAY_FILTER_USE_BOTH,
+            ));
+        }
+
+        array_unshift($modules, [
+            'title' => 'UI/UX Design',
+            'description' => 'Menyiapkan final mockup UI/UX dan handover desain sebelum development dimulai.',
+            'status' => 'pending_design',
+            'estimate_hours' => 12,
+            'sort_order' => 0,
+            'tasks' => self::designHandoverTask(),
+        ]);
+
+        return array_values($modules);
+    }
+
+    private static function designHandoverTask(): array
+    {
+        return [[
+            'title' => 'Siapkan Mockup UI/UX & Handover Desain',
+            'description' => 'Menyiapkan satu atau beberapa deliverable desain seperti link Figma dan PDF mockup sebagai acuan implementasi development.',
+            'status' => self::DEFAULT_TASK_STATUS,
+            'priority' => 'high',
+            'estimate_hours' => 12,
+            'sort_order' => 1,
+        ]];
+    }
+
+    private static function looksLikeDesignText(string $value): bool
+    {
+        $text = mb_strtolower($value);
+
+        return str_contains($text, 'ui/ux')
+            || str_contains($text, 'ui ux')
+            || str_contains($text, 'ui_ux')
+            || str_contains($text, 'mockup')
+            || str_contains($text, 'figma')
+            || str_contains($text, 'handover desain')
+            || str_contains($text, 'design')
+            || str_contains($text, 'desain');
     }
 
     private static function normalizeTestCase($raw): ?array

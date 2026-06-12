@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Project;
+use App\Models\ProjectTask;
 use App\Models\TeamAssignment;
 use App\Models\TeamWorkload;
 use App\Models\User;
@@ -26,6 +27,17 @@ class TeamController extends Controller
         'ui_ux' => 'ui_ux',
         'fullstack_dev' => 'fullstack_dev',
     ];
+
+    private const RESPONSIBILITY_LABELS = [
+        'saqa_mom_qc' => 'SA/QA & MoM/QC',
+        'uiux_design' => 'UI/UX Designer',
+        'fullstack_dev' => 'Fullstack Dev',
+        'wordpress_support' => 'WordPress Support',
+        'copywriting_support' => 'Copywriting Support',
+    ];
+
+    private const DONE_TASK_STATUSES = ['done', 'completed', 'complete', 'selesai'];
+    private const EXCLUDED_TASK_STATUSES = ['archived', 'archive', 'cancelled', 'canceled', 'dibatalkan'];
 
     public function index(Request $request)
     {
@@ -303,7 +315,8 @@ class TeamController extends Controller
         $ledProjects = Project::where('lead_user_id', $user->id)->count();
         $activeProjects = $openAssignments->pluck('project_id')->unique()->count();
 
-        $hasData = $assignments->isNotEmpty();
+        $taskScore = $this->taskScoreForMember($user);
+        $hasData = $assignments->isNotEmpty() || $taskScore['total'] > 0;
 
         return [
             'id' => $user->id,
@@ -320,8 +333,8 @@ class TeamController extends Controller
             'capacity_hours' => $capacityHours,
             'projects_active' => $activeProjects,
             'tasks_open' => $openAssignments->count(),
-            'perf' => null,
-            'perf_label' => $hasData ? null : 'Belum ada data',
+            'perf' => $taskScore['score'],
+            'perf_label' => $taskScore['total'] > 0 ? $taskScore['done'] . '/' . $taskScore['total'] . ' task selesai' : 'Belum ada data task',
             'presence' => $user->archived_at ? 'offline' : ($load >= 85 ? 'away' : 'online'),
             'skills' => $skills,
             'phone' => $user->phone ?: '',
@@ -329,7 +342,8 @@ class TeamController extends Controller
             'join_date' => $joinedAt->translatedFormat('d M Y'),
             'last_active' => AppTime::diff($user->updated_at),
             'projects_lead' => $ledProjects,
-            'tasks_done' => $doneAssignments->count(),
+            'tasks_done' => $taskScore['done'],
+            'tasks_total' => $taskScore['total'],
             'bio' => self::UI_ROLES[$roleKey]['label'] . ' · ' . ($user->level ?: 'Mid') . '. Profil ini tersimpan di database Smart-PMIS.',
             'archived' => (bool) $user->archived_at,
             'raw_role' => $roleKey,
@@ -352,6 +366,28 @@ class TeamController extends Controller
         ];
     }
 
+    private function taskScoreForMember(User $user): array
+    {
+        $tasks = ProjectTask::query()
+            ->where('assigned_to', $user->id)
+            ->whereNotIn('status', self::EXCLUDED_TASK_STATUSES)
+            ->whereHas('project', fn ($query) => $query->whereNull('archived_at'))
+            ->get(['status']);
+
+        $total = $tasks->count();
+        if ($total === 0) {
+            return ['score' => null, 'done' => 0, 'total' => 0];
+        }
+
+        $done = $tasks->filter(fn (ProjectTask $task) => in_array(mb_strtolower(trim((string) $task->status)), self::DONE_TASK_STATUSES, true))->count();
+
+        return [
+            'score' => (int) round($done / $total * 100),
+            'done' => $done,
+            'total' => $total,
+        ];
+    }
+
     private function assignmentRow(TeamAssignment $assignment, int $capacityHours, User $user, bool $completed = false): array
     {
         $hours = (int) ($assignment->estimated_hours ?? 0);
@@ -365,6 +401,7 @@ class TeamController extends Controller
             'role' => $assignment->title,
             'title' => $assignment->title,
             'type' => $assignment->type,
+            'responsibility_labels' => $this->assignmentResponsibilityLabels($assignment),
             'pct' => $capacityHours > 0 ? (int) min(100, round($hours / $capacityHours * 100)) : 0,
             'hours' => $hours,
             'status' => $assignment->status,
@@ -375,6 +412,24 @@ class TeamController extends Controller
             'update_url' => route('team.assignments.update', [$user, $assignment]),
             'delete_url' => route('team.assignments.destroy', [$user, $assignment]),
         ];
+    }
+
+    private function assignmentResponsibilityLabels(TeamAssignment $assignment): array
+    {
+        $labels = collect($assignment->responsibilities ?? [])
+            ->map(fn ($key) => is_string($key) ? (self::RESPONSIBILITY_LABELS[$key] ?? null) : null)
+            ->filter()
+            ->values();
+
+        if ($labels->isNotEmpty()) {
+            return $labels->all();
+        }
+
+        return match ($assignment->type) {
+            'review' => ['SA/QA & MoM/QC'],
+            'support' => [str_contains(mb_strtolower((string) $assignment->title), 'wordpress') ? 'WordPress Support' : 'Support'],
+            default => [$assignment->title ?: 'Task'],
+        };
     }
 
     private function ensureOperationalMember(User $member): void

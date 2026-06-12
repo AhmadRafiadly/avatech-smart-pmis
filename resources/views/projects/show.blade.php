@@ -7,6 +7,8 @@
     $canEdit = in_array($role, $operationalEditRoles, true);
     $canQuickAssign = $isReadOnlyProjectDetail;
     $useReferenceProjectData = (bool) ($useReferenceProjectData ?? false);
+    $canPrepareQc = (bool) ($canPrepareQc ?? false);
+    $canExecuteQc = (bool) ($canExecuteQc ?? false);
 
     $tabs = [
         ['id' => 'overview',   'label' => 'Overview',         'count' => 0],
@@ -24,14 +26,14 @@
     ];
 
     $metrics = [
-        ['code' => 'MOD',  'value' => '0/6',  'label' => 'Modul Disetujui',    'color' => '#3B82F6', 'progress' => 0,   'sub' => '100% Terdefinisi'],
+        ['code' => 'MOD',  'value' => '6',    'label' => 'Modul Terdefinisi',  'color' => '#3B82F6', 'progress' => 100, 'sub' => '6 modul aktif/terdefinisi'],
         ['code' => 'TASK', 'value' => '0/14', 'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => 0,   'sub' => '0 Selesai / 14 Proses'],
         ['code' => 'MOM',  'value' => '1/1',  'label' => 'MoM AI Rapi',        'color' => '#10B981', 'progress' => 100, 'sub' => 'Semua disetujui'],
-        ['code' => 'QC',   'value' => '0%',   'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0,   'sub' => 'Pass Rate'],
+        ['code' => 'QC',   'value' => '0%',   'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0,   'sub' => '0 lulus - 0 gagal - 0 pending'],
     ];
 
     $statusCards = [
-        ['count' => 0, 'label' => 'Disetujui',       'bg' => '#ECFDF5', 'border' => '#A7F3D0', 'value' => '#047857', 'caption' => '#059669'],
+        ['count' => 0, 'label' => 'Aktif',           'bg' => '#ECFDF5', 'border' => '#A7F3D0', 'value' => '#047857', 'caption' => '#059669'],
         ['count' => 0, 'label' => 'Menunggu Dev',    'bg' => '#EFF6FF', 'border' => '#BFDBFE', 'value' => '#1D4ED8', 'caption' => '#2563EB'],
         ['count' => 6, 'label' => 'Menunggu Design', 'bg' => '#FFFBEB', 'border' => '#FDE68A', 'value' => '#B45309', 'caption' => '#D97706'],
         ['count' => 0, 'label' => 'Perlu Revisi',    'bg' => '#FFF1F2', 'border' => '#FECDD3', 'value' => '#BE123C', 'caption' => '#E11D48'],
@@ -41,7 +43,7 @@
         'Menunggu Desain' => ['bg' => '#FEF3C7', 'color' => '#92400E'],
         'Perlu Revisi'    => ['bg' => '#DBEAFE', 'color' => '#1E40AF'],
         'Menunggu Dev'    => ['bg' => '#EDE9FE', 'color' => '#5B21B6'],
-        'Disetujui'       => ['bg' => '#D1FAE5', 'color' => '#065F46'],
+        'Aktif'           => ['bg' => '#D1FAE5', 'color' => '#065F46'],
     ];
 
     $modules = [
@@ -132,14 +134,14 @@
         })->all();
 
         $metrics = $dbMetrics ?? [
-            ['code' => 'MOD',  'value' => '0/0', 'label' => 'Modul Disetujui',    'color' => '#3B82F6', 'progress' => 0, 'sub' => 'Belum ada modul'],
+            ['code' => 'MOD',  'value' => '0',   'label' => 'Modul Terdefinisi',  'color' => '#3B82F6', 'progress' => 0, 'sub' => 'Belum ada modul'],
             ['code' => 'TASK', 'value' => '0/0', 'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => 0, 'sub' => 'Belum ada task'],
             ['code' => 'MOM',  'value' => '0/0', 'label' => 'MoM AI Rapi',        'color' => '#10B981', 'progress' => 0, 'sub' => 'Belum ada MoM'],
-            ['code' => 'QC',   'value' => '0%',  'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0, 'sub' => 'Pass Rate'],
+            ['code' => 'QC',   'value' => '0%',  'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0, 'sub' => 'Belum ada test case'],
         ];
 
         $statusCards = $dbStatusCards ?? [
-            ['count' => 0, 'label' => 'Disetujui',       'bg' => '#ECFDF5', 'border' => '#A7F3D0', 'value' => '#047857', 'caption' => '#059669'],
+            ['count' => 0, 'label' => 'Aktif',           'bg' => '#ECFDF5', 'border' => '#A7F3D0', 'value' => '#047857', 'caption' => '#059669'],
             ['count' => 0, 'label' => 'Menunggu Dev',    'bg' => '#EFF6FF', 'border' => '#BFDBFE', 'value' => '#1D4ED8', 'caption' => '#2563EB'],
             ['count' => 0, 'label' => 'Menunggu Design', 'bg' => '#FFFBEB', 'border' => '#FDE68A', 'value' => '#B45309', 'caption' => '#D97706'],
             ['count' => 0, 'label' => 'Perlu Revisi',    'bg' => '#FFF1F2', 'border' => '#FECDD3', 'value' => '#BE123C', 'caption' => '#E11D48'],
@@ -271,11 +273,12 @@
         : 'Belum ada ringkasan MoM terbaru.';
 
     $projectStatusLabel = $statusUi['label'] ?? \Illuminate\Support\Str::headline((string) ($project->status ?? 'on-track'));
+    $displayProgress = (int) ($projectProgress ?? $project->progress ?? 0);
     $projectUpdateText = implode("\n", [
         'Project: ' . trim((string) ($project->code ? $project->code . ' - ' : '') . $project->name),
         'Client: ' . ($project->client?->name ?? '-'),
         'Status: ' . $project->phase . ' / ' . $projectStatusLabel,
-        'Progress: ' . (int) $project->progress . '% (estimasi manual PM)',
+        'Progress: ' . $displayProgress . '% (berdasarkan task selesai)',
         'WBS: ' . count($modules) . ' modul, ' . (int) ($workspaceTaskTotal ?? array_sum($taskStatusCounts)) . ' task',
         'Task: ' . $taskStatusCounts['planned'] . ' planned, ' . $taskStatusCounts['in_progress'] . ' in progress, ' . $taskStatusCounts['review'] . ' review, ' . $taskStatusCounts['done'] . ' done',
         'QC: ' . $qcStatusCounts['pending'] . ' pending, ' . $qcStatusCounts['passed'] . ' passed, ' . $qcStatusCounts['failed'] . ' failed, ' . $qcStatusCounts['retest'] . ' retest',
@@ -376,6 +379,12 @@
                         <x-heroicon-o-tag class="w-3.5 h-3.5" />
                         {{ $project->phase }}
                     </span>
+                    @if ($project->requires_design)
+                        <span class="inline-flex items-center gap-1.5 text-pink-700 bg-pink-50 px-2 py-0.5 rounded-md font-semibold">
+                            <x-heroicon-o-paint-brush class="w-3.5 h-3.5" />
+                            UI/UX required
+                        </span>
+                    @endif
                     <span class="w-1 h-1 rounded-full bg-slate-300"></span>
                     <span class="inline-flex items-center gap-1.5">
                         <x-heroicon-o-calendar-days class="w-3.5 h-3.5" />
@@ -872,18 +881,28 @@
                                     @if (! empty($task['due']))
                                         <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">{{ $task['due'] }}</span>
                                     @endif
+                                    @if (! empty($task['is_design_deliverable']))
+                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-pink-50 text-pink-700">Design handover</span>
+                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-white border border-pink-100 text-pink-700">{{ count($task['design_deliverables'] ?? []) }} deliverable</span>
+                                    @endif
                                 </div>
                                 @if ($canEdit && ! $useReferenceProjectData && ! empty($task['id']))
-                                    <form method="POST" action="{{ route('projects.tasks.status', [$project, $task['id']]) }}" class="mt-3 flex items-center gap-2">
-                                        @csrf
-                                        @method('PATCH')
-                                        <select name="status" class="min-w-0 flex-1 h-8 rounded-lg border border-violet-100 bg-white px-2 text-[12px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                            @foreach ($taskStatusOptions as $value => $label)
-                                                <option value="{{ $value }}" @selected($task['status'] === $value)>{{ $label }}</option>
-                                            @endforeach
-                                        </select>
-                                        <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan</button>
-                                    </form>
+                                    @if (! empty($task['status_locked']))
+                                        <div class="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-700 leading-relaxed">
+                                            {{ $task['status_lock_message'] }}
+                                        </div>
+                                    @else
+                                        <form method="POST" action="{{ route('projects.tasks.status', [$project, $task['id']]) }}" class="mt-3 flex items-center gap-2">
+                                            @csrf
+                                            @method('PATCH')
+                                            <select name="status" class="min-w-0 flex-1 h-8 rounded-lg border border-violet-100 bg-white px-2 text-[12px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                @foreach ($taskStatusOptions as $value => $label)
+                                                    <option value="{{ $value }}" @selected($task['status'] === $value)>{{ $label }}</option>
+                                                @endforeach
+                                            </select>
+                                            <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan</button>
+                                        </form>
+                                    @endif
                                     <details class="mt-2 rounded-lg border border-violet-100 bg-violet-50/30 px-3 py-2">
                                         <summary class="cursor-pointer select-none text-[12px] font-bold text-violet-700">Edit Task</summary>
                                         <form method="POST" action="{{ route('projects.tasks.update', [$project, $task['id']]) }}" class="mt-3 space-y-2">
@@ -919,11 +938,19 @@
                                                 </div>
                                                 <div>
                                                     <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Status</label>
-                                                    <select name="status" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                                        @foreach ($taskStatusOptions as $value => $label)
-                                                            <option value="{{ $value }}" @selected($task['status'] === $value)>{{ $label }}</option>
-                                                        @endforeach
-                                                    </select>
+                                                    @if (! empty($task['status_locked']))
+                                                        <input type="hidden" name="status" value="{{ $task['status'] }}">
+                                                        <div class="w-full min-h-9 rounded-lg border border-amber-100 bg-amber-50 px-2 py-2 text-[12px] font-semibold text-amber-700">
+                                                            {{ $taskStatusOptions[$task['status']] ?? $task['status'] }}
+                                                        </div>
+                                                        <p class="mt-1 text-[10.5px] text-amber-700 leading-tight">{{ $task['status_lock_message'] }}</p>
+                                                    @else
+                                                        <select name="status" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                            @foreach ($taskStatusOptions as $value => $label)
+                                                                <option value="{{ $value }}" @selected($task['status'] === $value)>{{ $label }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                    @endif
                                                 </div>
                                                 <div>
                                                     <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Prioritas</label>
@@ -953,6 +980,88 @@
                                             <button type="submit" class="h-8 px-3 rounded-lg border border-rose-100 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 transition cursor-pointer">Hapus</button>
                                         </form>
                                     </details>
+                                @endif
+                                @if (! empty($task['is_design_deliverable']))
+                                    <div class="mt-3 rounded-lg border border-pink-100 bg-pink-50/40 p-3 space-y-2">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p class="text-[12px] font-bold text-[#1E1B4B]">Design Deliverables</p>
+                                                <p class="mt-0.5 text-[11px] text-slate-500 leading-relaxed">Tambahkan satu atau beberapa link Figma/PDF sesuai kebutuhan desain. Untuk project kecil, cukup gunakan satu Master Figma.</p>
+                                            </div>
+                                            @if (empty($task['can_edit_design_deliverables']))
+                                                <span class="shrink-0 text-[10px] font-semibold rounded-full bg-white border border-pink-100 text-slate-500 px-2 py-0.5">View only</span>
+                                            @endif
+                                        </div>
+
+                                        @forelse (($task['design_deliverables'] ?? []) as $deliverable)
+                                            <div class="rounded-lg border border-pink-100 bg-white p-2.5">
+                                                <div class="flex items-start justify-between gap-2">
+                                                    <div class="min-w-0">
+                                                        <p class="text-[12px] font-bold text-[#1E1B4B] truncate">{{ $deliverable['title'] }}</p>
+                                                        <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                                                            @if (! empty($deliverable['figma_url']))
+                                                                <a href="{{ $deliverable['figma_url'] }}" target="_blank" rel="noopener" class="font-semibold text-violet-700 hover:text-violet-900">Figma/mockup</a>
+                                                            @endif
+                                                            @if (! empty($deliverable['pdf_preview_url']))
+                                                                <a href="{{ $deliverable['pdf_preview_url'] }}" target="_blank" rel="noopener" class="font-semibold text-violet-700 hover:text-violet-900">Preview PDF</a>
+                                                                @if (! empty($deliverable['pdf_download_url']))
+                                                                    <a href="{{ $deliverable['pdf_download_url'] }}" class="font-semibold text-slate-500 hover:text-violet-800">Download PDF</a>
+                                                                @endif
+                                                            @elseif (! empty($deliverable['has_pdf']))
+                                                                <span class="font-semibold text-amber-700">PDF belum tersedia</span>
+                                                            @endif
+                                                            @if (! empty($deliverable['submitted_at']))
+                                                                <span class="text-slate-400">{{ $deliverable['submitted_at'] }}</span>
+                                                            @endif
+                                                        </div>
+                                                        @if (! empty($deliverable['notes']))
+                                                            <p class="mt-1 text-[11px] text-slate-500 leading-relaxed">{{ $deliverable['notes'] }}</p>
+                                                        @endif
+                                                    </div>
+                                                </div>
+
+                                                @if (! empty($task['can_edit_design_deliverables']))
+                                                    <details class="mt-2">
+                                                        <summary class="cursor-pointer select-none text-[11px] font-bold text-pink-700">Edit deliverable</summary>
+                                                        <form method="POST" action="{{ route('projects.tasks.design-deliverables.update', [$project, $task['id'], $deliverable['id']]) }}" enctype="multipart/form-data" class="mt-2 space-y-2">
+                                                            @csrf
+                                                            @method('PUT')
+                                                            <input name="title" value="{{ $deliverable['title'] }}" class="w-full h-8 rounded-lg border border-pink-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-pink-200" />
+                                                            <input name="figma_url" type="url" value="{{ $deliverable['figma_url'] ?? '' }}" placeholder="https://www.figma.com/..." class="w-full h-8 rounded-lg border border-pink-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-pink-200" />
+                                                            <input name="pdf_file" type="file" accept="application/pdf,.pdf" class="w-full rounded-lg border border-pink-100 bg-white px-2 py-1.5 text-[12px] file:mr-3 file:rounded-md file:border-0 file:bg-pink-50 file:px-2 file:py-1 file:text-pink-700 file:font-semibold" />
+                                                            <textarea name="notes" rows="2" placeholder="Catatan opsional..." class="w-full rounded-lg border border-pink-100 bg-white px-2 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-pink-200 resize-y">{{ $deliverable['notes'] ?? '' }}</textarea>
+                                                            <div class="flex items-center justify-between gap-2">
+                                                                <button type="submit" class="h-8 px-3 rounded-lg bg-pink-600 text-white text-[12px] font-semibold hover:bg-pink-700 transition cursor-pointer">Simpan</button>
+                                                            </div>
+                                                        </form>
+                                                        <form method="POST" action="{{ route('projects.tasks.design-deliverables.destroy', [$project, $task['id'], $deliverable['id']]) }}" class="mt-2" onsubmit="return confirm('Hapus deliverable desain ini?');">
+                                                            @csrf
+                                                            @method('DELETE')
+                                                            <button type="submit" class="h-8 px-3 rounded-lg border border-rose-100 bg-rose-50 text-rose-700 text-[12px] font-semibold hover:bg-rose-100 transition cursor-pointer">Hapus Deliverable</button>
+                                                        </form>
+                                                    </details>
+                                                @endif
+                                            </div>
+                                        @empty
+                                            <div class="rounded-lg border border-dashed border-pink-200 bg-white/70 px-3 py-3 text-[11.5px] text-slate-500 leading-relaxed">Belum ada deliverable. Handover desain belum bisa ditandai Done sampai minimal satu link Figma/mockup atau PDF ditambahkan.</div>
+                                        @endforelse
+
+                                        @if (! empty($task['can_edit_design_deliverables']))
+                                            <details class="rounded-lg border border-pink-100 bg-white p-2.5">
+                                                <summary class="cursor-pointer select-none text-[12px] font-bold text-pink-700">+ Tambah Deliverable</summary>
+                                                <form method="POST" action="{{ route('projects.tasks.design-deliverables.store', [$project, $task['id']]) }}" enctype="multipart/form-data" class="mt-2 space-y-2">
+                                                    @csrf
+                                                    <input name="title" placeholder="Master Figma Company Profile" class="w-full h-8 rounded-lg border border-pink-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-pink-200" />
+                                                    <input name="figma_url" type="url" placeholder="https://www.figma.com/..." class="w-full h-8 rounded-lg border border-pink-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-pink-200" />
+                                                    <input name="pdf_file" type="file" accept="application/pdf,.pdf" class="w-full rounded-lg border border-pink-100 bg-white px-2 py-1.5 text-[12px] file:mr-3 file:rounded-md file:border-0 file:bg-pink-50 file:px-2 file:py-1 file:text-pink-700 file:font-semibold" />
+                                                    <textarea name="notes" rows="2" placeholder="Catatan opsional..." class="w-full rounded-lg border border-pink-100 bg-white px-2 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-pink-200 resize-y"></textarea>
+                                                    <div class="flex justify-end">
+                                                        <button type="submit" class="h-8 px-3 rounded-lg bg-pink-600 text-white text-[12px] font-semibold hover:bg-pink-700 transition cursor-pointer">Tambah Deliverable</button>
+                                                    </div>
+                                                </form>
+                                            </details>
+                                        @endif
+                                    </div>
                                 @endif
                             </div>
                         @empty
@@ -1010,6 +1119,7 @@
                 </div>
                 <form method="POST" action="{{ route('projects.ai-wbs.apply', $project) }}" class="px-6 py-5 space-y-4">
                     @csrf
+                    <input type="hidden" name="source_mom_id" value="{{ $wbsPrev['source_mom_id'] ?? '' }}">
                     @foreach (($wbsPrev['modules'] ?? []) as $mi => $mod)
                         <div class="rounded-xl border border-violet-100 bg-white p-4 space-y-3" data-wbs-module-block="{{ $mi }}">
                             <div class="flex items-start gap-2">
@@ -1532,7 +1642,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
 
         {{-- ====== HITL PREVIEW: AI Test Case Generator (draf editable + pilih item) ====== --}}
-        @if ($canEdit && ! $useReferenceProjectData && session('ai_testcase_preview'))
+        @if ($canEdit && ! $useReferenceProjectData && $canPrepareQc && session('ai_testcase_preview'))
             @php $tcPrev = session('ai_testcase_preview'); @endphp
             <div class="m-6 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 overflow-hidden">
                 <div class="px-6 py-4 border-b border-violet-100 flex items-center gap-2.5">
@@ -1545,6 +1655,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 </div>
                 <form method="POST" action="{{ route('projects.ai-test-cases.apply', $project) }}" class="px-6 py-5 space-y-3">
                     @csrf
+                    <input type="hidden" name="source_module_id" value="{{ $tcPrev['source_module_id'] ?? '' }}">
                     @foreach (($tcPrev['test_cases'] ?? []) as $ci => $case)
                         @php
                             $caseModuleTitle = mb_strtolower((string) ($case['module_title'] ?? ''));
@@ -1681,7 +1792,11 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                     @endphp
                                     <div class="flex flex-col items-end gap-2">
                                         {{-- Status actions (Lulus/Gagal/Retest) — dipertahankan --}}
-                                        @if (in_array($tcStatus, ['passed', 'lulus', 'failed', 'gagal'], true))
+                                        @if (! $canExecuteQc)
+                                            <p class="max-w-[220px] rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-left text-[11px] font-medium text-amber-700 leading-relaxed">
+                                                Eksekusi QC baru dapat dilakukan setelah project masuk fase QC.
+                                            </p>
+                                        @elseif (in_array($tcStatus, ['passed', 'lulus', 'failed', 'gagal'], true))
                                             <form method="POST" action="{{ $qcAction }}" class="inline">
                                                 @csrf
                                                 @method('PATCH')
@@ -1804,7 +1919,13 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 @php
                     $qcAiSourceReady = count($modules) > 0 || ($workspaceTaskTotal ?? 0) > 0;
 
-                    if (! $qcAiSourceReady) {
+                    if (! $canPrepareQc) {
+                        $qcAiState = [
+                            'label' => 'Tersedia mulai fase Development',
+                            'tooltip' => 'AI Test Case Generator tersedia setelah project masuk fase Development.',
+                            'tone' => 'muted',
+                        ];
+                    } elseif (! $qcAiSourceReady) {
                         $qcAiState = [
                             'label' => 'Tambahkan WBS/task terlebih dahulu',
                             'tooltip' => 'Generator butuh setidaknya 1 WBS module atau task sebagai sumber.',
@@ -1989,16 +2110,34 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                                 <div class="text-[12px] text-slate-500">{{ $member['role'] }}</div>
                                             </div>
                                         </div>
-                                        @if (count($member['presets']) > 1)
-                                            <select data-qa-preset class="h-9 rounded-lg border border-violet-100 bg-violet-50/40 px-3 text-[12.5px] font-semibold text-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
-                                                @foreach ($member['presets'] as $key => $preset)
-                                                    <option value="{{ $key }}">{{ $preset['label'] }}</option>
-                                                @endforeach
-                                            </select>
-                                        @endif
+                                        <div data-qa-selected-chips class="flex items-center justify-end gap-1.5 flex-wrap">
+                                            @foreach (($member['responsibility_labels'] ?? []) as $label)
+                                                <span class="inline-flex items-center rounded-full bg-violet-50 border border-violet-100 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700">{{ $label }}</span>
+                                            @endforeach
+                                        </div>
                                     </div>
 
                                     <div class="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-3">
+                                        <div class="lg:col-span-12">
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-2">Responsibilities</label>
+                                            <div class="flex flex-wrap gap-2">
+                                                @foreach (($member['responsibility_options'] ?? []) as $key => $label)
+                                                    <label class="inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50/50 px-3 py-1.5 text-[11.5px] font-semibold text-violet-700 cursor-pointer hover:bg-violet-100/70 transition">
+                                                        <input
+                                                            type="checkbox"
+                                                            name="assignments[{{ $idx }}][responsibilities][]"
+                                                            value="{{ $key }}"
+                                                            data-qa-responsibility
+                                                            data-label="{{ $label }}"
+                                                            @checked(in_array($key, $member['responsibilities'] ?? [], true))
+                                                            class="w-3.5 h-3.5 rounded border-violet-200 text-violet-600 focus:ring-violet-300 cursor-pointer"
+                                                        >
+                                                        {{ $label }}
+                                                    </label>
+                                                @endforeach
+                                            </div>
+                                            <p class="mt-1.5 text-[10.5px] text-slate-400 leading-tight">Multi-responsibility hanya untuk pembagian tugas project, bukan penambahan hak akses sensitif.</p>
+                                        </div>
                                         <div class="lg:col-span-5">
                                             <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Ringkasan</label>
                                             <input name="assignments[{{ $idx }}][title]" data-qa-field="title" value="{{ $member['title'] }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
@@ -2182,15 +2321,41 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     };
                     document.querySelectorAll('[data-quick-assign-open]').forEach(btn => btn.addEventListener('click', openQuickAssign));
                     quickAssignModal.querySelectorAll('[data-quick-assign-close]').forEach(btn => btn.addEventListener('click', closeQuickAssign));
-                    quickAssignModal.querySelectorAll('[data-qa-preset]').forEach(select => {
-                        select.addEventListener('change', () => {
-                            const row = select.closest('[data-quick-assign-row]');
-                            const preset = quickAssignPresets[row?.dataset.qaUserId || '']?.[select.value];
-                            if (! row || ! preset) return;
-                            ['title', 'type', 'status', 'estimated_hours', 'notes'].forEach(field => {
-                                const input = row.querySelector('[data-qa-field="' + field + '"]');
-                                if (input && preset[field] !== undefined) input.value = preset[field];
-                            });
+                    const syncQuickAssignRow = (row) => {
+                        const userId = row?.dataset.qaUserId || '';
+                        const checked = Array.from(row?.querySelectorAll('[data-qa-responsibility]:checked') || []);
+                        const keys = checked.map(input => input.value);
+                        const presets = quickAssignPresets[userId] || {};
+                        const firstPreset = presets[keys[0]] || Object.values(presets)[0];
+                        const labels = checked.map(input => input.dataset.label || input.value);
+
+                        const chipWrap = row?.querySelector('[data-qa-selected-chips]');
+                        if (chipWrap) {
+                            chipWrap.innerHTML = labels.map(label => '<span class="inline-flex items-center rounded-full bg-violet-50 border border-violet-100 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700">' + label + '</span>').join('');
+                        }
+
+                        if (! firstPreset) return;
+                        const setField = (field, value) => {
+                            const input = row.querySelector('[data-qa-field="' + field + '"]');
+                            if (input && value !== undefined) input.value = value;
+                        };
+
+                        setField('type', keys.includes('saqa_mom_qc') ? 'review' : firstPreset.type);
+                        setField('status', firstPreset.status);
+                        setField('estimated_hours', firstPreset.estimated_hours);
+                        setField('title', labels.length > 1 ? labels.join(', ') : firstPreset.title);
+                        setField('notes', keys.map(key => presets[key]?.notes).filter(Boolean).join(' '));
+                    };
+
+                    quickAssignModal.querySelectorAll('[data-qa-responsibility]').forEach(input => {
+                        input.addEventListener('change', () => {
+                            const row = input.closest('[data-quick-assign-row]');
+                            if (! row) return;
+                            const checked = row.querySelectorAll('[data-qa-responsibility]:checked');
+                            if (checked.length === 0) {
+                                input.checked = true;
+                            }
+                            syncQuickAssignRow(row);
                         });
                     });
                     document.addEventListener('keydown', (event) => {

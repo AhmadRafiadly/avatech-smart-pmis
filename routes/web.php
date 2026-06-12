@@ -81,6 +81,12 @@ Route::middleware('auth')->group(function () {
     Route::put('/projects/{project}/tasks/{task}', [ProjectController::class, 'updateTask'])->name('projects.tasks.update');
     Route::delete('/projects/{project}/tasks/{task}', [ProjectController::class, 'destroyTask'])->name('projects.tasks.destroy');
     Route::patch('/projects/{project}/tasks/{task}/status', [ProjectController::class, 'updateTaskStatus'])->name('projects.tasks.status');
+    Route::patch('/projects/{project}/tasks/{task}/design-deliverable', [ProjectController::class, 'updateDesignDeliverable'])->name('projects.tasks.design-deliverable');
+    Route::post('/projects/{project}/tasks/{task}/design-deliverables', [ProjectController::class, 'storeDesignDeliverable'])->name('projects.tasks.design-deliverables.store');
+    Route::put('/projects/{project}/tasks/{task}/design-deliverables/{deliverable}', [ProjectController::class, 'updateDesignDeliverableRow'])->name('projects.tasks.design-deliverables.update');
+    Route::delete('/projects/{project}/tasks/{task}/design-deliverables/{deliverable}', [ProjectController::class, 'destroyDesignDeliverable'])->name('projects.tasks.design-deliverables.destroy');
+    Route::get('/projects/{project}/tasks/{task}/design-deliverables/{deliverable}/preview', [ProjectController::class, 'previewDesignDeliverable'])->name('projects.tasks.design-deliverables.preview');
+    Route::get('/projects/{project}/tasks/{task}/design-deliverables/{deliverable}/download', [ProjectController::class, 'downloadDesignDeliverable'])->name('projects.tasks.design-deliverables.download');
     Route::post('/projects/{project}/moms', [ProjectController::class, 'storeMom'])->name('projects.moms.store');
     Route::patch('/projects/{project}/moms/{mom}/summary', [ProjectController::class, 'updateMomSummary'])->name('projects.moms.summary');
     Route::post('/projects/{project}/ai-mom/fix', [ProjectController::class, 'fixLatestMom'])->name('projects.ai-mom.fix');

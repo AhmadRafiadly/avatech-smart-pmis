@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProjectTask extends Model
 {
@@ -18,12 +19,19 @@ class ProjectTask extends Model
         'due_date',
         'estimate_hours',
         'sort_order',
+        'deliverable_url',
+        'deliverable_file_path',
+        'deliverable_type',
+        'deliverable_submitted_at',
+        'is_design_deliverable',
     ];
 
     protected $casts = [
         'due_date' => 'date',
         'estimate_hours' => 'integer',
         'sort_order' => 'integer',
+        'deliverable_submitted_at' => 'datetime',
+        'is_design_deliverable' => 'boolean',
     ];
 
     public function project(): BelongsTo
@@ -39,5 +47,10 @@ class ProjectTask extends Model
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function designDeliverables(): HasMany
+    {
+        return $this->hasMany(ProjectTaskDesignDeliverable::class);
     }
 }

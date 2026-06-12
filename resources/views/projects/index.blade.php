@@ -158,7 +158,7 @@
         </div>
     </section>
     <p class="-mt-3 mb-6 text-[12px] text-slate-400">
-        Due date merupakan target saat ini dan dapat disesuaikan jika ada revisi atau perubahan scope. Progress merupakan estimasi manual PM.
+        Due date merupakan target saat ini dan dapat disesuaikan jika ada revisi atau perubahan scope. Progress dihitung dari task selesai/estimasi jam.
     </p>
 
     <section data-view-panel="grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -219,12 +219,12 @@
                 <div class="mt-auto">
                     <div class="flex items-center justify-between mb-1.5">
                         <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Progress</span>
-                        <span class="text-[13px] font-bold text-[#1E1B4B] tabular-nums" title="Estimasi manual PM, bukan hitung otomatis task/QC.">{{ $p['progress'] }}%</span>
+                        <span class="text-[13px] font-bold text-[#1E1B4B] tabular-nums" title="Progress dihitung dari task selesai/estimasi jam.">{{ $p['progress'] }}%</span>
                     </div>
                     <div class="h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                         <div class="h-full rounded-full {{ $statusDot[$p['status']] }}" style="width: {{ $p['progress'] }}%"></div>
                     </div>
-                    <p class="mt-1 text-[10.5px] text-slate-400">Progress merupakan estimasi manual PM.</p>
+                    <p class="mt-1 text-[10.5px] text-slate-400">Progress dihitung dari task selesai/estimasi jam.</p>
 
                     <div class="mt-4 flex items-center gap-2" onclick="event.stopPropagation()">
                         <button
@@ -237,6 +237,7 @@
                             data-client-id="{{ $p['client_id'] }}"
                             data-description="{{ $p['desc'] }}"
                             data-due-at="{{ $p['due_at'] }}"
+                            data-requires-design="{{ $p['requires_design'] ? '1' : '0' }}"
                             class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-100 bg-white text-[12px] font-semibold text-slate-600 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer"
                         >
                             <x-heroicon-o-pencil-square class="w-3.5 h-3.5" />
@@ -309,7 +310,7 @@
                         <th class="px-4 py-4">Klien</th>
                         <th class="px-4 py-4">Phase</th>
                         <th class="px-4 py-4">Team</th>
-                        <th class="px-4 py-4 w-[220px]">Progress <span class="normal-case tracking-normal font-medium text-slate-300">(manual PM)</span></th>
+                        <th class="px-4 py-4 w-[220px]">Progress <span class="normal-case tracking-normal font-medium text-slate-300">(task-based)</span></th>
                         <th class="px-4 py-4">Status</th>
                         <th class="px-7 py-4 text-right"></th>
                     </tr>
@@ -358,7 +359,7 @@
                                     <div class="flex-1 h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                                         <div class="h-full rounded-full {{ $statusDot[$p['status']] }}" style="width: {{ $p['progress'] }}%"></div>
                                     </div>
-                                    <span class="text-[12px] font-bold text-[#1E1B4B] w-9 text-right tabular-nums" title="Estimasi manual PM, bukan hitung otomatis task/QC.">{{ $p['progress'] }}%</span>
+                                    <span class="text-[12px] font-bold text-[#1E1B4B] w-9 text-right tabular-nums" title="Progress dihitung dari task selesai/estimasi jam.">{{ $p['progress'] }}%</span>
                                 </div>
                             </td>
                             <td class="px-4 py-4">
@@ -379,6 +380,7 @@
                                         data-client-id="{{ $p['client_id'] }}"
                                         data-description="{{ $p['desc'] }}"
                                         data-due-at="{{ $p['due_at'] }}"
+                                        data-requires-design="{{ $p['requires_design'] ? '1' : '0' }}"
                                         class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-violet-100 bg-white text-slate-500 hover:border-violet-300 hover:text-violet-700 transition cursor-pointer"
                                         aria-label="Edit proyek {{ $p['name'] }}"
                                     >
@@ -574,6 +576,14 @@
                         @error('description') <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p> @enderror
                     @endif
                 </div>
+                <label class="flex items-start gap-3 rounded-xl border border-violet-100 bg-violet-50/40 px-3 py-3">
+                    <input type="hidden" name="requires_design" value="0">
+                    <input name="requires_design" type="checkbox" value="1" data-requires-design-checkbox @checked(old('_form') === 'edit' && old('requires_design')) class="mt-0.5 w-4 h-4 rounded border-violet-300 text-violet-600 focus:ring-violet-300 cursor-pointer">
+                    <span>
+                        <span class="block text-[12.5px] font-bold text-[#1E1B4B]">Membutuhkan mockup UI/UX?</span>
+                        <span class="block mt-1 text-[11.5px] text-slate-500 leading-relaxed">Jika aktif, sistem akan menyiapkan task desain terlebih dahulu sebelum masuk ke Development.</span>
+                    </span>
+                </label>
                 <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Due Date</label>
                     <input name="due_at" type="date" value="{{ old('_form') === 'edit' ? old('due_at') : '' }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
@@ -655,6 +665,14 @@
                         <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p>
                     @enderror
                 </div>
+                <label class="flex items-start gap-3 rounded-xl border border-violet-100 bg-violet-50/40 px-3 py-3">
+                    <input type="hidden" name="requires_design" value="0">
+                    <input name="requires_design" type="checkbox" value="1" data-requires-design-checkbox @checked(old('requires_design')) class="mt-0.5 w-4 h-4 rounded border-violet-300 text-violet-600 focus:ring-violet-300 cursor-pointer">
+                    <span>
+                        <span class="block text-[12.5px] font-bold text-[#1E1B4B]">Membutuhkan mockup UI/UX?</span>
+                        <span class="block mt-1 text-[11.5px] text-slate-500 leading-relaxed">Jika aktif, sistem akan menyiapkan task desain terlebih dahulu sebelum masuk ke Development.</span>
+                    </span>
+                </label>
                 <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Due Date</label>
                     <input name="due_at" type="date" value="{{ old('due_at') }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
@@ -734,6 +752,8 @@
                         editForm.querySelector('[name="client_id"]').value = btn.dataset.clientId || '';
                         editForm.querySelector('[name="description"]').value = btn.dataset.description || '';
                         editForm.querySelector('[name="due_at"]').value = btn.dataset.dueAt || '';
+                        const requiresDesign = editForm.querySelector('[data-requires-design-checkbox]');
+                        if (requiresDesign) requiresDesign.checked = btn.dataset.requiresDesign === '1';
                         editForm.querySelector('[data-project-template]').value = 'custom';
                         editOpen();
                     });
@@ -753,14 +773,26 @@
                     internal: 'Internal system untuk operasional klien, mencakup dashboard, role access, workflow, reporting, testing, revisi scope, dan handover penggunaan.',
                     qa: 'QA/UAT project untuk validasi sistem, mencakup penyusunan test case, bug validation, regression testing, dokumentasi temuan, dan laporan hasil pengujian.'
                 };
+                const templateRequiresDesign = {
+                    web: true,
+                    wordpress: true,
+                    mobile: true,
+                    internal: true,
+                    qa: false,
+                    custom: false,
+                };
 
                 document.querySelectorAll('[data-project-template]').forEach(select => {
                     select.addEventListener('change', () => {
-                        const description = select.closest('form')?.querySelector('[name="description"]');
+                        const form = select.closest('form');
+                        const description = form?.querySelector('[name="description"]');
+                        const requiresDesign = form?.querySelector('[data-requires-design-checkbox]');
                         const nextValue = templateDescriptions[select.value] || '';
+                        if (requiresDesign) requiresDesign.checked = !! templateRequiresDesign[select.value];
                         if (! description || nextValue === '') return;
                         if (description.value.trim() !== '' && ! window.confirm('Ganti deskripsi dengan template proyek ini?')) {
                             select.value = 'custom';
+                            if (requiresDesign) requiresDesign.checked = false;
                             return;
                         }
                         description.value = nextValue;

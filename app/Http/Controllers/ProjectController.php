@@ -9,6 +9,7 @@ use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
 use App\Models\ProjectTask;
+use App\Models\ProjectTaskDesignDeliverable;
 use App\Models\TeamAssignment;
 use App\Models\User;
 use App\Services\AiPlanner;
@@ -19,6 +20,8 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
@@ -55,7 +58,7 @@ class ProjectController extends Controller
 
     private const MODULE_STATUS_LABELS = [
         'pending_design' => 'Menunggu Desain',
-        'approved'       => 'Disetujui',
+        'approved'       => 'Aktif',
         'waiting_dev'    => 'Menunggu Dev',
         'revision'       => 'Perlu Revisi',
     ];
@@ -88,6 +91,13 @@ class ProjectController extends Controller
 
     private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
     private const QUICK_ASSIGN_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
+    private const QUICK_ASSIGN_RESPONSIBILITIES = [
+        'saqa_mom_qc' => 'SA/QA & MoM/QC',
+        'uiux_design' => 'UI/UX Designer',
+        'fullstack_dev' => 'Fullstack Dev',
+        'wordpress_support' => 'WordPress Support',
+        'copywriting_support' => 'Copywriting Support',
+    ];
 
     public function __construct(private readonly SmartInsightService $insights)
     {
@@ -138,16 +148,24 @@ class ProjectController extends Controller
             ->unique()
             ->values();
 
-        $projects = Project::with('client')
+        $projects = Project::with([
+                'client',
+                'tasks' => fn ($query) => $query->select('id', 'project_id', 'assigned_to', 'status', 'estimate_hours'),
+            ])
             ->whereIn('id', $assignedProjectIds)
             ->whereNull('archived_at')
-            ->withCount([
-                'tasks',
-                'tasks as tasks_done_count' => fn ($q) => $q->whereIn('status', ['done', 'completed']),
-                'tasks as tasks_mine_count' => fn ($q) => $q->where('assigned_to', $user->id),
-            ])
             ->orderByDesc('updated_at')
-            ->get();
+            ->get()
+            ->each(function (Project $project) use ($user) {
+                $progressTasks = $project->tasks
+                    ->reject(fn (ProjectTask $task) => $this->isExcludedProgressStatus($task->status))
+                    ->values();
+
+                $project->setAttribute('computed_progress', $this->projectProgress($project));
+                $project->setAttribute('tasks_count', $progressTasks->count());
+                $project->setAttribute('tasks_done_count', $progressTasks->filter(fn (ProjectTask $task) => $this->isDoneStatus($task->status))->count());
+                $project->setAttribute('tasks_mine_count', $progressTasks->where('assigned_to', $user->id)->count());
+            });
 
         /* Primary action per role. We deliberately avoid copy that implies
          * features not yet wired up (QC DB flow, design upload). Every label
@@ -187,6 +205,7 @@ class ProjectController extends Controller
             'client_id'   => ['required', Rule::exists('clients', 'id')],
             'description' => ['nullable', 'string', 'max:2000'],
             'due_at'      => ['nullable', 'date'],
+            'requires_design' => ['nullable', 'boolean'],
         ], [
             'code.required'      => 'Kode proyek wajib diisi.',
             'code.regex'         => 'Kode hanya boleh huruf dan angka.',
@@ -209,6 +228,7 @@ class ProjectController extends Controller
             'progress'         => 0,
             'status'           => 'on-track',
             'ai_wbs_generated' => false,
+            'requires_design'  => $request->boolean('requires_design'),
             'is_featured'      => false,
         ]);
 
@@ -231,6 +251,7 @@ class ProjectController extends Controller
             'client_id'   => $validated['client_id'],
             'description' => $validated['description'] ?? null,
             'due_at'      => $validated['due_at'] ?? null,
+            'requires_design' => $request->boolean('requires_design'),
         ]);
 
         AuditLogger::logUpdated($project, 'Project Master', 'Memperbarui proyek <strong>' . e($project->name) . '</strong>', $original);
@@ -274,7 +295,11 @@ class ProjectController extends Controller
             'client',
             'lead',
             'modules' => fn ($query) => $query->with('tasks')->orderBy('sort_order')->orderBy('id'),
-            'tasks' => fn ($query) => $query->with(['module', 'assignee'])->orderBy('sort_order')->orderBy('id'),
+            'tasks' => fn ($query) => $query->with([
+                'module',
+                'assignee',
+                'designDeliverables' => fn ($deliverables) => $deliverables->with('creator:id,name')->orderBy('id'),
+            ])->orderBy('sort_order')->orderBy('id'),
             'moms' => fn ($query) => $query->with('creator:id,name')->orderByDesc('meeting_date')->orderByDesc('id'),
             'qcTests' => fn ($query) => $query->with(['module:id,title', 'task:id,title', 'creator:id,name'])
                 ->orderBy('created_at')
@@ -309,12 +334,15 @@ class ProjectController extends Controller
             'dbStatusCards'=> $this->projectModuleStatusCards($project),
             'dbMetrics'    => $this->projectMetrics($project),
             'dbTabs'       => $this->projectTabs($project),
-            'dbTaskTotal'  => $project->tasks->count(),
-            'dbTaskDone'   => $project->tasks->where('status', 'done')->count(),
+            'dbTaskTotal'  => $project->tasks->reject(fn (ProjectTask $task) => $this->isExcludedProgressStatus($task->status))->count(),
+            'dbTaskDone'   => $project->tasks->filter(fn (ProjectTask $task) => $this->isDoneStatus($task->status))->count(),
             'dbMoms'       => $this->projectMomRows($project),
             'dbQcTests'    => $this->projectQcTestRows($project),
             'dbQcSummary'  => $this->projectQcSummary($project),
             'dbActivities' => $this->projectActivityRows($project),
+            'projectProgress' => $this->projectProgress($project),
+            'canPrepareQc' => $this->canPrepareQc($project),
+            'canExecuteQc' => $this->canExecuteQc($project),
             'qcStatusOptions'   => self::QC_STATUS_LABELS,
             'qcPriorityOptions' => self::QC_PRIORITY_LABELS,
             'aiReady'      => AiPlanner::isConfigured(),
@@ -339,6 +367,8 @@ class ProjectController extends Controller
             'assignments' => ['required', 'array'],
             'assignments.*.include' => ['nullable'],
             'assignments.*.user_id' => ['required', Rule::in($eligibleUserIds)],
+            'assignments.*.responsibilities' => ['nullable', 'array'],
+            'assignments.*.responsibilities.*' => ['string', Rule::in(array_keys(self::QUICK_ASSIGN_RESPONSIBILITIES))],
             'assignments.*.title' => ['nullable', 'string', 'max:160'],
             'assignments.*.type' => ['required', Rule::in(['task', 'review', 'support'])],
             'assignments.*.status' => ['required', Rule::in(['planned', 'in_progress', 'done'])],
@@ -348,6 +378,7 @@ class ProjectController extends Controller
         ], [
             'assignments.required' => 'Pilih minimal satu anggota tim.',
             'assignments.*.user_id.in' => 'Anggota tim tidak valid untuk quick assign.',
+            'assignments.*.responsibilities.*.in' => 'Responsibility Quick Assign tidak valid.',
             'assignments.*.type.in' => 'Tipe penugasan tidak valid.',
             'assignments.*.status.in' => 'Status penugasan tidak valid.',
             'assignments.*.estimated_hours.integer' => 'Estimasi jam harus berupa angka.',
@@ -369,7 +400,9 @@ class ProjectController extends Controller
         $userNames = User::whereIn('id', $selected->pluck('user_id'))->pluck('name', 'id');
 
         foreach ($selected as $row) {
-            $defaults = $this->quickAssignDefaultsForUser((int) $row['user_id']);
+            $user = User::with('roles')->find((int) $row['user_id']);
+            $responsibilities = $this->normalizeQuickAssignResponsibilities($row['responsibilities'] ?? [], $user);
+            $defaults = $this->quickAssignDefaultsForResponsibilities($responsibilities, $user);
             $assignment = TeamAssignment::firstOrNew([
                 'project_id' => $project->id,
                 'user_id' => (int) $row['user_id'],
@@ -380,6 +413,7 @@ class ProjectController extends Controller
             $assignment->fill([
                 'title' => trim((string) ($row['title'] ?? '')) ?: $defaults['title'],
                 'type' => $row['type'],
+                'responsibilities' => $responsibilities,
                 'status' => $row['status'],
                 'estimated_hours' => (int) ($row['estimated_hours'] ?? $defaults['estimated_hours']),
                 'due_date' => $row['due_date'] ?? $project->due_at?->toDateString(),
@@ -396,7 +430,7 @@ class ProjectController extends Controller
                     'Quick assign <strong>' . e($person) . '</strong> ke proyek <strong>' . e($project->name) . '</strong>',
                     $assignment,
                     null,
-                    ['project_id' => $project->id, 'user_id' => $assignment->user_id, 'title' => $assignment->title],
+                    ['project_id' => $project->id, 'user_id' => $assignment->user_id, 'title' => $assignment->title, 'responsibilities' => $responsibilities],
                 );
             } elseif ($assignment->wasChanged()) {
                 $updated++;
@@ -563,6 +597,14 @@ class ProjectController extends Controller
             'estimate_hours.integer' => 'Estimasi jam harus berupa angka.',
         ]);
 
+        if (in_array($this->phaseKey($project->phase), ['planning', 'design'], true) && $validated['status'] !== 'planned') {
+            return redirect()
+                ->to(route('projects.show', $project) . '#workspace')
+                ->with('status', $this->phaseKey($project->phase) === 'design'
+                    ? 'Task development aktif setelah handover desain selesai.'
+                    : 'Task execution aktif setelah project keluar dari fase Planning.');
+        }
+
         $task = $project->tasks()->create([
             'title' => $validated['title'],
             'project_module_id' => $validated['project_module_id'] ?? null,
@@ -573,6 +615,7 @@ class ProjectController extends Controller
             'estimate_hours' => (int) ($validated['estimate_hours'] ?? 0),
             'description' => $validated['description'] ?? null,
             'sort_order' => ((int) $project->tasks()->max('sort_order')) + 1,
+            'is_design_deliverable' => $project->requires_design && $this->isDesignDeliverableDraft('', $validated['title'], $validated['description'] ?? null),
         ]);
 
         AuditLogger::log('task_created', 'Project Master', 'Menambah task <strong>' . e($task->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>', $task);
@@ -613,6 +656,20 @@ class ProjectController extends Controller
             'estimate_hours.integer' => 'Estimasi jam harus berupa angka.',
         ]);
 
+        if ($blockMessage = $this->taskStatusTransitionBlockMessage($project, $task, $validated['status'])) {
+            return redirect()
+                ->to(route('projects.show', $project) . '#workspace')
+                ->with('status', $blockMessage);
+        }
+
+        if ($validated['status'] === 'done'
+            && (bool) $task->is_design_deliverable
+            && ! $this->taskHasValidDesignDeliverable($task)) {
+            throw ValidationException::withMessages([
+                'status' => 'Tambahkan minimal satu Design Deliverable berisi link Figma/mockup atau PDF sebelum handover desain diselesaikan.',
+            ]);
+        }
+
         $original = $task->getOriginal();
         $task->update([
             'title' => $validated['title'],
@@ -623,6 +680,7 @@ class ProjectController extends Controller
             'due_date' => $validated['due_date'] ?? null,
             'estimate_hours' => (int) ($validated['estimate_hours'] ?? 0),
             'description' => $validated['description'] ?? null,
+            'is_design_deliverable' => $task->is_design_deliverable || ($project->requires_design && $this->isDesignDeliverableDraft($task->module?->title ?? '', $validated['title'], $validated['description'] ?? null)),
         ]);
 
         $action = ((int) ($original['assigned_to'] ?? 0)) !== ((int) ($task->assigned_to ?? 0))
@@ -649,6 +707,9 @@ class ProjectController extends Controller
                 'estimate_hours' => $task->estimate_hours,
             ],
         );
+
+        $this->transitionProjectPhaseAfterDesignDone($project);
+        $this->transitionProjectPhaseAfterDevelopmentDone($project);
 
         return redirect()
             ->to(route('projects.show', $project) . '#workspace')
@@ -696,14 +757,270 @@ class ProjectController extends Controller
             'status.in' => 'Status task tidak valid.',
         ]);
 
+        if ($blockMessage = $this->taskStatusTransitionBlockMessage($project, $task, $validated['status'])) {
+            return redirect()
+                ->to(route('projects.show', $project) . '#workspace')
+                ->with('status', $blockMessage);
+        }
+
+        if ($validated['status'] === 'done'
+            && (bool) $task->is_design_deliverable
+            && ! $this->taskHasValidDesignDeliverable($task)) {
+            throw ValidationException::withMessages([
+                'status' => 'Tambahkan minimal satu Design Deliverable berisi link Figma/mockup atau PDF sebelum handover desain diselesaikan.',
+            ]);
+        }
+
         $original = $task->getOriginal();
         $task->update(['status' => $validated['status']]);
 
         AuditLogger::log('task_status_changed', 'Project Master', 'Mengubah status task <strong>' . e($task->title) . '</strong> menjadi <strong>' . e(self::TASK_STATUS_LABELS[$task->status]) . '</strong>', $task, ['status' => $original['status'] ?? null], ['status' => $task->status]);
 
+        $this->transitionProjectPhaseAfterDesignDone($project);
+        $this->transitionProjectPhaseAfterDevelopmentDone($project);
+
         return redirect()
             ->to(route('projects.show', $project) . '#workspace')
             ->with('status', 'Status task "' . $task->title . '" berhasil diperbarui.');
+    }
+
+    public function storeDesignDeliverable(Request $request, Project $project, ProjectTask $task)
+    {
+        $this->ensureCanEditDesignDeliverables($project, $task);
+
+        $validated = $this->validateDesignDeliverable($request);
+        if (! filled($validated['figma_url'] ?? null) && ! $request->hasFile('pdf_file')) {
+            throw ValidationException::withMessages([
+                'figma_url' => 'Isi link Figma/mockup atau unggah PDF mockup untuk deliverable desain.',
+            ]);
+        }
+
+        $filePath = $request->hasFile('pdf_file')
+            ? $request->file('pdf_file')->store('project-design-deliverables', 'public')
+            : null;
+
+        $deliverable = $task->designDeliverables()->create([
+            'title' => $validated['title'],
+            'figma_url' => $validated['figma_url'] ?? null,
+            'pdf_file_path' => $filePath,
+            'notes' => $validated['notes'] ?? null,
+            'submitted_at' => now(),
+            'created_by' => $request->user()?->id,
+        ]);
+
+        AuditLogger::log(
+            'design_deliverable_created',
+            'Project Master',
+            'Menambah deliverable desain <strong>' . e($deliverable->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $deliverable,
+            null,
+            ['project_id' => $project->id, 'task_id' => $task->id, 'has_pdf' => filled($filePath), 'has_url' => filled($deliverable->figma_url)],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#workspace')
+            ->with('status', 'Design Deliverable berhasil ditambahkan.');
+    }
+
+    public function updateDesignDeliverableRow(Request $request, Project $project, ProjectTask $task, ProjectTaskDesignDeliverable $deliverable)
+    {
+        $this->ensureCanEditDesignDeliverables($project, $task, $deliverable);
+
+        $validated = $this->validateDesignDeliverable($request);
+        $filePath = $deliverable->pdf_file_path;
+
+        if ($request->hasFile('pdf_file')) {
+            if ($filePath) {
+                Storage::disk('public')->delete($filePath);
+            }
+            $filePath = $request->file('pdf_file')->store('project-design-deliverables', 'public');
+        }
+
+        if (! filled($validated['figma_url'] ?? null) && ! filled($filePath)) {
+            throw ValidationException::withMessages([
+                'figma_url' => 'Deliverable harus memiliki link Figma/mockup atau PDF mockup.',
+            ]);
+        }
+
+        $original = $deliverable->getOriginal();
+        $deliverable->update([
+            'title' => $validated['title'],
+            'figma_url' => $validated['figma_url'] ?? null,
+            'pdf_file_path' => $filePath,
+            'notes' => $validated['notes'] ?? null,
+            'submitted_at' => now(),
+        ]);
+
+        AuditLogger::log(
+            'design_deliverable_updated',
+            'Project Master',
+            'Memperbarui deliverable desain <strong>' . e($deliverable->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $deliverable,
+            $original,
+            ['project_id' => $project->id, 'task_id' => $task->id, 'has_pdf' => filled($filePath), 'has_url' => filled($deliverable->figma_url)],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#workspace')
+            ->with('status', 'Design Deliverable berhasil diperbarui.');
+    }
+
+    public function destroyDesignDeliverable(Project $project, ProjectTask $task, ProjectTaskDesignDeliverable $deliverable)
+    {
+        $this->ensureCanEditDesignDeliverables($project, $task, $deliverable);
+
+        $old = [
+            'project_id' => $project->id,
+            'task_id' => $task->id,
+            'title' => $deliverable->title,
+            'has_pdf' => filled($deliverable->pdf_file_path),
+            'has_url' => filled($deliverable->figma_url),
+        ];
+
+        if ($deliverable->pdf_file_path) {
+            Storage::disk('public')->delete($deliverable->pdf_file_path);
+        }
+
+        $deliverable->delete();
+
+        AuditLogger::log(
+            'design_deliverable_deleted',
+            'Project Master',
+            'Menghapus deliverable desain <strong>' . e($old['title']) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            null,
+            $old,
+            null,
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#workspace')
+            ->with('status', 'Design Deliverable berhasil dihapus.');
+    }
+
+    public function previewDesignDeliverable(Project $project, ProjectTask $task, ProjectTaskDesignDeliverable $deliverable)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $this->ensureDesignDeliverableBelongsToTask($project, $task, $deliverable);
+
+        $filename = $this->designDeliverablePdfFilename($deliverable);
+        $path = $this->designDeliverablePdfPath($deliverable);
+        $maxPreviewBytes = 10 * 1024 * 1024;
+        $pdfDataUri = null;
+        $previewMessage = null;
+
+        if ((filesize($path) ?: 0) <= $maxPreviewBytes) {
+            $pdfDataUri = 'data:application/pdf;base64,' . base64_encode(file_get_contents($path));
+        } else {
+            $previewMessage = 'File PDF terlalu besar untuk preview internal. Gunakan Download PDF untuk membuka file secara manual.';
+        }
+
+        return view('projects.design-deliverables.preview', [
+            'title' => 'Preview PDF Mockup',
+            'project' => $project,
+            'task' => $task,
+            'deliverable' => $deliverable,
+            'filename' => $filename . '.pdf',
+            'pdfDataUri' => $pdfDataUri,
+            'previewMessage' => $previewMessage,
+            'downloadUrl' => route('projects.tasks.design-deliverables.download', [$project, $task, $deliverable]),
+        ]);
+    }
+
+    public function downloadDesignDeliverable(Project $project, ProjectTask $task, ProjectTaskDesignDeliverable $deliverable)
+    {
+        return $this->designDeliverableDownloadResponse($project, $task, $deliverable);
+    }
+
+    private function designDeliverableDownloadResponse(Project $project, ProjectTask $task, ProjectTaskDesignDeliverable $deliverable)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $this->ensureDesignDeliverableBelongsToTask($project, $task, $deliverable);
+
+        $filename = $this->designDeliverablePdfFilename($deliverable);
+        $path = $this->designDeliverablePdfPath($deliverable);
+
+        return response()->download($path, $filename . '.pdf', [
+            'Content-Type' => 'application/pdf',
+        ]);
+    }
+
+    private function designDeliverablePdfFilename(ProjectTaskDesignDeliverable $deliverable): string
+    {
+        $filename = (string) str($deliverable->title)->slug('-');
+
+        return $filename !== '' ? $filename : 'design-deliverable';
+    }
+
+    private function designDeliverablePdfPath(ProjectTaskDesignDeliverable $deliverable): string
+    {
+        $storagePath = str_replace('\\', '/', ltrim((string) $deliverable->pdf_file_path, '/'));
+
+        abort_unless(
+            filled($storagePath)
+            && str_starts_with($storagePath, 'project-design-deliverables/')
+            && Storage::disk('public')->exists($storagePath),
+            404,
+        );
+
+        return Storage::disk('public')->path($storagePath);
+    }
+
+    public function updateDesignDeliverable(Request $request, Project $project, ProjectTask $task)
+    {
+        $this->ensureCanEditDesignDeliverables($project, $task);
+
+        $validated = $request->validate([
+            'deliverable_url' => ['nullable', 'url', 'max:2048'],
+            'deliverable_file' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
+        ], [
+            'deliverable_url.url' => 'Link Figma/mockup harus berupa URL valid.',
+            'deliverable_file.mimes' => 'File handover desain harus berupa PDF.',
+            'deliverable_file.max' => 'File PDF maksimal 10MB.',
+        ]);
+
+        $original = $task->getOriginal();
+        $filePath = $task->deliverable_file_path;
+        if ($request->hasFile('deliverable_file')) {
+            if ($filePath) {
+                Storage::disk('public')->delete($filePath);
+            }
+            $filePath = $request->file('deliverable_file')->store('project-design-deliverables', 'public');
+        }
+
+        $hasDeliverable = filled($validated['deliverable_url'] ?? null) || filled($filePath);
+        $task->forceFill([
+            'deliverable_url' => $validated['deliverable_url'] ?? null,
+            'deliverable_file_path' => $filePath,
+            'deliverable_type' => $hasDeliverable ? 'uiux_mockup' : null,
+            'deliverable_submitted_at' => $hasDeliverable ? now() : null,
+        ])->save();
+
+        AuditLogger::log(
+            'design_deliverable_updated',
+            'Project Master',
+            'Memperbarui handover desain untuk task <strong>' . e($task->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $task,
+            [
+                'project_id' => $project->id,
+                'deliverable_url' => $original['deliverable_url'] ?? null,
+                'deliverable_file_path' => $original['deliverable_file_path'] ?? null,
+            ],
+            [
+                'project_id' => $project->id,
+                'deliverable_url' => $task->deliverable_url,
+                'has_deliverable_file' => filled($task->deliverable_file_path),
+            ],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#workspace')
+            ->with('status', 'Handover desain berhasil diperbarui.');
     }
 
     public function storeMom(Request $request, Project $project)
@@ -933,6 +1250,7 @@ class ProjectController extends Controller
             'project_client'      => (string) ($project->client?->name ?: ''),
             'project_phase'       => (string) ($project->phase ?: ''),
             'project_status'      => (string) ($project->status ?: ''),
+            'requires_design'     => (bool) $project->requires_design,
             'existing_module_titles' => $existingModuleTitles,
             'existing_task_titles'   => $existingTaskTitles,
             'mom_date'           => optional($sourceMom->meeting_date)->format('Y-m-d'),
@@ -1013,11 +1331,16 @@ class ProjectController extends Controller
 
         $createdModules = 0;
         $createdTasks   = 0;
+        $draftModules = $project->requires_design
+            ? $this->ensureDesignWbsDraft($validated['modules'])
+            : $validated['modules'];
+        $designAssigneeId = $project->requires_design ? $this->projectDesignAssigneeId($project) : null;
 
         try {
             DB::transaction(function () use (
                 $project,
-                $validated,
+                $draftModules,
+                $designAssigneeId,
                 &$existingModuleByLower,
                 &$existingTasksByModule,
                 &$maxModuleSort,
@@ -1025,7 +1348,7 @@ class ProjectController extends Controller
                 &$createdModules,
                 &$createdTasks,
             ) {
-                foreach ($validated['modules'] as $modDraft) {
+                foreach ($draftModules as $modDraft) {
                     // Only persist modules the user kept checked.
                     if (! filter_var($modDraft['include'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
                         continue;
@@ -1066,15 +1389,17 @@ class ProjectController extends Controller
                             continue;
                         }
                         $maxTaskSort++;
+                        $isDesignDeliverable = $this->isDesignDeliverableDraft($module->title, $tTitle, $taskDraft['description'] ?? null);
                         $project->tasks()->create([
                             'project_module_id' => $module->id,
-                            'assigned_to'       => null,
+                            'assigned_to'       => $isDesignDeliverable ? $designAssigneeId : null,
                             'title'             => $tTitle,
                             'description'       => $taskDraft['description'] ?? null,
                             'status'            => AiPlanner::DEFAULT_TASK_STATUS,
                             'priority'          => $taskDraft['priority'] ?? AiPlanner::DEFAULT_TASK_PRIORITY,
                             'estimate_hours'    => (int) ($taskDraft['estimate_hours'] ?? 0),
                             'sort_order'        => $maxTaskSort,
+                            'is_design_deliverable' => $isDesignDeliverable,
                         ]);
                         $createdTasks++;
                         $existingTaskByLower[$tTitleLower] = true;
@@ -1096,6 +1421,8 @@ class ProjectController extends Controller
         if (! $project->ai_wbs_generated) {
             $project->forceFill(['ai_wbs_generated' => true])->save();
         }
+
+        $this->transitionProjectPhaseAfterWbs($project);
 
         AuditLogger::log(
             'ai_wbs_generated',
@@ -1123,6 +1450,11 @@ class ProjectController extends Controller
         }
 
         $backUrl = route('projects.show', $project) . '#qc';
+
+        if (! $this->canPrepareQc($project)) {
+            return redirect()->to($backUrl)
+                ->with('status', 'AI Test Case Generator tersedia setelah project masuk fase Development.');
+        }
 
         $project->loadMissing([
             'client',
@@ -1245,6 +1577,11 @@ class ProjectController extends Controller
         }
 
         $backUrl = route('projects.show', $project) . '#qc';
+
+        if (! $this->canPrepareQc($project)) {
+            return redirect()->to($backUrl)
+                ->with('status', 'Test case AI baru dapat disimpan setelah project masuk fase Development.');
+        }
 
         $validated = $request->validate([
             'source_module_id'               => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
@@ -1389,6 +1726,12 @@ class ProjectController extends Controller
             return $redirect;
         }
         abort_unless($qc->project_id === $project->id, 404);
+
+        if (! $this->canExecuteQc($project)) {
+            return redirect()
+                ->to(route('projects.show', $project) . '#qc')
+                ->with('status', 'Eksekusi QC baru dapat dilakukan setelah project masuk fase QC.');
+        }
 
         $validated = $request->validate([
             'status'        => ['required', Rule::in(array_keys(self::QC_STATUS_LABELS))],
@@ -1666,6 +2009,7 @@ class ProjectController extends Controller
             'client_id'   => ['required', Rule::exists('clients', 'id')],
             'description' => ['nullable', 'string', 'max:2000'],
             'due_at'      => ['nullable', 'date'],
+            'requires_design' => ['nullable', 'boolean'],
         ], [
             'code.required'      => 'Kode proyek wajib diisi.',
             'code.regex'         => 'Kode hanya boleh huruf dan angka.',
@@ -1675,6 +2019,324 @@ class ProjectController extends Controller
             'client_id.exists'   => 'Klien tidak valid.',
             'due_at.date'        => 'Due date tidak valid.',
         ]);
+    }
+
+    private function validateDesignDeliverable(Request $request): array
+    {
+        return $request->validate([
+            'title' => ['required', 'string', 'max:160'],
+            'figma_url' => ['nullable', 'url', 'max:2048'],
+            'pdf_file' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'title.required' => 'Judul deliverable wajib diisi.',
+            'figma_url.url' => 'Link Figma/mockup harus berupa URL valid.',
+            'pdf_file.mimes' => 'File mockup harus berupa PDF.',
+            'pdf_file.max' => 'File PDF maksimal 10MB.',
+        ]);
+    }
+
+    private function ensureCanEditDesignDeliverables(Project $project, ProjectTask $task, ?ProjectTaskDesignDeliverable $deliverable = null): void
+    {
+        $this->ensureDesignDeliverableBelongsToTask($project, $task, $deliverable);
+
+        $user = auth()->user();
+        $role = $user?->roles?->first()?->name;
+
+        abort_unless($user && $this->canEditDesignDeliverables($task, $role, $user->id), 403);
+    }
+
+    private function canEditDesignDeliverables(ProjectTask $task, ?string $role = null, ?int $userId = null): bool
+    {
+        $user = auth()->user();
+        $role ??= $user?->roles?->first()?->name;
+        $userId ??= $user?->id;
+
+        return (bool) $task->is_design_deliverable
+            && in_array($role, ['uiux_designer', 'ui_ux'], true)
+            && (int) $task->assigned_to === (int) $userId;
+    }
+
+    private function ensureDesignDeliverableBelongsToTask(Project $project, ProjectTask $task, ?ProjectTaskDesignDeliverable $deliverable = null): void
+    {
+        abort_unless($task->project_id === $project->id, 404);
+        abort_unless((bool) $task->is_design_deliverable, 404);
+
+        if ($deliverable) {
+            abort_unless($deliverable->project_task_id === $task->id, 404);
+        }
+    }
+
+    private function taskHasValidDesignDeliverable(ProjectTask $task): bool
+    {
+        $task->loadMissing('designDeliverables');
+
+        if (filled($task->deliverable_url) || filled($task->deliverable_file_path)) {
+            return true;
+        }
+
+        return $task->designDeliverables->contains(
+            fn (ProjectTaskDesignDeliverable $deliverable) => filled($deliverable->figma_url) || filled($deliverable->pdf_file_path),
+        );
+    }
+
+    private function taskStatusTransitionBlockMessage(Project $project, ProjectTask $task, string $newStatus): ?string
+    {
+        if ($task->status === $newStatus) {
+            return null;
+        }
+
+        $phase = $this->phaseKey($project->phase);
+
+        if ($phase === 'planning' && $newStatus !== 'planned') {
+            return 'Task execution aktif setelah project keluar dari fase Planning.';
+        }
+
+        if ($phase === 'design') {
+            if ((bool) $task->is_design_deliverable) {
+                return $this->canEditDesignDeliverables($task)
+                    ? null
+                    : 'Handover desain hanya dapat diperbarui oleh UI/UX assignee.';
+            }
+
+            if ($newStatus !== 'planned') {
+                return 'Task development aktif setelah handover desain selesai.';
+            }
+        }
+
+        return null;
+    }
+
+    private function taskStatusLockMessageForView(Project $project, ProjectTask $task): ?string
+    {
+        return match ($this->phaseKey($project->phase)) {
+            'planning' => 'Task execution aktif setelah project keluar dari fase Planning.',
+            'design' => (bool) $task->is_design_deliverable
+                ? ($this->canEditDesignDeliverables($task) ? null : 'Handover desain hanya dapat diperbarui oleh UI/UX assignee.')
+                : 'Task development aktif setelah handover desain selesai.',
+            default => null,
+        };
+    }
+
+    private function ensureDesignWbsDraft(array $modules): array
+    {
+        $designModuleIndex = null;
+
+        foreach ($modules as $idx => $module) {
+            $moduleTitle = (string) ($module['title'] ?? '');
+            $moduleDescription = (string) ($module['description'] ?? '');
+            if ($this->looksLikeDesignText($moduleTitle . ' ' . $moduleDescription)) {
+                $designModuleIndex = $idx;
+                $modules[$idx]['include'] = '1';
+                $modules[$idx]['title'] = 'UI/UX Design';
+                $modules[$idx]['tasks'] = $this->designHandoverTaskDraft();
+                break;
+            }
+        }
+
+        if ($designModuleIndex !== null) {
+            return array_values(array_filter(
+                $modules,
+                fn (array $module, int $idx) => $idx === $designModuleIndex
+                    || ! $this->looksLikeDesignText((string) ($module['title'] ?? '') . ' ' . (string) ($module['description'] ?? '')),
+                ARRAY_FILTER_USE_BOTH,
+            ));
+        }
+
+        array_unshift($modules, [
+            'include' => '1',
+            'title' => 'UI/UX Design',
+            'description' => 'Modul desain untuk menyiapkan final mockup UI/UX sebelum development dimulai.',
+            'status' => 'pending_design',
+            'estimate_hours' => 12,
+            'tasks' => $this->designHandoverTaskDraft(),
+        ]);
+
+        return $modules;
+    }
+
+    private function designHandoverTaskDraft(): array
+    {
+        return [[
+            'include' => '1',
+            'title' => 'Siapkan Mockup UI/UX & Handover Desain',
+            'description' => 'Menyiapkan satu atau beberapa deliverable desain seperti link Figma dan PDF mockup sebagai acuan implementasi development.',
+            'priority' => 'high',
+            'estimate_hours' => 12,
+        ]];
+    }
+
+    private function isDesignDeliverableDraft(string $moduleTitle, string $taskTitle, ?string $description = null): bool
+    {
+        $text = mb_strtolower($moduleTitle . ' ' . $taskTitle . ' ' . (string) $description);
+
+        if ((str_contains($text, 'review') || str_contains($text, 'revisi')) && ! str_contains($text, 'handover')) {
+            return false;
+        }
+
+        return str_contains($text, 'handover')
+            || str_contains($text, 'mockup')
+            || str_contains($text, 'figma');
+    }
+
+    private function looksLikeDesignText(string $value): bool
+    {
+        $text = mb_strtolower($value);
+
+        return str_contains($text, 'ui/ux')
+            || str_contains($text, 'ui ux')
+            || str_contains($text, 'ui_ux')
+            || str_contains($text, 'mockup')
+            || str_contains($text, 'figma')
+            || str_contains($text, 'handover desain')
+            || str_contains($text, 'design')
+            || str_contains($text, 'desain');
+    }
+
+    private function transitionProjectPhaseAfterWbs(Project $project): void
+    {
+        $target = $project->requires_design ? 'Design' : 'Development';
+        $this->transitionProjectPhase($project, $target, 'WBS tersimpan');
+    }
+
+    private function transitionProjectPhaseAfterDesignDone(Project $project): void
+    {
+        $project->load('tasks.designDeliverables');
+        if (! $project->requires_design || $this->phaseKey($project->phase) !== 'design') {
+            return;
+        }
+
+        $designTasks = $project->tasks->where('is_design_deliverable', true);
+        if ($designTasks->isEmpty()
+            || $designTasks->contains(fn (ProjectTask $task) => ! $this->isDoneStatus($task->status) || ! $this->taskHasValidDesignDeliverable($task))) {
+            return;
+        }
+
+        $this->transitionProjectPhase($project, 'Development', 'Handover desain selesai');
+    }
+
+    private function transitionProjectPhaseAfterDevelopmentDone(Project $project): void
+    {
+        if ($this->phaseKey($project->phase) !== 'dev') {
+            return;
+        }
+
+        $project->loadMissing('tasks.module');
+        $developmentTasks = $project->tasks
+            ->reject(fn (ProjectTask $task) => (bool) $task->is_design_deliverable)
+            ->filter(fn (ProjectTask $task) => $this->isDevelopmentExecutionTask($task))
+            ->values();
+
+        if ($developmentTasks->isEmpty()
+            || $developmentTasks->contains(fn (ProjectTask $task) => ! $this->isDoneStatus($task->status))) {
+            return;
+        }
+
+        $this->transitionProjectPhase($project, 'QC', 'Semua task development selesai');
+    }
+
+    private function isDevelopmentExecutionTask(ProjectTask $task): bool
+    {
+        $text = mb_strtolower(implode(' ', array_filter([
+            $task->module?->title,
+            $task->title,
+            $task->description,
+        ])));
+
+        if ($text === '') {
+            return false;
+        }
+
+        foreach ([
+            'implementasi',
+            'implementation',
+            'develop',
+            'development',
+            'frontend',
+            'backend',
+            'fullstack',
+            'cms',
+            'wordpress',
+            'integrasi',
+            'integration',
+            'api',
+            'database',
+            'auth',
+            'login',
+            'dashboard',
+            'deployment',
+            'deploy',
+            'bugfix',
+            'stabilisasi',
+            'stabilization',
+            'fitur',
+            'feature',
+            'module',
+            'modul',
+        ] as $needle) {
+            if (str_contains($text, $needle)) {
+                foreach ([
+                    'handover desain',
+                    'mockup',
+                    'figma',
+                    'copywriting',
+                    'konten',
+                    'content',
+                    'mom',
+                    'notulensi',
+                    'meeting',
+                    'analisis kebutuhan',
+                ] as $excludedNeedle) {
+                    if (str_contains($text, $excludedNeedle)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        foreach ([
+            'mom',
+            'notulensi',
+            'wbs',
+            'test case',
+            'qc',
+            'quality',
+            'handover desain',
+            'mockup',
+            'figma',
+            'copywriting',
+            'konten',
+            'content',
+            'meeting',
+            'analisis kebutuhan',
+        ] as $needle) {
+            if (str_contains($text, $needle)) {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private function transitionProjectPhase(Project $project, string $targetPhase, string $reason): void
+    {
+        if ($project->phase === $targetPhase) {
+            return;
+        }
+
+        $before = ['phase' => $project->phase];
+        $project->forceFill(['phase' => $targetPhase])->save();
+
+        AuditLogger::log(
+            'project_phase_changed',
+            'Project Master',
+            'Mengubah fase proyek <strong>' . e($project->name) . '</strong> menjadi <strong>' . e($targetPhase) . '</strong>',
+            $project,
+            $before,
+            ['phase' => $targetPhase, 'reason' => $reason],
+        );
     }
 
     private function exportSlug(Project $project): string
@@ -1710,7 +2372,7 @@ class ProjectController extends Controller
 
     private function ensureCanEditProjectDetail(): void
     {
-        abort_if(auth()->user()?->roles?->first()?->name === 'ceo_pm', 403);
+        abort_unless(in_array(auth()->user()?->roles?->first()?->name, self::OPERATIONAL_ROLES, true), 403);
     }
 
     /**
@@ -1769,7 +2431,7 @@ class ProjectController extends Controller
         $counts = $project->modules->countBy('status');
 
         return [
-            ['count' => (int) ($counts['approved'] ?? 0),       'label' => 'Disetujui',       'bg' => '#ECFDF5', 'border' => '#A7F3D0', 'value' => '#047857', 'caption' => '#059669'],
+            ['count' => (int) ($counts['approved'] ?? 0),       'label' => 'Aktif',           'bg' => '#ECFDF5', 'border' => '#A7F3D0', 'value' => '#047857', 'caption' => '#059669'],
             ['count' => (int) ($counts['waiting_dev'] ?? 0),    'label' => 'Menunggu Dev',    'bg' => '#EFF6FF', 'border' => '#BFDBFE', 'value' => '#1D4ED8', 'caption' => '#2563EB'],
             ['count' => (int) ($counts['pending_design'] ?? 0), 'label' => 'Menunggu Design', 'bg' => '#FFFBEB', 'border' => '#FDE68A', 'value' => '#B45309', 'caption' => '#D97706'],
             ['count' => (int) ($counts['revision'] ?? 0),       'label' => 'Perlu Revisi',    'bg' => '#FFF1F2', 'border' => '#FECDD3', 'value' => '#BE123C', 'caption' => '#E11D48'],
@@ -1779,22 +2441,69 @@ class ProjectController extends Controller
     private function projectMetrics(Project $project): array
     {
         $moduleTotal = $project->modules->count();
-        $moduleApproved = $project->modules->where('status', 'approved')->count();
-        $taskTotal = $project->tasks->count();
-        $taskDone = $project->tasks->where('status', 'done')->count();
+        $progressTasks = $project->tasks
+            ->reject(fn (ProjectTask $task) => $this->isExcludedProgressStatus($task->status))
+            ->values();
+        $taskTotal = $progressTasks->count();
+        $taskDone = $progressTasks->filter(fn (ProjectTask $task) => $this->isDoneStatus($task->status))->count();
         $taskOpen = max(0, $taskTotal - $taskDone);
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
         $qcSummary = $this->projectQcSummary($project);
         $qcTotal = $qcSummary['total'];
-        $qcExecuted = $qcSummary['passed'] + $qcSummary['failed'];
-        $qcPassRate = $this->percentage($qcSummary['passed'], $qcExecuted ?: 0);
+        $qcPassRate = $this->percentage($qcSummary['passed'], $qcTotal);
 
         return [
-            ['code' => 'MOD',  'value' => $moduleApproved . '/' . $moduleTotal, 'label' => 'Modul Disetujui',    'color' => '#3B82F6', 'progress' => $this->percentage($moduleApproved, $moduleTotal), 'sub' => $moduleTotal > 0 ? $moduleTotal . ' modul terdefinisi' : 'Belum ada modul'],
+            ['code' => 'MOD',  'value' => (string) $moduleTotal,                'label' => 'Modul Terdefinisi',  'color' => '#3B82F6', 'progress' => $moduleTotal > 0 ? 100 : 0,                       'sub' => $moduleTotal > 0 ? $moduleTotal . ' modul aktif/terdefinisi' : 'Belum ada modul'],
             ['code' => 'TASK', 'value' => $taskDone . '/' . $taskTotal,         'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => $this->percentage($taskDone, $taskTotal),         'sub' => $taskDone . ' Selesai • ' . $taskOpen . ' Open'],
             ['code' => 'MOM',  'value' => $momTotal . ' MoM',                   'label' => 'MoM Tersimpan',      'color' => '#10B981', 'progress' => $momTotal > 0 ? 100 : 0,                          'sub' => $momTotal > 0 ? 'Catatan rapat tersimpan' : 'Belum ada MoM'],
             ['code' => 'QC',   'value' => $qcTotal > 0 ? $qcPassRate . '%' : '0%', 'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => $qcTotal > 0 ? $qcPassRate : 0, 'sub' => $qcTotal > 0 ? ($qcSummary['passed'] . ' lulus • ' . $qcSummary['failed'] . ' gagal • ' . $qcSummary['pending'] . ' pending') : 'Belum ada test case'],
         ];
+    }
+
+    private function projectProgress(Project $project): int
+    {
+        $tasks = $project->relationLoaded('tasks')
+            ? $project->tasks
+            : $project->tasks()->get(['status', 'estimate_hours']);
+
+        $tasks = $tasks->reject(fn (ProjectTask $task) => $this->isExcludedProgressStatus($task->status))->values();
+        if ($tasks->isEmpty()) {
+            return 0;
+        }
+
+        $totalHours = (int) $tasks->sum(fn (ProjectTask $task) => max(0, (int) $task->estimate_hours));
+        if ($totalHours > 0) {
+            $doneHours = (int) $tasks
+                ->filter(fn (ProjectTask $task) => $this->isDoneStatus($task->status))
+                ->sum(fn (ProjectTask $task) => max(0, (int) $task->estimate_hours));
+
+            return $this->percentage($doneHours, $totalHours);
+        }
+
+        return $this->percentage(
+            $tasks->filter(fn (ProjectTask $task) => $this->isDoneStatus($task->status))->count(),
+            $tasks->count(),
+        );
+    }
+
+    private function isDoneStatus(?string $status): bool
+    {
+        return in_array(mb_strtolower(trim((string) $status)), ['done', 'completed', 'complete', 'selesai'], true);
+    }
+
+    private function isExcludedProgressStatus(?string $status): bool
+    {
+        return in_array(mb_strtolower(trim((string) $status)), ['archived', 'archive', 'cancelled', 'canceled', 'dibatalkan'], true);
+    }
+
+    private function canPrepareQc(Project $project): bool
+    {
+        return in_array($this->phaseKey($project->phase), ['dev', 'qa', 'done'], true);
+    }
+
+    private function canExecuteQc(Project $project): bool
+    {
+        return in_array($this->phaseKey($project->phase), ['qa', 'done'], true);
     }
 
     private function projectTabs(Project $project): array
@@ -1963,7 +2672,7 @@ class ProjectController extends Controller
         return collect($columnDefs)->map(function (array $column) use ($project) {
             $tasks = $project->tasks
                 ->where('status', $column['status'])
-                ->map(fn (ProjectTask $task) => $this->projectTaskRow($task))
+                ->map(fn (ProjectTask $task) => $this->projectTaskRow($task, $project))
                 ->values()
                 ->all();
 
@@ -1971,8 +2680,11 @@ class ProjectController extends Controller
         })->all();
     }
 
-    private function projectTaskRow(ProjectTask $task): array
+    private function projectTaskRow(ProjectTask $task, ?Project $project = null): array
     {
+            $project ??= $task->project;
+            $statusLockMessage = $project ? $this->taskStatusLockMessageForView($project, $task) : null;
+
             return [
                 'id' => $task->id,
                 'module_id' => $task->project_module_id,
@@ -1987,6 +2699,26 @@ class ProjectController extends Controller
                 'due_date' => $task->due_date?->format('Y-m-d'),
                 'due' => $task->due_date ? $this->formatDateId($task->due_date) : null,
                 'hours' => (int) $task->estimate_hours,
+                'is_design_deliverable' => (bool) $task->is_design_deliverable,
+                'can_edit_design_deliverables' => $this->canEditDesignDeliverables($task),
+                'status_locked' => filled($statusLockMessage),
+                'status_lock_message' => $statusLockMessage,
+                'design_deliverables' => $task->designDeliverables->map(function (ProjectTaskDesignDeliverable $deliverable) use ($task) {
+                    $hasPdf = filled($deliverable->pdf_file_path) && Storage::disk('public')->exists($deliverable->pdf_file_path);
+
+                    return [
+                        'id' => $deliverable->id,
+                        'title' => $deliverable->title,
+                        'figma_url' => $deliverable->figma_url,
+                        'notes' => $deliverable->notes,
+                        'has_pdf' => filled($deliverable->pdf_file_path),
+                        'pdf_available' => $hasPdf,
+                        'pdf_preview_url' => $hasPdf ? route('projects.tasks.design-deliverables.preview', [$task->project_id, $task->id, $deliverable->id]) : null,
+                        'pdf_download_url' => $hasPdf ? route('projects.tasks.design-deliverables.download', [$task->project_id, $task->id, $deliverable->id]) : null,
+                        'submitted_at' => $deliverable->submitted_at ? AppTime::cast($deliverable->submitted_at)?->format('d M Y H:i') : null,
+                        'creator' => $deliverable->creator?->name,
+                    ];
+                })->values()->all(),
             ];
     }
 
@@ -2009,6 +2741,26 @@ class ProjectController extends Controller
             ->whereHas('roles', fn ($query) => $query->whereIn('name', self::OPERATIONAL_ROLES))
             ->orderBy('name')
             ->get(['id', 'name']);
+    }
+
+    private function projectDesignAssigneeId(Project $project): ?int
+    {
+        $ids = TeamAssignment::query()
+            ->where('project_id', $project->id)
+            ->pluck('user_id')
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return null;
+        }
+
+        return User::query()
+            ->whereIn('id', $ids)
+            ->whereNull('archived_at')
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['uiux_designer', 'ui_ux']))
+            ->orderBy('name')
+            ->value('id');
     }
 
     private function operationalUsers()
@@ -2057,6 +2809,7 @@ class ProjectController extends Controller
             ->map(function (User $user) use ($existing, $project) {
                 $assignment = $existing->get($user->id);
                 $defaults = $this->quickAssignDefaultsForUser($user);
+                $responsibilities = $this->normalizeQuickAssignResponsibilities($assignment?->responsibilities ?? [], $user, $assignment);
 
                 return [
                     'id' => $user->id,
@@ -2071,6 +2824,9 @@ class ProjectController extends Controller
                     'estimated_hours' => $assignment?->estimated_hours ?? $defaults['estimated_hours'],
                     'due_date' => $assignment?->due_date?->format('Y-m-d') ?: $project->due_at?->format('Y-m-d'),
                     'notes' => $assignment?->notes ?: $defaults['notes'],
+                    'responsibilities' => $responsibilities,
+                    'responsibility_labels' => $this->quickAssignResponsibilityLabels($responsibilities),
+                    'responsibility_options' => self::QUICK_ASSIGN_RESPONSIBILITIES,
                     'presets' => $this->quickAssignPresetsForUser($user),
                 ];
             })
@@ -2087,71 +2843,124 @@ class ProjectController extends Controller
         $role = (string) ($user?->roles?->first()?->name ?? '');
 
         if ($email === 'ahmad.arlisyah@avatech.test') {
-            return $this->quickAssignPresetsForUser($user)['saqa'];
+            return $this->quickAssignPresetsForUser($user)['saqa_mom_qc'];
         }
 
         if ($email === 'yuda.prayoga@avatech.test' || in_array($role, ['uiux_designer', 'ui_ux'], true)) {
-            return $this->quickAssignPresetsForUser($user)['default'];
+            return $this->quickAssignPresetsForUser($user)['uiux_design'];
         }
 
-        return $this->quickAssignPresetsForUser($user)['default'];
+        return $this->quickAssignPresetsForUser($user)['fullstack_dev'];
+    }
+
+    private function normalizeQuickAssignResponsibilities(array $responsibilities, ?User $user = null, ?TeamAssignment $assignment = null): array
+    {
+        $keys = collect($responsibilities)
+            ->filter(fn ($key) => is_string($key) && array_key_exists($key, self::QUICK_ASSIGN_RESPONSIBILITIES))
+            ->values();
+
+        if ($keys->isNotEmpty()) {
+            return $keys->unique()->values()->all();
+        }
+
+        if ($assignment?->type === 'review' || str_contains(mb_strtolower((string) $assignment?->title), 'qc')) {
+            return ['saqa_mom_qc'];
+        }
+
+        if ($assignment?->type === 'support') {
+            $title = mb_strtolower((string) $assignment->title . ' ' . (string) $assignment->notes);
+            if (str_contains($title, 'wordpress')) {
+                return ['wordpress_support'];
+            }
+            if (str_contains($title, 'copy')) {
+                return ['copywriting_support'];
+            }
+        }
+
+        $role = (string) ($user?->roles?->first()?->name ?? '');
+        $email = (string) ($user?->email ?? '');
+
+        if ($email === 'ahmad.arlisyah@avatech.test' || $role === 'sa_qa') {
+            return ['saqa_mom_qc'];
+        }
+
+        if ($email === 'yuda.prayoga@avatech.test' || in_array($role, ['uiux_designer', 'ui_ux'], true)) {
+            return ['uiux_design'];
+        }
+
+        return ['fullstack_dev'];
+    }
+
+    private function quickAssignResponsibilityLabels(array $responsibilities): array
+    {
+        return collect($responsibilities)
+            ->map(fn ($key) => self::QUICK_ASSIGN_RESPONSIBILITIES[$key] ?? null)
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function quickAssignDefaultsForResponsibilities(array $responsibilities, ?User $user): array
+    {
+        $presets = $this->quickAssignPresetsForUser($user);
+        $primary = $responsibilities[0] ?? array_key_first($presets);
+        $base = $presets[$primary] ?? reset($presets);
+        $labels = $this->quickAssignResponsibilityLabels($responsibilities);
+
+        if (count($labels) > 1) {
+            $base['title'] = implode(', ', $labels);
+            $base['notes'] = collect($responsibilities)
+                ->map(fn ($key) => $presets[$key]['notes'] ?? null)
+                ->filter()
+                ->implode(' ');
+            $base['type'] = in_array('saqa_mom_qc', $responsibilities, true) ? 'review' : ($base['type'] ?? 'task');
+        }
+
+        return $base;
     }
 
     private function quickAssignPresetsForUser(?User $user): array
     {
-        $email = (string) ($user?->email ?? '');
-        $role = (string) ($user?->roles?->first()?->name ?? '');
-
-        if ($email === 'ahmad.arlisyah@avatech.test') {
-            return [
-                'saqa' => [
-                    'label' => 'SA/QA & MoM/QC',
-                    'title' => 'Analisis kebutuhan, MoM, dan validasi QC',
-                    'type' => 'review',
-                    'status' => 'in_progress',
-                    'estimated_hours' => 12,
-                    'notes' => 'Bertanggung jawab pada analisis kebutuhan, dokumentasi MoM, validasi output AI, penyusunan test case, pengujian fungsional, serta dukungan copywriting bila diperlukan.',
-                ],
-                'wordpress' => [
-                    'label' => 'WordPress Support',
-                    'title' => 'Dukungan WordPress dan konten website',
-                    'type' => 'support',
-                    'status' => 'planned',
-                    'estimated_hours' => 8,
-                    'notes' => 'Mendukung konfigurasi WordPress, penyesuaian konten, validasi halaman, dan koordinasi kebutuhan ringan website klien.',
-                ],
-                'copywriting' => [
-                    'label' => 'Copywriting Support',
-                    'title' => 'Dukungan copywriting dan validasi konten',
-                    'type' => 'support',
-                    'status' => 'planned',
-                    'estimated_hours' => 6,
-                    'notes' => 'Mendukung penyusunan microcopy, konten presentasi, wording UI, dan validasi bahasa agar sesuai kebutuhan klien.',
-                ],
-            ];
-        }
-
-        if ($email === 'yuda.prayoga@avatech.test' || in_array($role, ['uiux_designer', 'ui_ux'], true)) {
-            return [
-                'default' => [
-                    'label' => 'UI/UX Design',
-                    'title' => 'Perancangan dan penyempurnaan UI/UX',
-                    'type' => 'task',
-                    'status' => 'in_progress',
-                    'estimated_hours' => 12,
-                    'notes' => 'Bertanggung jawab pada mockup, desain UI/UX, konsistensi tampilan, dan penyempurnaan pengalaman pengguna.',
-                ],
-            ];
-        }
-
         return [
-            'default' => [
-                'label' => 'Fullstack Implementation',
+            'saqa_mom_qc' => [
+                'label' => self::QUICK_ASSIGN_RESPONSIBILITIES['saqa_mom_qc'],
+                'title' => 'Analisis kebutuhan, MoM, dan validasi QC',
+                'type' => 'review',
+                'status' => 'in_progress',
+                'estimated_hours' => 12,
+                'notes' => 'Bertanggung jawab pada analisis kebutuhan, dokumentasi MoM, validasi output AI, penyusunan test case, dan pengujian fungsional.',
+            ],
+            'uiux_design' => [
+                'label' => self::QUICK_ASSIGN_RESPONSIBILITIES['uiux_design'],
+                'title' => 'Perancangan dan penyempurnaan UI/UX',
+                'type' => 'task',
+                'status' => 'in_progress',
+                'estimated_hours' => 12,
+                'notes' => 'Bertanggung jawab pada mockup, desain UI/UX, konsistensi tampilan, dan handover desain.',
+            ],
+            'fullstack_dev' => [
+                'label' => self::QUICK_ASSIGN_RESPONSIBILITIES['fullstack_dev'],
                 'title' => 'Implementasi fitur dan integrasi teknis',
                 'type' => 'task',
                 'status' => 'planned',
                 'estimated_hours' => 14,
                 'notes' => 'Bertanggung jawab pada implementasi fitur, pengembangan frontend/backend, integrasi teknis, bugfix, dan stabilisasi sistem.',
+            ],
+            'wordpress_support' => [
+                'label' => self::QUICK_ASSIGN_RESPONSIBILITIES['wordpress_support'],
+                'title' => 'Dukungan WordPress dan konten website',
+                'type' => 'support',
+                'status' => 'planned',
+                'estimated_hours' => 8,
+                'notes' => 'Mendukung konfigurasi WordPress, penyesuaian konten, validasi halaman, dan koordinasi kebutuhan ringan website klien.',
+            ],
+            'copywriting_support' => [
+                'label' => self::QUICK_ASSIGN_RESPONSIBILITIES['copywriting_support'],
+                'title' => 'Dukungan copywriting dan validasi konten',
+                'type' => 'support',
+                'status' => 'planned',
+                'estimated_hours' => 6,
+                'notes' => 'Mendukung penyusunan microcopy, konten presentasi, wording UI, dan validasi bahasa agar sesuai kebutuhan klien.',
             ],
         ];
     }
@@ -2219,8 +3028,13 @@ class ProjectController extends Controller
         $teamMore = max(0, $memberCount - count($team));
         $teamMoreNames = $teamMore > 0 ? $this->insights->projectHiddenMemberNames($project, count($team)) : [];
 
-        $tasksDone = $project->relationLoaded('tasks') ? $project->tasks->where('status', 'done')->count() : (int) ($meta['tasks_done'] ?? 0);
-        $tasksTotal = $project->relationLoaded('tasks') ? $project->tasks->count() : (int) ($meta['tasks_total'] ?? 0);
+        $progressTasks = $project->relationLoaded('tasks')
+            ? $project->tasks->reject(fn (ProjectTask $task) => $this->isExcludedProgressStatus($task->status))->values()
+            : collect();
+        $tasksDone = $project->relationLoaded('tasks')
+            ? $progressTasks->filter(fn (ProjectTask $task) => $this->isDoneStatus($task->status))->count()
+            : (int) ($meta['tasks_done'] ?? 0);
+        $tasksTotal = $project->relationLoaded('tasks') ? $progressTasks->count() : (int) ($meta['tasks_total'] ?? 0);
         $momCount = $project->relationLoaded('moms') ? $project->moms->count() : (int) ($meta['mom'] ?? 0);
 
         return [
@@ -2235,10 +3049,11 @@ class ProjectController extends Controller
             'phase_key'    => $this->phaseKey($project->phase),
             'due'          => $project->due_at ? $this->formatDateId($project->due_at) : '—',
             'due_at'       => $project->due_at?->format('Y-m-d'),
-            'progress'     => (int) $project->progress,
+            'progress'     => $this->projectProgress($project),
             'status'       => $project->status,
             'status_label' => $this->statusLabel($project->status),
             'archived'     => (bool) $project->archived_at,
+            'requires_design' => (bool) $project->requires_design,
             'team'             => $team,
             'team_more'        => $teamMore,
             'team_more_names'  => $teamMoreNames,
@@ -2255,7 +3070,7 @@ class ProjectController extends Controller
         return match (mb_strtolower($phase)) {
             'design' => 'design',
             'development' => 'dev',
-            'qa' => 'qa',
+            'qa', 'qc' => 'qa',
             'done' => 'done',
             default => 'planning',
         };

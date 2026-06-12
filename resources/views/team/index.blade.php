@@ -467,11 +467,11 @@
                     </div>
                     <div>
                         @if ($m['perf'] !== null)
-                            <div class="text-[18px] font-bold tabular-nums" style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</div>
+                            <div class="text-[18px] font-bold tabular-nums" style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}%</div>
                         @else
-                            <div class="text-[18px] font-bold tabular-nums text-slate-300" title="Belum ada data">—</div>
+                            <div class="text-[12px] font-bold text-slate-400 leading-tight" title="Belum ada task yang ditugaskan">Belum ada data</div>
                         @endif
-                        <div class="text-[10.5px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Skor</div>
+                        <div class="text-[10.5px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Skor Task</div>
                     </div>
                 </div>
                 <div class="mt-4 pt-4 border-t border-violet-50 flex items-center justify-end gap-2">
@@ -518,7 +518,7 @@
                         <th class="px-4 py-4 w-[200px]">Beban Kerja</th>
                         <th class="px-4 py-4">Proyek</th>
                         <th class="px-4 py-4">Task</th>
-                        <th class="px-4 py-4">Skor</th>
+                        <th class="px-4 py-4">Skor Task</th>
                         <th class="px-7 py-4 text-right"></th>
                     </tr>
                 </thead>
@@ -578,9 +578,9 @@
                             <td class="px-4 py-4 text-[13px] font-semibold text-[#1E1B4B] tabular-nums">{{ $m['tasks_open'] }}</td>
                             <td class="px-4 py-4 text-[13px] font-bold tabular-nums">
                                 @if ($m['perf'] !== null)
-                                    <span style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</span>
+                                    <span style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}%</span>
                                 @else
-                                    <span class="text-slate-300" title="Belum ada data">—</span>
+                                    <span class="text-slate-400" title="Belum ada task yang ditugaskan">Belum ada data</span>
                                 @endif
                             </td>
                             <td class="px-7 py-4 text-right">
@@ -710,25 +710,25 @@
                                     </div>
                                 </div>
                                 <div class="rounded-2xl border border-violet-100 p-5">
-                                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-3">Skor Performa</h4>
+                                    <h4 class="text-[11px] font-bold tracking-wider uppercase text-slate-400 mb-3">Skor Task</h4>
                                     @if ($m['perf'] !== null)
                                         <div class="flex items-baseline gap-2 mb-2">
                                             <span class="text-[40px] font-bold leading-none tabular-nums" style="color: {{ $perfFill($m['perf']) }};">{{ $m['perf'] }}</span>
-                                            <span class="text-[14px] font-semibold text-slate-400">/ 100</span>
+                                            <span class="text-[14px] font-semibold text-slate-400">%</span>
                                         </div>
                                         <div class="h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                                             <div class="h-full rounded-full" style="width: {{ $m['perf'] }}%; background: {{ $perfFill($m['perf']) }};"></div>
                                         </div>
                                         <div class="text-[11.5px] text-slate-500 mt-2.5 leading-relaxed">
-                                            Dihitung dari konsistensi WBS, tingkat lulus QC, dan respon AI Smart Reminders.
+                                            {{ $m['perf_label'] }}. Skor ini terpisah dari beban kerja mingguan.
                                         </div>
                                     @else
                                         <div class="flex items-baseline gap-2 mb-2">
-                                            <span class="text-[40px] font-bold leading-none text-slate-300">—</span>
+                                            <span class="text-[18px] font-bold leading-tight text-slate-400">Belum ada data</span>
                                         </div>
                                         <div class="h-2 rounded-full bg-slate-100 overflow-hidden"></div>
                                         <div class="text-[11.5px] text-slate-500 mt-2.5 leading-relaxed">
-                                            Belum ada data performa. Skor akan muncul saat anggota memiliki riwayat penugasan dan QC.
+                                            Skor task akan muncul saat anggota memiliki task yang ditugaskan.
                                         </div>
                                     @endif
                                 </div>
@@ -1023,7 +1023,7 @@
                 if (exportBtn) {
                     exportBtn.addEventListener('click', () => {
                         const csvCell = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-                        const rows = [['ID','Name','Email','Role','Level','Tenure','Load %','Load Hours','Capacity Hours','Active Projects','Open Tasks','Performance','Presence','Skills']];
+                        const rows = [['ID','Name','Email','Role','Level','Tenure','Load %','Load Hours','Capacity Hours','Active Projects','Open Tasks','Task Score %','Presence','Skills']];
                         document.querySelectorAll('[data-view-panel="grid"] [data-member-id]').forEach(card => {
                             const id = card.dataset.memberId;
                             const m = window.__teamCsvMap?.[id];
@@ -1258,6 +1258,13 @@
                 let currentMember = null;
 
                 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+                const renderResponsibilityChips = (a) => {
+                    const labels = Array.isArray(a?.responsibility_labels) ? a.responsibility_labels : [];
+                    if (! labels.length) return '';
+                    return '<div class="mt-1 flex flex-wrap gap-1">'
+                        + labels.map(label => '<span class="inline-flex rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">' + esc(label) + '</span>').join('')
+                        + '</div>';
+                };
 
                 const allAssignments = () => [
                     ...((currentMember && currentMember.allocations) || []),
@@ -1313,6 +1320,7 @@
                         + '    <div class="min-w-0">'
                         + '      <div class="text-[13px] font-semibold text-[#1E1B4B] truncate">' + esc(a.name || '—') + '</div>'
                         + '      <div class="text-[11.5px] text-slate-500">' + esc(a.role || '—') + ' · ' + esc(a.hours || 0) + 'h/minggu</div>'
+                        +        renderResponsibilityChips(a)
                         + '    </div>'
                         + '  </div>'
                         + '  <div class="flex items-center gap-2 flex-shrink-0">'
@@ -1337,6 +1345,7 @@
                         + '    <div class="min-w-0">'
                         + '      <div class="text-[13px] font-semibold text-[#1E1B4B] truncate">' + esc(a.name || '-') + '</div>'
                         + '      <div class="text-[11.5px] text-slate-500">' + esc(a.role || '-') + ' - ' + esc(a.hours || 0) + 'h/minggu</div>'
+                        +        renderResponsibilityChips(a)
                         + '    </div>'
                         + '  </div>'
                         + '  <div class="flex items-center gap-2 flex-shrink-0">'

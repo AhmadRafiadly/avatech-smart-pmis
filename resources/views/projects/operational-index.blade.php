@@ -39,7 +39,7 @@
             @foreach ($projects as $p)
                 @php
                     $status = $statusPill[$p->status] ?? $statusPill['on-track'];
-                    $progress = (int) $p->progress;
+                    $progress = (int) ($p->computed_progress ?? $p->progress ?? 0);
                     $progressColor = $progress >= 80 ? '#10B981' : ($progress >= 50 ? '#7C3AED' : '#F59E0B');
                 @endphp
                 <article class="group bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] hover:shadow-[0_8px_24px_rgba(124,58,237,0.12)] transition p-6 flex flex-col relative overflow-hidden">
@@ -71,7 +71,7 @@
                         <div class="h-2 rounded-full bg-[#F3E8FF] overflow-hidden">
                             <div class="h-full rounded-full" style="width: {{ $progress }}%; background: {{ $progressColor }};"></div>
                         </div>
-                        <p class="mt-1 text-[10.5px] text-slate-400">Progress merupakan estimasi manual PM.</p>
+                        <p class="mt-1 text-[10.5px] text-slate-400">Progress dihitung dari task selesai/estimasi jam.</p>
                     </div>
 
                     <div class="mt-auto pt-4 border-t border-violet-50 grid grid-cols-2 gap-3 text-center mb-4">

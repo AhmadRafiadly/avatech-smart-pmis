@@ -12,6 +12,7 @@ class TeamAssignment extends Model
         'project_id',
         'title',
         'type',
+        'responsibilities',
         'status',
         'estimated_hours',
         'due_date',
@@ -21,6 +22,7 @@ class TeamAssignment extends Model
     protected $casts = [
         'due_date' => 'date',
         'estimated_hours' => 'integer',
+        'responsibilities' => 'array',
     ];
 
     public function user(): BelongsTo
