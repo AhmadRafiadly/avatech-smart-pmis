@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Client;
 use App\Models\AuditLog;
 use App\Models\Project;
+use App\Models\ProjectBlocker;
 use App\Models\ProjectChangeRequest;
 use App\Models\ProjectClientReview;
 use App\Models\ProjectHandoverPack;
@@ -14,6 +15,7 @@ use App\Models\ProjectQcTest;
 use App\Models\ProjectRequirementInboxItem;
 use App\Models\ProjectSignoff;
 use App\Models\ProjectTask;
+use App\Models\ProjectTaskDependency;
 use App\Models\ProjectTaskDesignDeliverable;
 use App\Models\ProjectUatItem;
 use App\Models\TeamAssignment;
@@ -160,6 +162,38 @@ class ProjectController extends Controller
         'reviewed'  => 'Direview',
         'converted' => 'Dikonversi',
         'dismissed' => 'Diabaikan',
+    ];
+
+    private const BLOCKER_SOURCE_LABELS = [
+        'client' => 'Client',
+        'internal' => 'Internal',
+        'technical' => 'Teknis',
+        'design' => 'Design',
+        'content' => 'Konten',
+        'deployment' => 'Deployment',
+        'dependency' => 'Dependency',
+        'access' => 'Akses',
+        'other' => 'Lainnya',
+    ];
+
+    private const BLOCKER_SEVERITY_LABELS = [
+        'low' => 'Low',
+        'medium' => 'Medium',
+        'high' => 'High',
+        'critical' => 'Critical',
+    ];
+
+    private const BLOCKER_STATUS_LABELS = [
+        'open' => 'Open',
+        'in_progress' => 'In Progress',
+        'resolved' => 'Resolved',
+        'cancelled' => 'Cancelled',
+    ];
+
+    private const DEPENDENCY_TYPE_LABELS = [
+        'finish_to_start' => 'Finish to Start',
+        'related' => 'Related',
+        'blocks' => 'Blocks',
     ];
 
     private const CLIENT_REVIEW_MANAGER_ROLES = ['ceo_pm', 'sa_qa', 'admin', 'super_admin', 'developer'];
@@ -459,6 +493,17 @@ class ProjectController extends Controller
                 'task:id,title',
                 'mom:id,meeting_date',
             ])->orderByDesc('created_at')->orderByDesc('id'),
+            'blockers' => fn ($query) => $query->with([
+                'task:id,title,status',
+                'reporter:id,name',
+                'assignee:id,name',
+            ])->orderBy('due_date')
+                ->orderByDesc('id'),
+            'taskDependencies' => fn ($query) => $query->with([
+                'task:id,title,status',
+                'dependsOnTask:id,title,status',
+                'creator:id,name',
+            ])->orderByDesc('id'),
             'clientReviews' => fn ($query) => $query->with('creator:id,name')->orderByDesc('created_at')->orderByDesc('id'),
             'uatItems' => fn ($query) => $query->with('tester:id,name')->orderBy('sort_order')->orderBy('id'),
             'signoffs' => fn ($query) => $query->with(['creator:id,name', 'approver:id,name', 'clientReview:id,title,status'])->orderBy('type')->orderByDesc('id'),
@@ -527,6 +572,16 @@ class ProjectController extends Controller
             'intakeTypeOptions' => self::CR_TYPE_LABELS,
             'intakePriorityOptions' => self::CR_PRIORITY_LABELS,
             'intakeStatusOptions' => self::INTAKE_STATUS_LABELS,
+            'projectBlockers' => $this->projectBlockerRows($project),
+            'projectBlockerSummary' => $this->projectBlockerSummary($project),
+            'projectDependencies' => $this->projectDependencyRows($project),
+            'blockerCanContribute' => $this->blockerCanContribute($project),
+            'blockerCanManage' => $this->blockerCanManage(),
+            'blockerSourceOptions' => self::BLOCKER_SOURCE_LABELS,
+            'blockerSeverityOptions' => self::BLOCKER_SEVERITY_LABELS,
+            'blockerStatusOptions' => self::BLOCKER_STATUS_LABELS,
+            'dependencyTypeOptions' => self::DEPENDENCY_TYPE_LABELS,
+            'projectTaskOptions' => $this->projectTaskOptions($project),
             'clientReviews'      => $this->projectClientReviewRows($project),
             'clientReviewTypes'  => self::CLIENT_REVIEW_TYPE_LABELS,
             'clientReviewStatuses' => self::CLIENT_REVIEW_STATUS_LABELS,
@@ -2549,6 +2604,205 @@ class ProjectController extends Controller
             ->with('status', 'Test case "' . $title . '" berhasil dihapus.');
     }
 
+    /* ===================== Dependencies & Blockers ===================== */
+
+    public function storeBlocker(Request $request, Project $project)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($this->blockerCanContribute($project), 403);
+
+        $validated = $this->validateBlocker($request, $project);
+
+        $blocker = $project->blockers()->create([
+            'task_id' => $validated['task_id'] ?? null,
+            'reported_by_user_id' => $request->user()?->id,
+            'assigned_to_user_id' => $validated['assigned_to_user_id'] ?? null,
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'source' => $validated['source'] ?? null,
+            'severity' => $validated['severity'],
+            'status' => 'open',
+            'due_date' => $validated['due_date'] ?? null,
+        ]);
+
+        AuditLogger::log(
+            'blocker_created',
+            'Project Master',
+            'Menambah blocker <strong>' . e($blocker->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $blocker,
+            null,
+            $this->safeBlockerAuditValues($blocker),
+        );
+
+        return $this->backToBlockers($project, 'Blocker berhasil ditambahkan.');
+    }
+
+    public function updateBlocker(Request $request, Project $project, ProjectBlocker $blocker)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $blocker->project_id === (int) $project->id, 404);
+
+        $canManage = $this->blockerCanManage();
+        $canResolveAssigned = (int) $blocker->assigned_to_user_id === (int) $request->user()?->id
+            && $this->isAssignedOperationalToProject($project);
+        abort_unless($canManage || $canResolveAssigned, 403);
+
+        if (! $canManage && in_array($blocker->status, ['resolved', 'cancelled'], true)) {
+            return $this->backToBlockers($project, 'Blocker yang sudah selesai/dibatalkan hanya dapat diubah oleh PM/SA.');
+        }
+
+        $validated = $this->validateBlockerUpdate($request, $project, $canManage);
+        $targetStatus = $validated['status'];
+        if (! $canManage && ! in_array($targetStatus, ['in_progress', 'resolved'], true)) {
+            abort(403);
+        }
+        if ($targetStatus === 'resolved' && ! filled($validated['resolution_notes'] ?? null)) {
+            throw ValidationException::withMessages([
+                'resolution_notes' => 'Catatan Resolusi wajib diisi saat blocker diselesaikan.',
+            ]);
+        }
+
+        $original = $blocker->getOriginal();
+        $blocker->fill([
+            'status' => $targetStatus,
+            'resolution_notes' => $validated['resolution_notes'] ?? $blocker->resolution_notes,
+        ]);
+
+        if ($canManage) {
+            $blocker->fill([
+                'task_id' => $validated['task_id'] ?? null,
+                'assigned_to_user_id' => $validated['assigned_to_user_id'] ?? null,
+                'title' => $validated['title'],
+                'description' => $validated['description'] ?? null,
+                'source' => $validated['source'] ?? null,
+                'severity' => $validated['severity'],
+                'due_date' => $validated['due_date'] ?? null,
+            ]);
+        }
+
+        $blocker->resolved_at = $targetStatus === 'resolved'
+            ? ($blocker->resolved_at ?: AppTime::now())
+            : null;
+        if ($targetStatus !== 'resolved') {
+            $blocker->resolution_notes = $targetStatus === 'cancelled'
+                ? ($validated['resolution_notes'] ?? $blocker->resolution_notes)
+                : null;
+        }
+
+        $blocker->save();
+
+        $action = match ($blocker->status) {
+            'resolved' => 'blocker_resolved',
+            'cancelled' => 'blocker_cancelled',
+            default => 'blocker_updated',
+        };
+
+        AuditLogger::log(
+            $action,
+            'Project Master',
+            'Memperbarui blocker <strong>' . e($blocker->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $blocker,
+            [
+                'project_id' => $project->id,
+                'blocker_id' => $blocker->id,
+                'status' => $original['status'] ?? null,
+                'severity' => $original['severity'] ?? null,
+            ],
+            $this->safeBlockerAuditValues($blocker),
+        );
+
+        return $this->backToBlockers($project, 'Blocker berhasil diperbarui.');
+    }
+
+    public function storeTaskDependency(Request $request, Project $project)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($this->blockerCanManage(), 403);
+
+        $validated = $request->validate([
+            'task_id' => ['required', Rule::exists('project_tasks', 'id')->where('project_id', $project->id)],
+            'depends_on_task_id' => ['required', Rule::exists('project_tasks', 'id')->where('project_id', $project->id)],
+            'type' => ['required', Rule::in(ProjectTaskDependency::TYPES)],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ], [
+            'task_id.required' => 'Task utama wajib dipilih.',
+            'depends_on_task_id.required' => 'Dependency task wajib dipilih.',
+            'task_id.exists' => 'Task utama tidak valid.',
+            'depends_on_task_id.exists' => 'Dependency task tidak valid.',
+        ]);
+
+        $taskId = (int) $validated['task_id'];
+        $dependsOnId = (int) $validated['depends_on_task_id'];
+        if ($taskId === $dependsOnId) {
+            throw ValidationException::withMessages([
+                'depends_on_task_id' => 'Task tidak dapat bergantung pada dirinya sendiri.',
+            ]);
+        }
+        if ($project->taskDependencies()->where('task_id', $taskId)->where('depends_on_task_id', $dependsOnId)->exists()) {
+            throw ValidationException::withMessages([
+                'depends_on_task_id' => 'Dependency ini sudah tercatat.',
+            ]);
+        }
+        if ($project->taskDependencies()->where('task_id', $dependsOnId)->where('depends_on_task_id', $taskId)->exists()) {
+            throw ValidationException::withMessages([
+                'depends_on_task_id' => 'Dependency ini membentuk siklus langsung.',
+            ]);
+        }
+        if ($this->dependencyPathExists($project, $dependsOnId, $taskId)) {
+            throw ValidationException::withMessages([
+                'depends_on_task_id' => 'Dependency ini membentuk siklus antar task.',
+            ]);
+        }
+
+        $dependency = $project->taskDependencies()->create([
+            'task_id' => $taskId,
+            'depends_on_task_id' => $dependsOnId,
+            'type' => $validated['type'],
+            'notes' => $validated['notes'] ?? null,
+            'created_by_user_id' => $request->user()?->id,
+        ]);
+
+        AuditLogger::log(
+            'dependency_created',
+            'Project Master',
+            'Menambah dependency task pada proyek <strong>' . e($project->name) . '</strong>',
+            $dependency,
+            null,
+            $this->safeDependencyAuditValues($dependency),
+        );
+
+        return $this->backToBlockers($project, 'Dependency task berhasil ditambahkan.');
+    }
+
+    public function destroyTaskDependency(Project $project, ProjectTaskDependency $dependency)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($this->blockerCanManage(), 403);
+        abort_unless((int) $dependency->project_id === (int) $project->id, 404);
+
+        $values = $this->safeDependencyAuditValues($dependency);
+        $dependency->delete();
+
+        AuditLogger::log(
+            'dependency_removed',
+            'Project Master',
+            'Menghapus dependency task pada proyek <strong>' . e($project->name) . '</strong>',
+            null,
+            $values,
+            null,
+        );
+
+        return $this->backToBlockers($project, 'Dependency task berhasil dihapus.');
+    }
+
     /* ===================== Requirement Inbox ===================== */
 
     public function storeRequirementInboxItem(Project $project, Request $request)
@@ -3649,6 +3903,248 @@ class ProjectController extends Controller
             && ! $project->qcTests()->exists();
     }
 
+    /* ---- Dependencies & Blockers helpers ------------------------------- */
+
+    private function blockerCanManage(): bool
+    {
+        return in_array($this->currentRoleName(), self::CR_DECISION_ROLES, true);
+    }
+
+    private function blockerCanContribute(Project $project): bool
+    {
+        return $this->blockerCanManage() || $this->isAssignedOperationalToProject($project);
+    }
+
+    private function isAssignedOperationalToProject(Project $project): bool
+    {
+        $role = $this->currentRoleName();
+        if (! in_array($role, self::OPERATIONAL_ROLES, true)) {
+            return false;
+        }
+
+        return TeamAssignment::query()
+            ->where('user_id', auth()->id())
+            ->where('project_id', $project->id)
+            ->exists();
+    }
+
+    private function backToBlockers(Project $project, string $status = 'success')
+    {
+        return redirect()
+            ->to(route('projects.show', $project) . '#blockers')
+            ->with('status', $status);
+    }
+
+    private function validateBlocker(Request $request, Project $project): array
+    {
+        $assignedIds = $this->projectAssignedUsers($project)->pluck('id')->all();
+
+        return $request->validate([
+            'title' => ['required', 'string', 'max:160'],
+            'description' => ['nullable', 'string', 'max:4000'],
+            'source' => ['nullable', Rule::in(ProjectBlocker::SOURCES)],
+            'severity' => ['required', Rule::in(ProjectBlocker::SEVERITIES)],
+            'task_id' => ['nullable', Rule::exists('project_tasks', 'id')->where('project_id', $project->id)],
+            'assigned_to_user_id' => ['nullable', Rule::in($assignedIds)],
+            'due_date' => ['nullable', 'date'],
+        ], [
+            'title.required' => 'Judul blocker wajib diisi.',
+            'severity.required' => 'Severity wajib dipilih.',
+            'task_id.exists' => 'Task blocker tidak valid.',
+            'assigned_to_user_id.in' => 'Owner harus anggota yang ditugaskan ke project ini.',
+        ]);
+    }
+
+    private function validateBlockerUpdate(Request $request, Project $project, bool $canManage): array
+    {
+        if (! $canManage) {
+            return $request->validate([
+                'status' => ['required', Rule::in(['in_progress', 'resolved'])],
+                'resolution_notes' => ['nullable', 'string', 'max:4000'],
+            ]);
+        }
+
+        $validated = $this->validateBlocker($request, $project);
+        $extra = $request->validate([
+            'status' => ['required', Rule::in(ProjectBlocker::STATUSES)],
+            'resolution_notes' => ['nullable', 'string', 'max:4000'],
+        ]);
+
+        return $validated + $extra;
+    }
+
+    private function projectBlockerRows(Project $project): array
+    {
+        $col = $project->relationLoaded('blockers')
+            ? $project->blockers
+            : $project->blockers()->with(['task:id,title,status', 'reporter:id,name', 'assignee:id,name'])->get();
+
+        return $col->map(function (ProjectBlocker $blocker) {
+            $due = $blocker->due_date ? AppTime::cast($blocker->due_date) : null;
+            $overdue = $due && ! in_array($blocker->status, ['resolved', 'cancelled'], true) && $due->isBefore(AppTime::now()->startOfDay());
+
+            return [
+                'id' => $blocker->id,
+                'title' => $blocker->title,
+                'description' => $blocker->description,
+                'source' => $blocker->source,
+                'source_label' => $blocker->source ? (self::BLOCKER_SOURCE_LABELS[$blocker->source] ?? $blocker->source) : 'Tidak diklasifikasi',
+                'severity' => $blocker->severity,
+                'severity_label' => self::BLOCKER_SEVERITY_LABELS[$blocker->severity] ?? $blocker->severity,
+                'status' => $blocker->status,
+                'status_label' => self::BLOCKER_STATUS_LABELS[$blocker->status] ?? $blocker->status,
+                'task_id' => $blocker->task_id,
+                'task_title' => $blocker->task?->title,
+                'task_status' => $blocker->task?->status,
+                'reported_by' => $blocker->reporter?->name,
+                'assigned_to_user_id' => $blocker->assigned_to_user_id,
+                'assigned_to' => $blocker->assignee?->name,
+                'due_date' => $blocker->due_date?->format('Y-m-d'),
+                'due_label' => $due ? $this->formatDateId($due) : null,
+                'overdue' => $overdue,
+                'resolved_at' => $blocker->resolved_at ? AppTime::cast($blocker->resolved_at)?->format('d M Y H:i') : null,
+                'resolution_notes' => $blocker->resolution_notes,
+                'created_at' => AppTime::diff($blocker->created_at),
+            ];
+        })->all();
+    }
+
+    private function projectBlockerSummary(Project $project): array
+    {
+        $col = $project->relationLoaded('blockers') ? $project->blockers : $project->blockers()->get();
+        $active = $col->whereIn('status', ['open', 'in_progress']);
+        $highCritical = $active->whereIn('severity', ['high', 'critical']);
+        $today = AppTime::now()->startOfDay();
+
+        return [
+            'open' => (int) $active->count(),
+            'high_critical' => (int) $highCritical->count(),
+            'overdue' => (int) $active->filter(fn (ProjectBlocker $blocker) => $blocker->due_date && AppTime::cast($blocker->due_date)->isBefore($today))->count(),
+            'resolved' => (int) $col->where('status', 'resolved')->count(),
+            'tasks_blocked' => (int) $active->whereNotNull('task_id')->pluck('task_id')->unique()->count(),
+        ];
+    }
+
+    private function projectDependencyRows(Project $project): array
+    {
+        $col = $project->relationLoaded('taskDependencies')
+            ? $project->taskDependencies
+            : $project->taskDependencies()->with(['task:id,title,status', 'dependsOnTask:id,title,status', 'creator:id,name'])->get();
+
+        return $col->map(function (ProjectTaskDependency $dependency) {
+            $done = $this->isDoneStatus($dependency->dependsOnTask?->status);
+
+            return [
+                'id' => $dependency->id,
+                'task_id' => $dependency->task_id,
+                'task_title' => $dependency->task?->title ?? 'Task tidak ditemukan',
+                'task_status' => $dependency->task?->status,
+                'depends_on_task_id' => $dependency->depends_on_task_id,
+                'depends_on_title' => $dependency->dependsOnTask?->title ?? 'Task dependency tidak ditemukan',
+                'depends_on_status' => $dependency->dependsOnTask?->status,
+                'depends_on_done' => $done,
+                'type' => $dependency->type,
+                'type_label' => self::DEPENDENCY_TYPE_LABELS[$dependency->type] ?? $dependency->type,
+                'notes' => $dependency->notes,
+                'created_by' => $dependency->creator?->name,
+                'created_at' => AppTime::diff($dependency->created_at),
+            ];
+        })->all();
+    }
+
+    private function projectTaskOptions(Project $project): array
+    {
+        $tasks = $project->relationLoaded('tasks') ? $project->tasks : $project->tasks()->with('module:id,title')->orderBy('sort_order')->get();
+
+        return $tasks->map(fn (ProjectTask $task) => [
+            'id' => $task->id,
+            'title' => $task->title,
+            'module' => $task->module?->title ?? 'Tanpa Modul',
+            'status' => $task->status,
+        ])->values()->all();
+    }
+
+    private function safeBlockerAuditValues(ProjectBlocker $blocker): array
+    {
+        return [
+            'project_id' => $blocker->project_id,
+            'blocker_id' => $blocker->id,
+            'task_id' => $blocker->task_id,
+            'assigned_to_user_id' => $blocker->assigned_to_user_id,
+            'title' => Str::limit($blocker->title, 120),
+            'severity' => $blocker->severity,
+            'status' => $blocker->status,
+            'source' => $blocker->source,
+        ];
+    }
+
+    private function safeDependencyAuditValues(ProjectTaskDependency $dependency): array
+    {
+        return [
+            'project_id' => $dependency->project_id,
+            'dependency_id' => $dependency->id,
+            'task_id' => $dependency->task_id,
+            'depends_on_task_id' => $dependency->depends_on_task_id,
+            'type' => $dependency->type,
+        ];
+    }
+
+    private function dependencyPathExists(Project $project, int $fromTaskId, int $targetTaskId): bool
+    {
+        $edges = $project->taskDependencies()
+            ->get(['task_id', 'depends_on_task_id'])
+            ->groupBy('task_id')
+            ->map(fn ($rows) => $rows->pluck('depends_on_task_id')->map(fn ($id) => (int) $id)->all());
+        $stack = [$fromTaskId];
+        $seen = [];
+
+        while ($stack !== []) {
+            $current = array_pop($stack);
+            if ($current === $targetTaskId) {
+                return true;
+            }
+            if (isset($seen[$current])) {
+                continue;
+            }
+            $seen[$current] = true;
+            foreach ($edges[$current] ?? [] as $next) {
+                if (! isset($seen[$next])) {
+                    $stack[] = $next;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function taskBlockerWarnings(ProjectTask $task, Project $project): array
+    {
+        $blockers = $project->relationLoaded('blockers')
+            ? $project->blockers
+            : $project->blockers()->get();
+        $dependencies = $project->relationLoaded('taskDependencies')
+            ? $project->taskDependencies
+            : $project->taskDependencies()->with('dependsOnTask:id,status')->get();
+
+        $activeBlockers = $blockers
+            ->where('task_id', $task->id)
+            ->whereIn('status', ['open', 'in_progress']);
+        $highCritical = $activeBlockers->whereIn('severity', ['high', 'critical'])->count();
+        $unfinishedDeps = $dependencies
+            ->where('task_id', $task->id)
+            ->filter(fn (ProjectTaskDependency $dependency) => ! $this->isDoneStatus($dependency->dependsOnTask?->status))
+            ->count();
+
+        return [
+            'active_blocker_count' => (int) $activeBlockers->count(),
+            'high_critical_blocker_count' => (int) $highCritical,
+            'unfinished_dependency_count' => (int) $unfinishedDeps,
+            'has_active_blocker' => $activeBlockers->isNotEmpty(),
+            'has_high_critical_blocker' => $highCritical > 0,
+            'has_unfinished_dependency' => $unfinishedDeps > 0,
+        ];
+    }
+
     /* ---- Requirement Inbox helpers ------------------------------------- */
 
     private function intakeCanContribute(Project $project): bool
@@ -4603,6 +5099,8 @@ class ProjectController extends Controller
         $taskTotal = $project->relationLoaded('tasks') ? $project->tasks->count() : $project->tasks()->count();
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
         $intakeTotal = $project->relationLoaded('requirementInboxItems') ? $project->requirementInboxItems->count() : $project->requirementInboxItems()->count();
+        $blockerTotal = ($project->relationLoaded('blockers') ? $project->blockers->count() : $project->blockers()->count())
+            + ($project->relationLoaded('taskDependencies') ? $project->taskDependencies->count() : $project->taskDependencies()->count());
         $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
         $uatTotal = $project->relationLoaded('uatItems') ? $project->uatItems->count() : $project->uatItems()->count();
         $crTotal = $project->relationLoaded('changeRequests') ? $project->changeRequests->count() : $project->changeRequests()->count();
@@ -4614,6 +5112,7 @@ class ProjectController extends Controller
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $taskTotal],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
             ['id' => 'intake',     'label' => 'Requirement Inbox', 'count' => $intakeTotal],
+            ['id' => 'blockers',   'label' => 'Dependencies & Blockers', 'count' => $blockerTotal],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
             ['id' => 'signoff',    'label' => 'UAT & Sign-off',   'count' => $uatTotal],
             ['id' => 'scope',      'label' => 'Scope Control',    'count' => $crTotal],
@@ -4752,6 +5251,8 @@ class ProjectController extends Controller
     {
         return match (true) {
             str_starts_with($action, 'qc_') => '#F59E0B',
+            str_starts_with($action, 'blocker_') => '#E11D48',
+            str_starts_with($action, 'dependency_') => '#D97706',
             str_starts_with($action, 'mom_') => '#10B981',
             str_starts_with($action, 'task_') => '#7C3AED',
             $action === 'ai_mom_fixed' => '#10B981',
@@ -4785,6 +5286,14 @@ class ProjectController extends Controller
     {
             $project ??= $task->project;
             $statusLockMessage = $project ? $this->taskStatusLockMessageForView($project, $task) : null;
+            $warnings = $project ? $this->taskBlockerWarnings($task, $project) : [
+                'active_blocker_count' => 0,
+                'high_critical_blocker_count' => 0,
+                'unfinished_dependency_count' => 0,
+                'has_active_blocker' => false,
+                'has_high_critical_blocker' => false,
+                'has_unfinished_dependency' => false,
+            ];
 
             return [
                 'id' => $task->id,
@@ -4804,6 +5313,7 @@ class ProjectController extends Controller
                 'can_edit_design_deliverables' => $this->canEditDesignDeliverables($task),
                 'status_locked' => filled($statusLockMessage),
                 'status_lock_message' => $statusLockMessage,
+                'blocker_warnings' => $warnings,
                 'design_deliverables' => $task->designDeliverables->map(function (ProjectTaskDesignDeliverable $deliverable) use ($task) {
                     $hasPdf = filled($deliverable->pdf_file_path) && Storage::disk('public')->exists($deliverable->pdf_file_path);
 

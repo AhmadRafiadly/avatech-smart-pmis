@@ -53,4 +53,19 @@ class ProjectTask extends Model
     {
         return $this->hasMany(ProjectTaskDesignDeliverable::class);
     }
+
+    public function blockers(): HasMany
+    {
+        return $this->hasMany(ProjectBlocker::class, 'task_id');
+    }
+
+    public function dependencies(): HasMany
+    {
+        return $this->hasMany(ProjectTaskDependency::class, 'task_id');
+    }
+
+    public function dependents(): HasMany
+    {
+        return $this->hasMany(ProjectTaskDependency::class, 'depends_on_task_id');
+    }
 }

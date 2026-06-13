@@ -513,7 +513,7 @@
 
     {{-- =============== TABS =============== --}}
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-2 mb-6">
-        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-9 gap-2">
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-10 gap-2">
             @foreach ($tabs as $idx => $t)
                 <button
                     type="button"
@@ -886,6 +886,20 @@
                                         <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-white border border-pink-100 text-pink-700">{{ count($task['design_deliverables'] ?? []) }} deliverable</span>
                                     @endif
                                 </div>
+                                @if (! empty($task['blocker_warnings']['has_unfinished_dependency']) || ! empty($task['blocker_warnings']['has_active_blocker']))
+                                    <div class="mt-3 space-y-1.5">
+                                        @if (! empty($task['blocker_warnings']['has_unfinished_dependency']))
+                                            <div class="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-700 leading-relaxed">
+                                                Dependency belum selesai ({{ $task['blocker_warnings']['unfinished_dependency_count'] }}).
+                                            </div>
+                                        @endif
+                                        @if (! empty($task['blocker_warnings']['has_active_blocker']))
+                                            <div class="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 leading-relaxed">
+                                                Blocker aktif{{ ! empty($task['blocker_warnings']['has_high_critical_blocker']) ? ' high/critical' : '' }} ({{ $task['blocker_warnings']['active_blocker_count'] }}).
+                                            </div>
+                                        @endif
+                                    </div>
+                                @endif
                                 @if ($canEdit && ! $useReferenceProjectData && ! empty($task['id']))
                                     @if (! empty($task['status_locked']))
                                         <div class="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-700 leading-relaxed">
@@ -3215,6 +3229,305 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
     </div>
 
+    {{-- =============== DEPENDENCIES & BLOCKERS =============== --}}
+    @php
+        $blockerRows = $projectBlockers ?? [];
+        $blockerSummary = $projectBlockerSummary ?? ['open' => 0, 'high_critical' => 0, 'overdue' => 0, 'resolved' => 0, 'tasks_blocked' => 0];
+        $dependencyRows = $projectDependencies ?? [];
+        $blockerCanAdd = (bool) ($blockerCanContribute ?? false) && ! $useReferenceProjectData;
+        $blockerCanReview = (bool) ($blockerCanManage ?? false) && ! $useReferenceProjectData;
+        $blockerStatusBadge = [
+            'open' => 'bg-blue-50 text-blue-700 border border-blue-100',
+            'in_progress' => 'bg-amber-50 text-amber-700 border border-amber-100',
+            'resolved' => 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+            'cancelled' => 'bg-slate-100 text-slate-600 border border-slate-200',
+        ];
+        $blockerSeverityBadge = [
+            'low' => 'bg-slate-50 text-slate-600 border border-slate-100',
+            'medium' => 'bg-amber-50 text-amber-700 border border-amber-100',
+            'high' => 'bg-rose-50 text-rose-700 border border-rose-100',
+            'critical' => 'bg-rose-100 text-rose-800 border border-rose-200',
+        ];
+    @endphp
+    <div id="blockers" data-panel="blockers" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+        <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
+            <div class="flex items-center gap-3">
+                <span class="pd-section-bar"></span>
+                <div>
+                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Dependencies & Blockers</h3>
+                    <p class="text-[12px] text-slate-500 mt-0.5 max-w-3xl">Gunakan area ini untuk mencatat hambatan, dependency antar task, kebutuhan akses, konten dari client, atau hal teknis yang menahan progress project.</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2 text-[11px]">
+                @foreach ([['Open', 'open'], ['High/Critical', 'high_critical'], ['Overdue', 'overdue'], ['Resolved', 'resolved'], ['Task Terblokir', 'tasks_blocked']] as [$label, $key])
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 font-semibold text-violet-700">
+                        {{ $label }} <strong>{{ $blockerSummary[$key] ?? 0 }}</strong>
+                    </span>
+                @endforeach
+            </div>
+        </div>
+
+        <div class="p-6 md:p-7 space-y-6">
+            @if ($blockerCanAdd)
+                <details class="rounded-2xl border border-violet-100 bg-violet-50/30 overflow-hidden" @if ($errors->any() && old('_form') === 'blocker') open @endif>
+                    <summary class="cursor-pointer select-none px-5 py-3.5 text-[13px] font-bold text-violet-700 flex items-center gap-2">
+                        <x-heroicon-o-exclamation-triangle class="w-5 h-5" />
+                        Tambah Blocker
+                    </summary>
+                    <form method="POST" action="{{ route('projects.blockers.store', $project) }}" class="px-5 pb-5 pt-1 grid grid-cols-1 md:grid-cols-12 gap-3">
+                        @csrf
+                        <input type="hidden" name="_form" value="blocker">
+                        <div class="md:col-span-5">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Judul Blocker</label>
+                            <input name="title" value="{{ old('_form') === 'blocker' ? old('title') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="Contoh: Menunggu konten testimonial client" />
+                            @if (old('_form') === 'blocker') @error('title')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror @endif
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Task terkait</label>
+                            <select name="task_id" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">Project-level blocker</option>
+                                @foreach ($projectTaskOptions as $taskOption)
+                                    <option value="{{ $taskOption['id'] }}" @selected(old('_form') === 'blocker' && (string) old('task_id') === (string) $taskOption['id'])>{{ $taskOption['title'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Sumber</label>
+                            <select name="source" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">Pilih sumber</option>
+                                @foreach ($blockerSourceOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected(old('_form') === 'blocker' && old('source') === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Severity</label>
+                            <select name="severity" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                @foreach ($blockerSeverityOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected(old('_form') === 'blocker' ? old('severity', 'medium') === $value : $value === 'medium')>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Owner</label>
+                            <select name="assigned_to_user_id" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">Belum ditugaskan</option>
+                                @foreach ($assigneeOptions as $member)
+                                    <option value="{{ $member->id }}" @selected(old('_form') === 'blocker' && (string) old('assigned_to_user_id') === (string) $member->id)>{{ $member->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Due Date</label>
+                            <input type="date" name="due_date" value="{{ old('_form') === 'blocker' ? old('due_date') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        </div>
+                        <div class="md:col-span-6">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Deskripsi</label>
+                            <textarea name="description" rows="2" class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Ringkas hambatan tanpa secret/password.">{{ old('_form') === 'blocker' ? old('description') : '' }}</textarea>
+                        </div>
+                        <div class="md:col-span-12 flex justify-end">
+                            <button type="submit" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
+                                <x-heroicon-o-plus class="w-4 h-4" />
+                                Simpan Blocker
+                            </button>
+                        </div>
+                    </form>
+                </details>
+            @endif
+
+            @if ($blockerCanReview)
+                <details class="rounded-2xl border border-amber-100 bg-amber-50/40 overflow-hidden" @if ($errors->any() && old('_form') === 'dependency') open @endif>
+                    <summary class="cursor-pointer select-none px-5 py-3.5 text-[13px] font-bold text-amber-700 flex items-center gap-2">
+                        <x-heroicon-o-link class="w-5 h-5" />
+                        Dependency Task
+                    </summary>
+                    <form method="POST" action="{{ route('projects.task-dependencies.store', $project) }}" class="px-5 pb-5 pt-1 grid grid-cols-1 md:grid-cols-12 gap-3">
+                        @csrf
+                        <input type="hidden" name="_form" value="dependency">
+                        <div class="md:col-span-4">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Task yang tertahan</label>
+                            <select name="task_id" class="w-full h-10 rounded-xl border border-amber-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-300">
+                                <option value="">Pilih task</option>
+                                @foreach ($projectTaskOptions as $taskOption)
+                                    <option value="{{ $taskOption['id'] }}" @selected(old('_form') === 'dependency' && (string) old('task_id') === (string) $taskOption['id'])>{{ $taskOption['title'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Bergantung pada</label>
+                            <select name="depends_on_task_id" class="w-full h-10 rounded-xl border border-amber-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-300">
+                                <option value="">Pilih dependency</option>
+                                @foreach ($projectTaskOptions as $taskOption)
+                                    <option value="{{ $taskOption['id'] }}" @selected(old('_form') === 'dependency' && (string) old('depends_on_task_id') === (string) $taskOption['id'])>{{ $taskOption['title'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tipe</label>
+                            <select name="type" class="w-full h-10 rounded-xl border border-amber-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-300">
+                                @foreach ($dependencyTypeOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected(old('_form') === 'dependency' ? old('type', 'finish_to_start') === $value : $value === 'finish_to_start')>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Catatan</label>
+                            <input name="notes" value="{{ old('_form') === 'dependency' ? old('notes') : '' }}" class="w-full h-10 rounded-xl border border-amber-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                        </div>
+                        <div class="md:col-span-12 flex justify-end">
+                            <button type="submit" class="h-10 px-4 rounded-xl bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 transition cursor-pointer">Tambah Dependency</button>
+                        </div>
+                    </form>
+                </details>
+            @endif
+
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <div class="space-y-3">
+                    <h4 class="text-[13px] font-extrabold text-[#1E1B4B] uppercase tracking-tight">Blocker Aktif & Riwayat</h4>
+                    @forelse ($blockerRows as $blocker)
+                        @php
+                            $canUpdateBlockerRow = $blockerCanReview || ((int) ($blocker['assigned_to_user_id'] ?? 0) === (int) auth()->id() && ! in_array($blocker['status'], ['resolved', 'cancelled'], true));
+                        @endphp
+                        <article class="rounded-2xl border border-violet-100 bg-white px-5 py-4 shadow-[0_1px_4px_rgba(124,58,237,0.05)]">
+                            <div class="flex items-start justify-between gap-3 flex-wrap">
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                                        <span class="text-[10px] font-bold rounded-full px-2 py-0.5 {{ $blockerStatusBadge[$blocker['status']] ?? 'bg-slate-100 text-slate-600 border border-slate-200' }}">{{ $blocker['status_label'] }}</span>
+                                        <span class="text-[10px] font-bold rounded-full px-2 py-0.5 {{ $blockerSeverityBadge[$blocker['severity']] ?? 'bg-slate-50 text-slate-600 border border-slate-100' }}">{{ $blocker['severity_label'] }}</span>
+                                        <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-violet-50 text-violet-700 border border-violet-100">{{ $blocker['source_label'] }}</span>
+                                        @if ($blocker['overdue'])<span class="text-[10px] font-bold rounded-full px-2 py-0.5 bg-rose-100 text-rose-700">Overdue</span>@endif
+                                    </div>
+                                    <h5 class="text-[14px] font-extrabold text-[#1E1B4B] leading-snug">{{ $blocker['title'] }}</h5>
+                                    <p class="mt-1 text-[11.5px] text-slate-400">
+                                        Owner: {{ $blocker['assigned_to'] ?? 'Belum ditugaskan' }}
+                                        @if ($blocker['task_title']) - Task: {{ $blocker['task_title'] }} @endif
+                                        @if ($blocker['due_label']) - Due: {{ $blocker['due_label'] }} @endif
+                                    </p>
+                                </div>
+                            </div>
+                            @if ($blocker['description'])
+                                <p class="mt-3 text-[12.5px] text-slate-600 leading-relaxed whitespace-pre-line">{{ $blocker['description'] }}</p>
+                            @endif
+                            @if ($blocker['resolution_notes'])
+                                <div class="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-[12.5px] text-emerald-700 leading-relaxed whitespace-pre-line">
+                                    <strong>Catatan Resolusi:</strong> {{ $blocker['resolution_notes'] }}
+                                </div>
+                            @endif
+
+                            @if ($canUpdateBlockerRow)
+                                <details class="mt-3 rounded-xl border border-violet-100 bg-violet-50/30 overflow-hidden">
+                                    <summary class="cursor-pointer select-none px-4 py-2 text-[12px] font-bold text-violet-700">Update Blocker</summary>
+                                    <form method="POST" action="{{ route('projects.blockers.update', [$project, $blocker['id']]) }}" class="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-12 gap-3">
+                                        @csrf @method('PATCH')
+                                        @if ($blockerCanReview)
+                                            <div class="md:col-span-5">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Judul</label>
+                                                <input name="title" value="{{ $blocker['title'] }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                            </div>
+                                            <div class="md:col-span-3">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Task</label>
+                                                <select name="task_id" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    <option value="">Project-level</option>
+                                                    @foreach ($projectTaskOptions as $taskOption)
+                                                        <option value="{{ $taskOption['id'] }}" @selected((string) $blocker['task_id'] === (string) $taskOption['id'])>{{ $taskOption['title'] }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Severity</label>
+                                                <select name="severity" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    @foreach ($blockerSeverityOptions as $value => $label)<option value="{{ $value }}" @selected($blocker['severity'] === $value)>{{ $label }}</option>@endforeach
+                                                </select>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Status</label>
+                                                <select name="status" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    @foreach ($blockerStatusOptions as $value => $label)<option value="{{ $value }}" @selected($blocker['status'] === $value)>{{ $label }}</option>@endforeach
+                                                </select>
+                                            </div>
+                                            <div class="md:col-span-3">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Sumber</label>
+                                                <select name="source" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    <option value="">Pilih sumber</option>
+                                                    @foreach ($blockerSourceOptions as $value => $label)<option value="{{ $value }}" @selected($blocker['source'] === $value)>{{ $label }}</option>@endforeach
+                                                </select>
+                                            </div>
+                                            <div class="md:col-span-3">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Owner</label>
+                                                <select name="assigned_to_user_id" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    <option value="">Belum ditugaskan</option>
+                                                    @foreach ($assigneeOptions as $member)
+                                                        <option value="{{ $member->id }}" @selected((string) $blocker['assigned_to_user_id'] === (string) $member->id)>{{ $member->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="md:col-span-3">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Due Date</label>
+                                                <input type="date" name="due_date" value="{{ $blocker['due_date'] }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                            </div>
+                                            <div class="md:col-span-3">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Deskripsi</label>
+                                                <textarea name="description" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $blocker['description'] }}</textarea>
+                                            </div>
+                                        @else
+                                            <input type="hidden" name="status" value="resolved">
+                                        @endif
+                                        <div class="md:col-span-12">
+                                            <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan Resolusi</label>
+                                            <textarea name="resolution_notes" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Wajib saat Mark Resolved.">{{ $blocker['resolution_notes'] }}</textarea>
+                                        </div>
+                                        <div class="md:col-span-12 flex justify-end">
+                                            <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">{{ $blockerCanReview ? 'Simpan Update' : 'Mark Resolved' }}</button>
+                                        </div>
+                                    </form>
+                                </details>
+                            @endif
+                        </article>
+                    @empty
+                        <div class="text-[13px] text-slate-400 text-center py-10 leading-relaxed rounded-2xl border border-slate-100 bg-slate-50">
+                            Belum ada blocker untuk project ini.
+                        </div>
+                    @endforelse
+                </div>
+
+                <div class="space-y-3">
+                    <h4 class="text-[13px] font-extrabold text-[#1E1B4B] uppercase tracking-tight">Dependency Task</h4>
+                    @forelse ($dependencyRows as $dependency)
+                        <article class="rounded-2xl border border-amber-100 bg-white px-5 py-4 shadow-[0_1px_4px_rgba(245,158,11,0.08)]">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                                        <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-100">{{ $dependency['type_label'] }}</span>
+                                        @if (! $dependency['depends_on_done'])
+                                            <span class="text-[10px] font-bold rounded-full px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-100">Dependency belum selesai</span>
+                                        @else
+                                            <span class="text-[10px] font-bold rounded-full px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100">Dependency selesai</span>
+                                        @endif
+                                    </div>
+                                    <p class="text-[13.5px] font-bold text-[#1E1B4B] leading-snug">{{ $dependency['task_title'] }}</p>
+                                    <p class="mt-1 text-[12.5px] text-slate-500">bergantung pada <strong>{{ $dependency['depends_on_title'] }}</strong></p>
+                                    @if ($dependency['notes'])
+                                        <p class="mt-2 text-[12px] text-slate-500 leading-relaxed whitespace-pre-line">{{ $dependency['notes'] }}</p>
+                                    @endif
+                                </div>
+                                @if ($blockerCanReview)
+                                    <form method="POST" action="{{ route('projects.task-dependencies.destroy', [$project, $dependency['id']]) }}" onsubmit="return confirm('Hapus dependency task ini?');" class="shrink-0">
+                                        @csrf @method('DELETE')
+                                        <button type="submit" class="h-8 px-3 rounded-lg border border-rose-100 bg-white text-[12px] font-semibold text-rose-600 hover:bg-rose-50 transition cursor-pointer">Hapus</button>
+                                    </form>
+                                @endif
+                            </div>
+                        </article>
+                    @empty
+                        <div class="text-[13px] text-slate-400 text-center py-10 leading-relaxed rounded-2xl border border-slate-100 bg-slate-50">
+                            Belum ada dependency antar task.
+                        </div>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- =============== PROJECT UPDATE SUMMARY MODAL =============== --}}
     <div data-project-summary-modal class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="project-summary-title">
         <div data-project-summary-close class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
@@ -3628,7 +3941,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
 
                 /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'intake', 'qc', 'signoff', 'scope', 'clientportal', 'handover'];
+                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'intake', 'blockers', 'qc', 'signoff', 'scope', 'clientportal', 'handover'];
                 const setHash = (id) => {
                     if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
                 };

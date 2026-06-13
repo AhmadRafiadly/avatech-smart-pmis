@@ -6,6 +6,7 @@ use App\Models\AiRequestLog;
 use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Project;
+use App\Models\ProjectBlocker;
 use App\Models\ProjectChangeRequest;
 use App\Models\ProjectHandoverPack;
 use App\Models\ProjectClientReview;
@@ -15,6 +16,7 @@ use App\Models\ProjectQcTest;
 use App\Models\ProjectRequirementInboxItem;
 use App\Models\ProjectSignoff;
 use App\Models\ProjectTask;
+use App\Models\ProjectTaskDependency;
 use App\Models\ProjectTaskDesignDeliverable;
 use App\Models\ProjectUatItem;
 use App\Models\TeamAssignment;
@@ -648,6 +650,7 @@ class AvatechDemoSeeder extends Seeder
         $this->seedChangeRequests($project, $users);
         $this->seedHandoverPacks($project, $users);
         $this->seedRequirementInboxItems($project, $users);
+        $this->seedBlockersAndDependencies($project, $users);
         $this->seedClientReviews($project, $users);
         $this->seedUatAndSignoffs($project, $users);
 
@@ -1087,6 +1090,113 @@ class AvatechDemoSeeder extends Seeder
                     'converted_at' => $isConverted ? AppTime::now()->copy()->subDays(max(1, $row['occurred'] - 2)) : null,
                 ],
             );
+        }
+    }
+
+    /**
+     * Compact dependency/blocker demo data for Milestone 6. Idempotent and
+     * intentionally uses safe dummy wording only.
+     *
+     * @param array<string, User> $users
+     */
+    private function seedBlockersAndDependencies(Project $project, array $users): void
+    {
+        $reporter = $users['adly'] ?? $users['joshua'] ?? null;
+        $owner = $users['yuda'] ?? $users['ferry'] ?? null;
+
+        $blockers = [
+            'DM01' => [[
+                'title' => 'Menunggu konten testimonial client',
+                'description' => 'Client demo belum mengirim 3 testimonial final untuk section homepage.',
+                'source' => 'content',
+                'severity' => 'medium',
+                'status' => 'open',
+                'task' => 'Tambah section testimonial client',
+                'owner' => 'ferry',
+                'due_days' => 3,
+            ]],
+            'DM02' => [[
+                'title' => 'Konfirmasi payment gateway donasi',
+                'description' => 'Client demo perlu memilih skema payment gateway sebelum desain flow pembayaran difinalisasi.',
+                'source' => 'client',
+                'severity' => 'high',
+                'status' => 'in_progress',
+                'task' => 'Rancang alur verifikasi pembayaran manual',
+                'owner' => 'ferry',
+                'due_days' => 2,
+            ]],
+            'DM03' => [[
+                'title' => 'Final copy wording sertifikat pending',
+                'description' => 'Wording sertifikat completion masih menunggu validasi client demo.',
+                'source' => 'content',
+                'severity' => 'medium',
+                'status' => 'open',
+                'task' => 'Generate sertifikat penyelesaian',
+                'owner' => 'genta',
+                'due_days' => 1,
+            ]],
+            'DM08' => [[
+                'title' => 'Struktur data filter lokasi belum final',
+                'description' => 'Tim perlu memutuskan format wilayah/kecamatan agar filter listing properti konsisten.',
+                'source' => 'technical',
+                'severity' => 'high',
+                'status' => 'open',
+                'task' => 'Listing properti & filter lokasi/harga',
+                'owner' => 'ferry',
+                'due_days' => 2,
+            ]],
+            'DM05' => [[
+                'title' => 'Catatan deployment produksi selesai',
+                'description' => 'Catatan deployment dan handover environment demo sudah dirapikan.',
+                'source' => 'deployment',
+                'severity' => 'low',
+                'status' => 'resolved',
+                'task' => null,
+                'owner' => 'ferry',
+                'due_days' => -2,
+                'resolution' => 'Deployment notes sudah masuk Handover Pack demo.',
+            ]],
+        ];
+
+        foreach ($blockers[$project->code] ?? [] as $row) {
+            $task = $row['task'] ? $project->tasks()->where('title', $row['task'])->first() : null;
+            $assignee = $users[$row['owner']] ?? $owner;
+            $attrs = [
+                'task_id' => $task?->id,
+                'reported_by_user_id' => $reporter?->id,
+                'assigned_to_user_id' => $assignee?->id,
+                'description' => $row['description'],
+                'source' => $row['source'],
+                'severity' => $row['severity'],
+                'status' => $row['status'],
+                'due_date' => AppTime::now()->copy()->addDays($row['due_days'])->toDateString(),
+                'resolution_notes' => $row['resolution'] ?? null,
+                'resolved_at' => $row['status'] === 'resolved' ? AppTime::now()->copy()->subDay() : null,
+            ];
+
+            ProjectBlocker::updateOrCreate(
+                ['project_id' => $project->id, 'title' => $row['title']],
+                $attrs,
+            );
+        }
+
+        if ($project->code === 'DM03') {
+            $task = $project->tasks()->where('title', 'Fitur wishlist learner')->first();
+            $dependsOn = $project->tasks()->where('title', 'Membuat final mockup UI/UX dan handover desain')->first();
+            if ($task && $dependsOn && $task->id !== $dependsOn->id) {
+                ProjectTaskDependency::updateOrCreate(
+                    [
+                        'project_id' => $project->id,
+                        'task_id' => $task->id,
+                        'depends_on_task_id' => $dependsOn->id,
+                    ],
+                    [
+                        'type' => 'finish_to_start',
+                        'notes' => 'Wishlist homepage mengikuti layout final dari desain/mockup.',
+                        'created_by_user_id' => $reporter?->id,
+                    ],
+                );
+            }
         }
     }
 

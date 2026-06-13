@@ -61,6 +61,12 @@ class AuditController extends Controller
         'requirement_intake_converted_task' => 'INTAKE -> TASK',
         'requirement_intake_converted_mom' => 'INTAKE -> MOM',
         'requirement_intake_dismissed' => 'INTAKE DIABAIKAN',
+        'blocker_created'          => 'BLOCKER BARU',
+        'blocker_updated'          => 'BLOCKER DIUBAH',
+        'blocker_resolved'         => 'BLOCKER SELESAI',
+        'blocker_cancelled'        => 'BLOCKER DIBATALKAN',
+        'dependency_created'       => 'DEPENDENCY BARU',
+        'dependency_removed'       => 'DEPENDENCY DIHAPUS',
         'handover_pack_generated'  => 'HANDOVER PACK DIBUAT',
         'handover_pack_updated'    => 'HANDOVER PACK DIUBAH',
         'handover_pack_finalized'  => 'HANDOVER PACK FINAL',
@@ -219,6 +225,8 @@ class AuditController extends Controller
     {
         return match (true) {
             str_starts_with($action, 'requirement_intake_') => '#intake',
+            str_starts_with($action, 'blocker_') => '#blockers',
+            str_starts_with($action, 'dependency_') => '#blockers',
             str_starts_with($action, 'qc_')   => '#qc',
             str_starts_with($action, 'handover_pack_') => '#handover',
             str_starts_with($action, 'change_request_') => '#scope',

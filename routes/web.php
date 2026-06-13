@@ -112,6 +112,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{project}/requirement-inbox/{inboxItem}/convert-task', [ProjectController::class, 'convertRequirementToTask'])->name('projects.requirement-inbox.convert-task');
     Route::post('/projects/{project}/requirement-inbox/{inboxItem}/convert-mom', [ProjectController::class, 'convertRequirementToMom'])->name('projects.requirement-inbox.convert-mom');
     Route::patch('/projects/{project}/requirement-inbox/{inboxItem}/dismiss', [ProjectController::class, 'dismissRequirementInboxItem'])->name('projects.requirement-inbox.dismiss');
+    Route::post('/projects/{project}/blockers', [ProjectController::class, 'storeBlocker'])->name('projects.blockers.store');
+    Route::patch('/projects/{project}/blockers/{blocker}', [ProjectController::class, 'updateBlocker'])->name('projects.blockers.update');
+    Route::post('/projects/{project}/task-dependencies', [ProjectController::class, 'storeTaskDependency'])->name('projects.task-dependencies.store');
+    Route::delete('/projects/{project}/task-dependencies/{dependency}', [ProjectController::class, 'destroyTaskDependency'])->name('projects.task-dependencies.destroy');
     Route::post('/projects/{project}/client-reviews', [ProjectController::class, 'storeClientReview'])->name('projects.client-reviews.store');
     Route::patch('/projects/{project}/client-reviews/{clientReview}/status', [ProjectController::class, 'updateClientReviewStatus'])->name('projects.client-reviews.status');
     Route::post('/projects/{project}/uat/generate', [ProjectController::class, 'generateUatChecklist'])->name('projects.uat.generate');

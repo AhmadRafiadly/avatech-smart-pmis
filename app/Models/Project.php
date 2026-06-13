@@ -63,6 +63,16 @@ class Project extends Model
         return $this->hasMany(ProjectRequirementInboxItem::class);
     }
 
+    public function blockers(): HasMany
+    {
+        return $this->hasMany(ProjectBlocker::class);
+    }
+
+    public function taskDependencies(): HasMany
+    {
+        return $this->hasMany(ProjectTaskDependency::class);
+    }
+
     public function clientReviews(): HasMany
     {
         return $this->hasMany(ProjectClientReview::class);
