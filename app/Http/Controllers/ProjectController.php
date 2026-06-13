@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Project;
 use App\Models\ProjectChangeRequest;
 use App\Models\ProjectClientReview;
+use App\Models\ProjectHandoverPack;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
@@ -205,6 +206,23 @@ class ProjectController extends Controller
         'revision_requested' => 'Minta Revisi',
         'revoked' => 'Dicabut',
     ];
+
+    /* ---- Handover Pack (Milestone 4) ---------------------------------- */
+    private const HANDOVER_STATUS_LABELS = [
+        'draft'     => 'Draft',
+        'generated' => 'Draf Tergenerate',
+        'finalized' => 'Final',
+        'revoked'   => 'Dicabut',
+    ];
+
+    private const HANDOVER_CREDENTIAL_LABELS = [
+        'not_required' => 'Tidak Diperlukan',
+        'pending'      => 'Menunggu Serah Terima',
+        'handed_over'  => 'Sudah Diserahkan',
+    ];
+
+    // Handover pack management mirrors UAT/sign-off authority (PM/SA + admin tier).
+    private const HANDOVER_MANAGER_ROLES = ['ceo_pm', 'sa_qa', 'admin', 'super_admin', 'developer'];
 
     public function __construct(private readonly SmartInsightService $insights)
     {
@@ -420,6 +438,7 @@ class ProjectController extends Controller
             'clientReviews' => fn ($query) => $query->with('creator:id,name')->orderByDesc('created_at')->orderByDesc('id'),
             'uatItems' => fn ($query) => $query->with('tester:id,name')->orderBy('sort_order')->orderBy('id'),
             'signoffs' => fn ($query) => $query->with(['creator:id,name', 'approver:id,name', 'clientReview:id,title,status'])->orderBy('type')->orderByDesc('id'),
+            'handoverPacks' => fn ($query) => $query->with(['generatedBy:id,name', 'finalizedBy:id,name'])->orderByDesc('version')->orderByDesc('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -490,6 +509,11 @@ class ProjectController extends Controller
             'uatPriorityOptions' => self::UAT_PRIORITY_LABELS,
             'uatStatusOptions' => self::UAT_STATUS_LABELS,
             'signoffTypeOptions' => self::SIGNOFF_TYPE_LABELS,
+            'handoverPacks' => $this->projectHandoverPackRows($project),
+            'handoverReadiness' => $this->projectHandoverReadiness($project),
+            'handoverCanManage' => $this->canManageHandover($project),
+            'handoverStatusOptions' => self::HANDOVER_STATUS_LABELS,
+            'handoverCredentialOptions' => self::HANDOVER_CREDENTIAL_LABELS,
         ]);
     }
 
@@ -898,6 +922,193 @@ class ProjectController extends Controller
         );
 
         return $this->backToSignoff($project, 'Project berhasil ditandai Done.');
+    }
+
+    /* ===================== Handover Pack (Milestone 4) ===================== */
+
+    public function generateHandoverPack(Request $request, Project $project)
+    {
+        $this->ensureCanManageHandover($project);
+
+        if (! in_array($this->phaseKey((string) $project->phase), ['qc', 'done'], true)) {
+            return $this->backToHandover($project, 'Draft Handover Pack hanya dapat dibuat setelah project masuk fase QC atau Done.');
+        }
+
+        // Reuse the latest editable (non-finalized) pack so repeated "Generate"
+        // clicks don't pile up versions; otherwise start a fresh version.
+        $pack = $project->handoverPacks()
+            ->whereIn('status', ['draft', 'generated'])
+            ->orderByDesc('version')
+            ->first();
+
+        $isNew = false;
+        if (! $pack) {
+            $isNew = true;
+            $pack = new ProjectHandoverPack([
+                'title'   => 'Handover Pack ' . $project->name,
+                'version' => ((int) $project->handoverPacks()->max('version')) + 1,
+                'credential_handover_status' => 'pending',
+            ]);
+            $pack->project_id = $project->id;
+        }
+
+        $pack->generated_by_user_id = $request->user()?->id;
+        $pack->status = 'generated';
+        $pack->generated_at = now();
+        if (blank($pack->summary)) {
+            $pack->summary = (string) ($project->description ?: '');
+        }
+        $pack->save();
+
+        $this->storeHandoverPackPdf($project, $pack);
+
+        AuditLogger::log(
+            'handover_pack_generated',
+            'Project Master',
+            'Membuat draft Handover Pack v' . $pack->version . ' untuk proyek <strong>' . e($project->name) . '</strong>',
+            $pack,
+            null,
+            ['project_id' => $project->id, 'handover_pack_id' => $pack->id, 'version' => $pack->version],
+        );
+
+        return $this->backToHandover(
+            $project,
+            $isNew
+                ? 'Draft Handover Pack v' . $pack->version . ' berhasil dibuat.'
+                : 'Draft Handover Pack v' . $pack->version . ' diperbarui dari data terbaru.',
+        );
+    }
+
+    public function updateHandoverPack(Request $request, Project $project, ProjectHandoverPack $handoverPack)
+    {
+        $this->ensureCanManageHandover($project);
+        abort_unless($handoverPack->project_id === $project->id, 404);
+
+        if (in_array($handoverPack->status, ['finalized', 'revoked'], true)) {
+            return $this->backToHandover($project, 'Handover Pack yang sudah final tidak dapat diubah. Generate versi baru bila perlu.');
+        }
+
+        $validated = $request->validate([
+            'title'                      => ['required', 'string', 'max:180'],
+            'summary'                    => ['nullable', 'string', 'max:6000'],
+            // max 255 to match the VARCHAR(255) columns (avoid "data too long" on save)
+            'deployment_url'             => ['nullable', 'url', 'max:255'],
+            'staging_url'                => ['nullable', 'url', 'max:255'],
+            'repository_url'             => ['nullable', 'url', 'max:255'],
+            'admin_url'                  => ['nullable', 'url', 'max:255'],
+            'credential_handover_status' => ['nullable', Rule::in(ProjectHandoverPack::CREDENTIAL_STATUSES)],
+            'maintenance_notes'          => ['nullable', 'string', 'max:6000'],
+            'client_notes'               => ['nullable', 'string', 'max:6000'],
+            'internal_notes'             => ['nullable', 'string', 'max:6000'],
+        ], [
+            'title.required'             => 'Judul handover pack wajib diisi.',
+            'deployment_url.url'         => 'Production URL harus berupa URL valid.',
+            'staging_url.url'            => 'Staging URL harus berupa URL valid.',
+            'repository_url.url'         => 'Repository URL harus berupa URL valid.',
+            'admin_url.url'              => 'Admin URL harus berupa URL valid.',
+        ]);
+
+        $handoverPack->fill([
+            'title'                      => $validated['title'],
+            'summary'                    => $validated['summary'] ?? null,
+            'deployment_url'             => $validated['deployment_url'] ?? null,
+            'staging_url'                => $validated['staging_url'] ?? null,
+            'repository_url'             => $validated['repository_url'] ?? null,
+            'admin_url'                  => $validated['admin_url'] ?? null,
+            'credential_handover_status' => $validated['credential_handover_status'] ?? null,
+            'maintenance_notes'          => $validated['maintenance_notes'] ?? null,
+            'client_notes'               => $validated['client_notes'] ?? null,
+            'internal_notes'             => $validated['internal_notes'] ?? null,
+        ]);
+        $handoverPack->save();
+
+        // keep stored PDF in sync with edited notes (so preview reflects them)
+        if ($handoverPack->pdf_path) {
+            $this->storeHandoverPackPdf($project, $handoverPack);
+        }
+
+        AuditLogger::log(
+            'handover_pack_updated',
+            'Project Master',
+            'Memperbarui catatan Handover Pack v' . $handoverPack->version . ' pada proyek <strong>' . e($project->name) . '</strong>',
+            $handoverPack,
+            ['project_id' => $project->id, 'handover_pack_id' => $handoverPack->id],
+            ['project_id' => $project->id, 'handover_pack_id' => $handoverPack->id],
+        );
+
+        return $this->backToHandover($project, 'Catatan Handover Pack berhasil disimpan.');
+    }
+
+    public function finalizeHandoverPack(Request $request, Project $project, ProjectHandoverPack $handoverPack)
+    {
+        $this->ensureCanManageHandover($project);
+        abort_unless($handoverPack->project_id === $project->id, 404);
+
+        if ($handoverPack->status === 'finalized') {
+            return $this->backToHandover($project, 'Handover Pack ini sudah final.');
+        }
+
+        $gate = $this->projectSignoffGate($project->loadMissing('uatItems', 'signoffs'));
+        if (! $gate['can_complete']) {
+            return $this->backToHandover(
+                $project,
+                'Handover Pack belum dapat difinalisasi. ' . implode(', ', $gate['missing']) . '.',
+            );
+        }
+
+        $handoverPack->forceFill([
+            'status'               => 'finalized',
+            'finalized_by_user_id' => $request->user()?->id,
+            'finalized_at'         => now(),
+            'generated_at'         => $handoverPack->generated_at ?? now(),
+        ])->save();
+
+        $this->storeHandoverPackPdf($project, $handoverPack);
+
+        AuditLogger::log(
+            'handover_pack_finalized',
+            'Project Master',
+            'Memfinalisasi Handover Pack v' . $handoverPack->version . ' untuk proyek <strong>' . e($project->name) . '</strong>',
+            $handoverPack,
+            ['project_id' => $project->id, 'handover_pack_id' => $handoverPack->id, 'status' => 'generated'],
+            ['project_id' => $project->id, 'handover_pack_id' => $handoverPack->id, 'status' => 'finalized'],
+        );
+
+        return $this->backToHandover($project, 'Handover Pack v' . $handoverPack->version . ' berhasil difinalisasi.');
+    }
+
+    public function previewHandoverPack(Project $project, ProjectHandoverPack $handoverPack)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($handoverPack->project_id === $project->id, 404);
+
+        // Always render fresh from current data so preview reflects latest edits.
+        $pdf = $this->renderHandoverPack($project, $handoverPack);
+
+        return $pdf->stream($this->handoverPackFilename($project, $handoverPack));
+    }
+
+    public function downloadHandoverPack(Project $project, ProjectHandoverPack $handoverPack)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($handoverPack->project_id === $project->id, 404);
+
+        $pdf = $this->renderHandoverPack($project, $handoverPack);
+
+        AuditLogger::log(
+            'handover_pack_downloaded',
+            'Project Master',
+            'Mengunduh Handover Pack v' . $handoverPack->version . ' proyek <strong>' . e($project->name) . '</strong>',
+            $handoverPack,
+            null,
+            ['project_id' => $project->id, 'handover_pack_id' => $handoverPack->id],
+        );
+
+        return $pdf->download($this->handoverPackFilename($project, $handoverPack));
     }
 
     public function storeModule(Request $request, Project $project)
@@ -3323,6 +3534,239 @@ class ProjectController extends Controller
             ->with('status', $status);
     }
 
+    /* ---- Handover Pack helpers ---------------------------------------- */
+
+    private function canManageHandover(Project $project): bool
+    {
+        if ($this->ensureOperationalCanAccessProject($project)) {
+            return false;
+        }
+
+        return in_array($this->currentRoleName(), self::HANDOVER_MANAGER_ROLES, true);
+    }
+
+    private function ensureCanManageHandover(Project $project): void
+    {
+        if ($this->ensureOperationalCanAccessProject($project)) {
+            abort(403);
+        }
+
+        abort_unless(in_array($this->currentRoleName(), self::HANDOVER_MANAGER_ROLES, true), 403);
+    }
+
+    private function backToHandover(Project $project, string $status)
+    {
+        return redirect()
+            ->to(route('projects.show', $project) . '#handover')
+            ->with('status', $status);
+    }
+
+    /**
+     * Readiness indicators + finalize gate for the Handover Pack UI.
+     */
+    private function projectHandoverReadiness(Project $project): array
+    {
+        $project->loadMissing(['qcTests', 'uatItems', 'signoffs', 'clientReviews', 'tasks.designDeliverables']);
+
+        $phaseKey = $this->phaseKey((string) $project->phase);
+        $uatSummary = $this->projectUatSummary($project);
+        $gate = $this->projectSignoffGate($project);
+
+        $uatSigned = $project->signoffs->contains(fn (ProjectSignoff $s) => $s->type === 'uat' && $s->status === 'signed');
+        $handoverSigned = $project->signoffs->contains(fn (ProjectSignoff $s) => $s->type === 'handover' && $s->status === 'signed');
+
+        $designAvailable = $project->tasks->contains(
+            fn (ProjectTask $task) => (bool) $task->is_design_deliverable
+                && ($task->relationLoaded('designDeliverables') ? $task->designDeliverables->isNotEmpty() : $task->designDeliverables()->exists()),
+        );
+
+        $canGenerate = in_array($phaseKey, ['qc', 'done'], true);
+
+        // missing checklist toward finalization (concise, human readable)
+        $missing = [];
+        if (! $uatSigned) {
+            $missing[] = 'Sign-off UAT belum ada';
+        }
+        if (! $handoverSigned) {
+            $missing[] = 'Sign-off Handover belum ada';
+        }
+        if ($uatSummary['total'] === 0) {
+            $missing[] = 'UAT belum lengkap';
+        }
+        if ($uatSummary['blocking'] > 0) {
+            $missing[] = 'Masih ada UAT gagal/tertahan/butuh revisi';
+        } elseif ($uatSummary['open'] > 0) {
+            $missing[] = 'Belum semua UAT lulus';
+        }
+
+        return [
+            'phase_key'              => $phaseKey,
+            'can_generate'          => $canGenerate,
+            'can_finalize'          => $gate['can_complete'],
+            'missing'               => array_values(array_unique($missing)),
+            'qc_summary_available'  => $project->qcTests->isNotEmpty(),
+            'uat_checklist_available' => $uatSummary['total'] > 0,
+            'uat_signed'            => $uatSigned,
+            'handover_signed'       => $handoverSigned,
+            'project_done'          => $phaseKey === 'done',
+            'design_available'      => $designAvailable,
+            'client_reviews_available' => $project->clientReviews->isNotEmpty(),
+        ];
+    }
+
+    private function projectHandoverPackRows(Project $project): array
+    {
+        $col = $project->relationLoaded('handoverPacks')
+            ? $project->handoverPacks
+            : $project->handoverPacks()->with(['generatedBy:id,name', 'finalizedBy:id,name'])->orderByDesc('version')->get();
+
+        return $col->map(function (ProjectHandoverPack $pack) {
+            return [
+                'id'             => $pack->id,
+                'title'          => $pack->title,
+                'version'        => $pack->version,
+                'status'         => $pack->status,
+                'status_label'   => self::HANDOVER_STATUS_LABELS[$pack->status] ?? $pack->status,
+                'summary'        => $pack->summary,
+                'deployment_url' => $pack->deployment_url,
+                'staging_url'    => $pack->staging_url,
+                'repository_url' => $pack->repository_url,
+                'admin_url'      => $pack->admin_url,
+                'credential_status' => $pack->credential_handover_status,
+                'credential_label'  => $pack->credential_handover_status
+                    ? (self::HANDOVER_CREDENTIAL_LABELS[$pack->credential_handover_status] ?? $pack->credential_handover_status)
+                    : null,
+                'maintenance_notes' => $pack->maintenance_notes,
+                'client_notes'   => $pack->client_notes,
+                'internal_notes' => $pack->internal_notes,
+                'has_pdf'        => filled($pack->pdf_path),
+                'generated_by'   => $pack->generatedBy?->name,
+                'finalized_by'   => $pack->finalizedBy?->name,
+                'generated_at'   => $pack->generated_at ? AppTime::cast($pack->generated_at)?->format('d M Y H:i') : null,
+                'finalized_at'   => $pack->finalized_at ? AppTime::cast($pack->finalized_at)?->format('d M Y H:i') : null,
+                'created_at'     => AppTime::diff($pack->created_at),
+            ];
+        })->all();
+    }
+
+    private function handoverPackFilename(Project $project, ProjectHandoverPack $pack): string
+    {
+        return 'handover-' . $this->exportSlug($project) . '-v' . $pack->version . '.pdf';
+    }
+
+    /**
+     * Build the DomPDF instance for a handover pack from safe project data.
+     */
+    private function renderHandoverPack(Project $project, ProjectHandoverPack $pack)
+    {
+        return Pdf::loadView('projects.exports.handover-pack-pdf', $this->handoverPackPdfData($project, $pack))
+            ->setPaper('a4', 'portrait');
+    }
+
+    /**
+     * Render + persist the PDF to the (non-public) local disk and record path.
+     */
+    private function storeHandoverPackPdf(Project $project, ProjectHandoverPack $pack): void
+    {
+        try {
+            $pdf = $this->renderHandoverPack($project, $pack);
+            $path = 'handover-packs/project-' . $project->id . '-pack-' . $pack->id . '-v' . $pack->version . '.pdf';
+            Storage::disk('local')->put($path, $pdf->output());
+            $pack->forceFill(['pdf_path' => $path])->save();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Assemble safe, structured data for the handover pack PDF. Never includes
+     * passwords/secrets; internal decision notes are intentionally excluded.
+     *
+     * @return array<string, mixed>
+     */
+    private function handoverPackPdfData(Project $project, ProjectHandoverPack $pack): array
+    {
+        $project->loadMissing([
+            'client',
+            'lead',
+            'modules' => fn ($q) => $q->orderBy('sort_order')->orderBy('id'),
+            'tasks.designDeliverables',
+            'qcTests',
+            'uatItems' => fn ($q) => $q->with('tester:id,name')->orderBy('sort_order')->orderBy('id'),
+            'signoffs' => fn ($q) => $q->with('clientReview:id,title,status'),
+            'changeRequests',
+            'clientReviews',
+        ]);
+
+        // Team & responsibilities
+        $team = TeamAssignment::query()
+            ->where('project_id', $project->id)
+            ->with(['user.roles:id,name'])
+            ->get()
+            ->map(function (TeamAssignment $a) {
+                $resp = collect($a->responsibilities ?? [])
+                    ->map(fn ($key) => self::QUICK_ASSIGN_RESPONSIBILITIES[$key] ?? $key)
+                    ->values()->all();
+
+                return [
+                    'name'             => $a->user?->name ?? '—',
+                    'role'             => $a->user?->roles?->first()?->name,
+                    'title'            => $a->title,
+                    'responsibilities' => $resp,
+                ];
+            })
+            ->filter(fn ($r) => $r['name'] !== '—')
+            ->values()->all();
+
+        // Modules + per-module task counts
+        $modules = $this->projectModuleRows($project);
+
+        // Change requests (safe subset — no internal decision notes)
+        $changeRequests = collect($this->projectChangeRequestRows($project))->map(fn ($cr) => [
+            'code'           => $cr['code'],
+            'title'          => $cr['title'],
+            'type_label'     => $cr['type_label'],
+            'priority_label' => $cr['priority_label'],
+            'status_label'   => $cr['status_label'],
+            'timeline_impact_days' => $cr['timeline_impact_days'],
+            'created_task'   => $cr['created_task'],
+        ])->all();
+
+        // Design deliverables (reference only — no embedded PDFs)
+        $deliverables = [];
+        foreach ($project->tasks->where('is_design_deliverable', true) as $task) {
+            foreach ($task->designDeliverables as $d) {
+                $deliverables[] = [
+                    'task'    => $task->title,
+                    'title'   => $d->title,
+                    'figma'   => $d->figma_url,
+                    'has_pdf' => filled($d->pdf_file_path),
+                ];
+            }
+        }
+
+        return [
+            'project'        => $project,
+            'pack'           => $pack,
+            'generatedAt'    => AppTime::now(),
+            'clientName'     => $project->client?->name,
+            'progress'       => $this->projectProgress($project),
+            'phaseLabel'     => $project->phase ?: '—',
+            'team'           => $team,
+            'modules'        => $modules,
+            'changeRequests' => $changeRequests,
+            'deliverables'   => $deliverables,
+            'qcSummary'      => $this->projectQcSummary($project),
+            'uatSummary'     => $this->projectUatSummary($project),
+            'uatItems'       => $this->projectUatItemRows($project),
+            'signoffs'       => $this->projectSignoffRows($project),
+            'approvedReviews'=> $this->approvedClientReviewOptions($project),
+            'credentialLabel'=> $pack->credential_handover_status
+                ? (self::HANDOVER_CREDENTIAL_LABELS[$pack->credential_handover_status] ?? $pack->credential_handover_status)
+                : 'Tidak ditentukan',
+        ];
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -3661,6 +4105,7 @@ class ProjectController extends Controller
         $uatTotal = $project->relationLoaded('uatItems') ? $project->uatItems->count() : $project->uatItems()->count();
         $crTotal = $project->relationLoaded('changeRequests') ? $project->changeRequests->count() : $project->changeRequests()->count();
         $reviewTotal = $project->relationLoaded('clientReviews') ? $project->clientReviews->count() : $project->clientReviews()->count();
+        $packTotal = $project->relationLoaded('handoverPacks') ? $project->handoverPacks->count() : $project->handoverPacks()->count();
 
         return [
             ['id' => 'overview',   'label' => 'Overview',         'count' => $moduleTotal],
@@ -3670,6 +4115,7 @@ class ProjectController extends Controller
             ['id' => 'signoff',    'label' => 'UAT & Sign-off',   'count' => $uatTotal],
             ['id' => 'scope',      'label' => 'Scope Control',    'count' => $crTotal],
             ['id' => 'clientportal', 'label' => 'Client Portal',   'count' => $reviewTotal],
+            ['id' => 'handover',   'label' => 'Handover Pack',    'count' => $packTotal],
         ];
     }
 

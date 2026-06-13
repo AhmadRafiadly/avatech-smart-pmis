@@ -72,4 +72,9 @@ class Project extends Model
     {
         return $this->hasMany(ProjectSignoff::class);
     }
+
+    public function handoverPacks(): HasMany
+    {
+        return $this->hasMany(ProjectHandoverPack::class);
+    }
 }

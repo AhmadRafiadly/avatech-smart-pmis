@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Project;
 use App\Models\ProjectChangeRequest;
+use App\Models\ProjectHandoverPack;
 use App\Models\ProjectClientReview;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
@@ -644,6 +645,7 @@ class AvatechDemoSeeder extends Seeder
         $this->seedMoms($project, $bp['moms'] ?? [], $lead);
         $this->seedQc($project, $modules, $tasks, $bp['qc'] ?? [], $users['adly'] ?? $lead);
         $this->seedChangeRequests($project, $users);
+        $this->seedHandoverPacks($project, $users);
         $this->seedClientReviews($project, $users);
         $this->seedUatAndSignoffs($project, $users);
 
@@ -992,6 +994,85 @@ class AvatechDemoSeeder extends Seeder
             'low'            => 'low',
             default          => 'medium',
         };
+    }
+
+    /**
+     * Demo handover packs (Milestone 4). Idempotent via updateOrCreate on
+     * (project_id, version). A tiny dummy PDF is written to the local disk so
+     * preview/download have a stored artifact; the app also re-renders live.
+     *
+     * @param array<string, User> $users
+     */
+    private function seedHandoverPacks(Project $project, array $users): void
+    {
+        $map = [
+            'DM05' => [
+                'version' => 1, 'status' => 'finalized',
+                'title' => 'Handover Pack Smart-PMIS Internal',
+                'summary' => 'Serah terima sistem manajemen proyek internal Avatech: Project Master, AI MoM/WBS, Kanban, QC, UAT & Audit.',
+                'deployment_url' => 'https://smart-pmis.demo.avatech.local',
+                'staging_url' => 'https://staging.smart-pmis.demo.avatech.local',
+                'repository_url' => 'https://git.demo.avatech.local/avatech/smart-pmis',
+                'admin_url' => 'https://smart-pmis.demo.avatech.local/admin',
+                'credential' => 'handed_over',
+                'maintenance' => "Backup harian otomatis pukul 02:00. Monitoring uptime via dashboard internal.\nLangkah lanjut: review keamanan kuartalan dan update dependency.",
+                'client_notes' => 'Akun admin awal sudah dibuatkan; ganti password pada login pertama.',
+            ],
+            'DM03' => [
+                'version' => 1, 'status' => 'generated',
+                'title' => 'Handover Pack Stullo Learning Marketplace',
+                'summary' => 'Draft serah terima marketplace pembelajaran Stullo. Menunggu penyelesaian sign-off sebelum finalisasi.',
+                'deployment_url' => 'https://stullo.demo.avatech.local',
+                'staging_url' => 'https://staging.stullo.demo.avatech.local',
+                'repository_url' => 'https://git.demo.avatech.local/avatech/stullo-lms',
+                'admin_url' => null,
+                'credential' => 'pending',
+                'maintenance' => 'Sertifikat dan integrasi pembayaran masih dalam tahap verifikasi akhir.',
+                'client_notes' => null,
+            ],
+        ];
+
+        $row = $map[$project->code] ?? null;
+        if (! $row) {
+            return;
+        }
+
+        $generator = $users['adly'] ?? null;
+        $finalizer = $users['joshua'] ?? null;
+
+        $attrs = [
+            'generated_by_user_id' => $generator?->id,
+            'title' => $row['title'],
+            'status' => $row['status'],
+            'summary' => $row['summary'],
+            'deployment_url' => $row['deployment_url'],
+            'staging_url' => $row['staging_url'],
+            'repository_url' => $row['repository_url'],
+            'admin_url' => $row['admin_url'],
+            'credential_handover_status' => $row['credential'],
+            'maintenance_notes' => $row['maintenance'],
+            'client_notes' => $row['client_notes'],
+            'generated_at' => AppTime::now()->copy()->subDays(2),
+        ];
+
+        if ($row['status'] === 'finalized') {
+            $attrs['finalized_by_user_id'] = $finalizer?->id;
+            $attrs['finalized_at'] = AppTime::now()->copy()->subDay();
+        }
+
+        $pack = ProjectHandoverPack::updateOrCreate(
+            ['project_id' => $project->id, 'version' => $row['version']],
+            $attrs,
+        );
+
+        // store a small dummy PDF artifact on the local (non-public) disk
+        try {
+            $path = 'handover-packs/project-' . $project->id . '-pack-' . $pack->id . '-v' . $pack->version . '.pdf';
+            Storage::disk('local')->put($path, $this->buildPdf('Handover Pack - ' . $project->name . ' v' . $pack->version));
+            $pack->forceFill(['pdf_path' => $path])->save();
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**

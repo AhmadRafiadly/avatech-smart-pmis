@@ -2751,6 +2751,192 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
     </div>
 
+    {{-- =============== HANDOVER PACK =============== --}}
+    @php
+        $hoPacks = $handoverPacks ?? [];
+        $hoReady = $handoverReadiness ?? [];
+        $hoCanManage = (bool) ($handoverCanManage ?? false);
+        $hoCredOpts = $handoverCredentialOptions ?? [];
+        $hoLatestEditable = collect($hoPacks)->first(fn ($p) => in_array($p['status'], ['draft', 'generated'], true));
+        $hoStatusBadge = [
+            'draft'     => 'bg-slate-100 text-slate-600',
+            'generated' => 'bg-amber-100 text-amber-700',
+            'finalized' => 'bg-emerald-100 text-emerald-700',
+            'revoked'   => 'bg-rose-100 text-rose-700',
+        ];
+        $hoChecks = [
+            ['ok' => $hoReady['qc_summary_available'] ?? false,    'label' => 'Ringkasan QC tersedia'],
+            ['ok' => $hoReady['uat_checklist_available'] ?? false, 'label' => 'Checklist UAT tersedia'],
+            ['ok' => $hoReady['uat_signed'] ?? false,              'label' => 'Sign-off UAT'],
+            ['ok' => $hoReady['handover_signed'] ?? false,         'label' => 'Sign-off Handover'],
+            ['ok' => $hoReady['project_done'] ?? false,            'label' => 'Project Done'],
+            ['ok' => $hoReady['design_available'] ?? false,        'label' => 'Design deliverables'],
+            ['ok' => $hoReady['client_reviews_available'] ?? false,'label' => 'Client review'],
+        ];
+    @endphp
+    <div id="handover" data-panel="handover" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+        <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
+            <div class="flex items-center gap-3">
+                <span class="pd-section-bar"></span>
+                <div>
+                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Handover Pack</h3>
+                    <p class="text-[12px] text-slate-500 mt-0.5">Dokumen serah terima proyek yang dirangkum dari data project. <strong>Dokumen ini tidak menyimpan password atau secret.</strong></p>
+                </div>
+            </div>
+            @if ($hoCanManage && ! $useReferenceProjectData)
+                <form method="POST" action="{{ route('projects.handover-packs.generate', $project) }}">
+                    @csrf
+                    <button type="submit" @disabled(! ($hoReady['can_generate'] ?? false))
+                        class="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-white font-semibold text-[13px] transition cursor-pointer {{ ($hoReady['can_generate'] ?? false) ? 'bg-[#1E1B4B] hover:bg-violet-900' : 'bg-slate-300 cursor-not-allowed' }}">
+                        <x-heroicon-o-document-arrow-down class="w-4 h-4" />
+                        Generate Draft Handover
+                    </button>
+                </form>
+            @endif
+        </div>
+
+        <div class="p-6 md:p-7 space-y-5">
+            {{-- Readiness indicators --}}
+            <div class="rounded-2xl border border-violet-100 bg-violet-50/30 p-4">
+                <div class="text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2.5">Kesiapan Handover</div>
+                <div class="flex flex-wrap gap-2">
+                    @foreach ($hoChecks as $c)
+                        <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold {{ $c['ok'] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500' }}">
+                            @if ($c['ok'])<x-heroicon-s-check-circle class="w-3.5 h-3.5" />@else<x-heroicon-o-minus-circle class="w-3.5 h-3.5" />@endif
+                            {{ $c['label'] }}
+                        </span>
+                    @endforeach
+                </div>
+                @if (! ($hoReady['can_generate'] ?? false))
+                    <p class="mt-3 text-[12px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">Draft handover hanya dapat dibuat setelah project masuk fase QC atau Done.</p>
+                @endif
+                @unless ($hoReady['can_finalize'] ?? false)
+                    @if (! empty($hoReady['missing']))
+                        <p class="mt-2 text-[12px] text-slate-500">Belum dapat finalisasi — <span class="text-rose-600 font-semibold">{{ implode(', ', $hoReady['missing']) }}</span>.</p>
+                        <p class="mt-0.5 text-[11px] text-slate-400 italic">Project hanya dapat difinalisasi setelah UAT dan handover sign-off selesai.</p>
+                    @endif
+                @endunless
+            </div>
+
+            {{-- Existing packs --}}
+            @forelse ($hoPacks as $pk)
+                <div class="rounded-2xl border border-violet-100 bg-white shadow-[0_1px_4px_rgba(124,58,237,0.05)] overflow-hidden">
+                    <div class="px-5 py-4">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap mb-1">
+                                    <span class="text-[10.5px] font-bold tracking-wider text-slate-400">v{{ $pk['version'] }}</span>
+                                    <span class="text-[10px] font-bold rounded-full px-2 py-0.5 {{ $hoStatusBadge[$pk['status']] ?? 'bg-slate-100 text-slate-600' }}">{{ $pk['status_label'] }}</span>
+                                    @if ($pk['credential_label'])
+                                        <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-slate-50 text-slate-500">Credential: {{ $pk['credential_label'] }}</span>
+                                    @endif
+                                </div>
+                                <p class="text-[14px] font-bold text-[#1E1B4B] leading-snug">{{ $pk['title'] }}</p>
+                                <p class="text-[11px] text-slate-400 mt-0.5">
+                                    @if ($pk['generated_by']) Dibuat {{ $pk['generated_by'] }}@if ($pk['generated_at']) · {{ $pk['generated_at'] }}@endif @endif
+                                    @if ($pk['finalized_at']) · <span class="text-emerald-600 font-semibold">Final {{ $pk['finalized_at'] }}@if ($pk['finalized_by']) oleh {{ $pk['finalized_by'] }}@endif</span>@endif
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <a href="{{ route('projects.handover-packs.preview', [$project, $pk['id']]) }}" target="_blank" rel="noopener"
+                                    class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-100 bg-white text-[12px] font-semibold text-violet-700 hover:bg-violet-50 transition">
+                                    <x-heroicon-o-eye class="w-4 h-4" /> Preview PDF
+                                </a>
+                                <a href="{{ route('projects.handover-packs.download', [$project, $pk['id']]) }}"
+                                    class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition">
+                                    <x-heroicon-o-arrow-down-tray class="w-4 h-4" /> Download PDF
+                                </a>
+                            </div>
+                        </div>
+
+                        @if ($pk['deployment_url'] || $pk['staging_url'] || $pk['repository_url'] || $pk['admin_url'])
+                            <div class="mt-3 flex flex-wrap gap-2 text-[11.5px]">
+                                @if ($pk['deployment_url'])<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-emerald-50 text-emerald-700 font-semibold">Production</span>@endif
+                                @if ($pk['staging_url'])<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 font-semibold">Staging</span>@endif
+                                @if ($pk['admin_url'])<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-violet-50 text-violet-700 font-semibold">Admin</span>@endif
+                                @if ($pk['repository_url'])<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 font-semibold">Repository</span>@endif
+                            </div>
+                        @endif
+
+                        @if ($hoCanManage && ! $useReferenceProjectData)
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                @if ($pk['status'] !== 'finalized')
+                                    <details class="group">
+                                        <summary class="cursor-pointer select-none h-8 px-3 rounded-lg border border-violet-100 bg-white text-[12px] font-semibold text-violet-700 hover:bg-violet-50 transition inline-flex items-center">Edit Catatan</summary>
+                                        <form method="POST" action="{{ route('projects.handover-packs.update', [$project, $pk['id']]) }}" class="mt-3 rounded-xl border border-violet-100 bg-violet-50/30 p-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+                                            @csrf @method('PUT')
+                                            <div class="md:col-span-12">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Judul</label>
+                                                <input name="title" value="{{ $pk['title'] }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                            <div class="md:col-span-12">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Ringkasan</label>
+                                                <textarea name="summary" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $pk['summary'] }}</textarea>
+                                            </div>
+                                            <div class="md:col-span-6">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Production URL</label>
+                                                <input name="deployment_url" value="{{ $pk['deployment_url'] }}" placeholder="https://..." class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                            <div class="md:col-span-6">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Staging URL</label>
+                                                <input name="staging_url" value="{{ $pk['staging_url'] }}" placeholder="https://..." class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                            <div class="md:col-span-6">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Admin URL</label>
+                                                <input name="admin_url" value="{{ $pk['admin_url'] }}" placeholder="https://..." class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                            <div class="md:col-span-6">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Repository URL</label>
+                                                <input name="repository_url" value="{{ $pk['repository_url'] }}" placeholder="https://..." class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                            <div class="md:col-span-6">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Status Credential</label>
+                                                <select name="credential_handover_status" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    <option value="">— pilih —</option>
+                                                    @foreach ($hoCredOpts as $val => $label)<option value="{{ $val }}" @selected($pk['credential_status'] === $val)>{{ $label }}</option>@endforeach
+                                                </select>
+                                            </div>
+                                            <div class="md:col-span-12">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan Maintenance</label>
+                                                <textarea name="maintenance_notes" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $pk['maintenance_notes'] }}</textarea>
+                                            </div>
+                                            <div class="md:col-span-12">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan untuk Klien</label>
+                                                <textarea name="client_notes" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $pk['client_notes'] }}</textarea>
+                                            </div>
+                                            <div class="md:col-span-12">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan Internal (tidak masuk PDF)</label>
+                                                <textarea name="internal_notes" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $pk['internal_notes'] }}</textarea>
+                                            </div>
+                                            <div class="md:col-span-12 flex justify-end">
+                                                <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan Catatan</button>
+                                            </div>
+                                        </form>
+                                    </details>
+
+                                    @if ($pk['id'] === ($hoLatestEditable['id'] ?? null))
+                                        <form method="POST" action="{{ route('projects.handover-packs.finalize', [$project, $pk['id']]) }}" onsubmit="return confirm('Finalisasi handover pack ini? Setelah final tidak dapat diubah.');">
+                                            @csrf
+                                            <button type="submit" @disabled(! ($hoReady['can_finalize'] ?? false))
+                                                class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-white text-[12px] font-semibold transition cursor-pointer {{ ($hoReady['can_finalize'] ?? false) ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-300 cursor-not-allowed' }}">
+                                                <x-heroicon-o-lock-closed class="w-4 h-4" /> Finalisasi Handover
+                                            </button>
+                                        </form>
+                                    @endif
+                                @endif
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            @empty
+                <div class="text-[13px] text-slate-400 text-center py-10 leading-relaxed">
+                    Belum ada handover pack untuk project ini.
+                    @if ($hoCanManage && ($hoReady['can_generate'] ?? false) && ! $useReferenceProjectData) Klik <strong>Generate Draft Handover</strong> untuk membuat draft pertama. @endif
+                </div>
+            @endforelse
+        </div>
+    </div>
+
     {{-- =============== PROJECT UPDATE SUMMARY MODAL =============== --}}
     <div data-project-summary-modal class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="project-summary-title">
         <div data-project-summary-close class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
@@ -3164,7 +3350,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
 
                 /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc', 'signoff', 'scope', 'clientportal'];
+                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc', 'signoff', 'scope', 'clientportal', 'handover'];
                 const setHash = (id) => {
                     if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
                 };

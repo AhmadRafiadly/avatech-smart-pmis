@@ -113,6 +113,11 @@ Route::middleware('auth')->group(function () {
     Route::patch('/projects/{project}/uat-items/{uatItem}', [ProjectController::class, 'updateUatItem'])->name('projects.uat-items.update');
     Route::post('/projects/{project}/signoffs', [ProjectController::class, 'storeSignoff'])->name('projects.signoffs.store');
     Route::post('/projects/{project}/complete', [ProjectController::class, 'completeProject'])->name('projects.complete');
+    Route::post('/projects/{project}/handover-packs', [ProjectController::class, 'generateHandoverPack'])->name('projects.handover-packs.generate');
+    Route::put('/projects/{project}/handover-packs/{handoverPack}', [ProjectController::class, 'updateHandoverPack'])->name('projects.handover-packs.update');
+    Route::post('/projects/{project}/handover-packs/{handoverPack}/finalize', [ProjectController::class, 'finalizeHandoverPack'])->name('projects.handover-packs.finalize');
+    Route::get('/projects/{project}/handover-packs/{handoverPack}/preview', [ProjectController::class, 'previewHandoverPack'])->name('projects.handover-packs.preview');
+    Route::get('/projects/{project}/handover-packs/{handoverPack}/download', [ProjectController::class, 'downloadHandoverPack'])->name('projects.handover-packs.download');
     Route::post('/projects/{project}/qc', [ProjectController::class, 'storeQcTest'])->name('projects.qc.store');
     Route::patch('/projects/{project}/qc/{qc}', [ProjectController::class, 'updateQcTest'])->name('projects.qc.update');
     Route::put('/projects/{project}/qc/{qc}', [ProjectController::class, 'editQcTest'])->name('projects.qc.edit');

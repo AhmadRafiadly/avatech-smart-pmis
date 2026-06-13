@@ -55,6 +55,10 @@ class AuditController extends Controller
         'change_request_approved'  => 'CR DISETUJUI',
         'change_request_rejected'  => 'CR DITOLAK',
         'change_request_converted' => 'CR JADI TASK',
+        'handover_pack_generated'  => 'HANDOVER PACK DIBUAT',
+        'handover_pack_updated'    => 'HANDOVER PACK DIUBAH',
+        'handover_pack_finalized'  => 'HANDOVER PACK FINAL',
+        'handover_pack_downloaded' => 'HANDOVER PACK DIUNDUH',
         'wbs_pdf_exported'         => 'WBS PDF DIEKSPOR',
         'test_case_pdf_exported'   => 'TEST CASE PDF DIEKSPOR',
     ];
@@ -209,6 +213,7 @@ class AuditController extends Controller
     {
         return match (true) {
             str_starts_with($action, 'qc_')   => '#qc',
+            str_starts_with($action, 'handover_pack_') => '#handover',
             str_starts_with($action, 'change_request_') => '#scope',
             str_starts_with($action, 'mom_')  => '#aiplanning',
             $action === 'ai_mom_fixed'        => '#aiplanning',
