@@ -106,6 +106,12 @@ Route::middleware('auth')->group(function () {
     Route::put('/projects/{project}/change-requests/{changeRequest}', [ProjectController::class, 'updateChangeRequest'])->name('projects.change-requests.update');
     Route::patch('/projects/{project}/change-requests/{changeRequest}/transition', [ProjectController::class, 'transitionChangeRequest'])->name('projects.change-requests.transition');
     Route::post('/projects/{project}/change-requests/{changeRequest}/convert', [ProjectController::class, 'convertChangeRequest'])->name('projects.change-requests.convert');
+    Route::post('/projects/{project}/requirement-inbox', [ProjectController::class, 'storeRequirementInboxItem'])->name('projects.requirement-inbox.store');
+    Route::put('/projects/{project}/requirement-inbox/{inboxItem}', [ProjectController::class, 'updateRequirementInboxItem'])->name('projects.requirement-inbox.update');
+    Route::post('/projects/{project}/requirement-inbox/{inboxItem}/convert-change-request', [ProjectController::class, 'convertRequirementToChangeRequest'])->name('projects.requirement-inbox.convert-cr');
+    Route::post('/projects/{project}/requirement-inbox/{inboxItem}/convert-task', [ProjectController::class, 'convertRequirementToTask'])->name('projects.requirement-inbox.convert-task');
+    Route::post('/projects/{project}/requirement-inbox/{inboxItem}/convert-mom', [ProjectController::class, 'convertRequirementToMom'])->name('projects.requirement-inbox.convert-mom');
+    Route::patch('/projects/{project}/requirement-inbox/{inboxItem}/dismiss', [ProjectController::class, 'dismissRequirementInboxItem'])->name('projects.requirement-inbox.dismiss');
     Route::post('/projects/{project}/client-reviews', [ProjectController::class, 'storeClientReview'])->name('projects.client-reviews.store');
     Route::patch('/projects/{project}/client-reviews/{clientReview}/status', [ProjectController::class, 'updateClientReviewStatus'])->name('projects.client-reviews.status');
     Route::post('/projects/{project}/uat/generate', [ProjectController::class, 'generateUatChecklist'])->name('projects.uat.generate');

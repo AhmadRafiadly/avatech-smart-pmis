@@ -11,6 +11,7 @@ use App\Models\ProjectHandoverPack;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
+use App\Models\ProjectRequirementInboxItem;
 use App\Models\ProjectSignoff;
 use App\Models\ProjectTask;
 use App\Models\ProjectTaskDesignDeliverable;
@@ -143,6 +144,22 @@ class ProjectController extends Controller
         'approved'     => 'Disetujui',
         'rejected'     => 'Ditolak',
         'converted'    => 'Jadi Task',
+    ];
+
+    private const INTAKE_SOURCE_LABELS = [
+        'whatsapp'    => 'WhatsApp',
+        'meeting'     => 'Meeting',
+        'client_call' => 'Client Call',
+        'email'       => 'Email',
+        'internal'    => 'Internal',
+        'other'       => 'Lainnya',
+    ];
+
+    private const INTAKE_STATUS_LABELS = [
+        'new'       => 'Baru',
+        'reviewed'  => 'Direview',
+        'converted' => 'Dikonversi',
+        'dismissed' => 'Diabaikan',
     ];
 
     private const CLIENT_REVIEW_MANAGER_ROLES = ['ceo_pm', 'sa_qa', 'admin', 'super_admin', 'developer'];
@@ -435,6 +452,13 @@ class ProjectController extends Controller
                 'affectedModule:id,title',
                 'createdTask:id,title',
             ])->orderByDesc('created_at')->orderByDesc('id'),
+            'requirementInboxItems' => fn ($query) => $query->with([
+                'capturedBy:id,name',
+                'reviewer:id,name',
+                'changeRequest:id,title',
+                'task:id,title',
+                'mom:id,meeting_date',
+            ])->orderByDesc('created_at')->orderByDesc('id'),
             'clientReviews' => fn ($query) => $query->with('creator:id,name')->orderByDesc('created_at')->orderByDesc('id'),
             'uatItems' => fn ($query) => $query->with('tester:id,name')->orderBy('sort_order')->orderBy('id'),
             'signoffs' => fn ($query) => $query->with(['creator:id,name', 'approver:id,name', 'clientReview:id,title,status'])->orderBy('type')->orderByDesc('id'),
@@ -495,6 +519,14 @@ class ProjectController extends Controller
             'crStatusOptions'    => self::CR_STATUS_LABELS,
             'crCanContribute'    => $this->crCanContribute($project),
             'crCanDecide'        => $this->crCanDecide(),
+            'requirementInbox' => $this->projectRequirementInboxRows($project),
+            'requirementInboxSummary' => $this->projectRequirementInboxSummary($project),
+            'intakeCanContribute' => $this->intakeCanContribute($project),
+            'intakeCanDecide' => $this->intakeCanDecide(),
+            'intakeSourceOptions' => self::INTAKE_SOURCE_LABELS,
+            'intakeTypeOptions' => self::CR_TYPE_LABELS,
+            'intakePriorityOptions' => self::CR_PRIORITY_LABELS,
+            'intakeStatusOptions' => self::INTAKE_STATUS_LABELS,
             'clientReviews'      => $this->projectClientReviewRows($project),
             'clientReviewTypes'  => self::CLIENT_REVIEW_TYPE_LABELS,
             'clientReviewStatuses' => self::CLIENT_REVIEW_STATUS_LABELS,
@@ -2517,6 +2549,319 @@ class ProjectController extends Controller
             ->with('status', 'Test case "' . $title . '" berhasil dihapus.');
     }
 
+    /* ===================== Requirement Inbox ===================== */
+
+    public function storeRequirementInboxItem(Project $project, Request $request)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($this->intakeCanContribute($project), 403);
+
+        $validated = $this->validateRequirementInbox($request);
+
+        $item = $project->requirementInboxItems()->create([
+            'captured_by_user_id' => $request->user()?->id,
+            'source' => $validated['source'] ?? null,
+            'channel_label' => $validated['channel_label'] ?? null,
+            'occurred_on' => $validated['occurred_on'] ?? null,
+            'raw_text' => $validated['raw_text'],
+            'summary' => $validated['summary'] ?? null,
+            'suggested_type' => $validated['suggested_type'] ?? null,
+            'suggested_priority' => $validated['suggested_priority'] ?? null,
+            'status' => 'new',
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        AuditLogger::log(
+            'requirement_intake_created',
+            'Project Master',
+            'Menambah Requirement Inbox pada proyek <strong>' . e($project->name) . '</strong>',
+            $item,
+            null,
+            [
+                'project_id' => $project->id,
+                'requirement_inbox_item_id' => $item->id,
+                'source' => $item->source,
+                'summary' => $this->safeIntakeAuditSummary($item),
+            ],
+        );
+
+        return $this->backToIntake($project, 'Requirement Inbox berhasil ditambahkan.');
+    }
+
+    public function updateRequirementInboxItem(Project $project, ProjectRequirementInboxItem $inboxItem, Request $request)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $inboxItem->project_id === (int) $project->id, 404);
+
+        if (in_array($inboxItem->status, ['converted', 'dismissed'], true)) {
+            return $this->backToIntake($project, 'Item yang sudah dikonversi/diabaikan tidak dapat diedit.');
+        }
+
+        $isOwnerOpen = (int) $inboxItem->captured_by_user_id === (int) $request->user()?->id
+            && in_array($inboxItem->status, ['new', 'reviewed'], true);
+        abort_unless($this->intakeCanDecide() || $isOwnerOpen, 403);
+
+        $validated = $this->validateRequirementInbox($request);
+        $markReviewed = $this->intakeCanDecide() && $request->input('status') === 'reviewed';
+
+        $inboxItem->fill([
+            'source' => $validated['source'] ?? null,
+            'channel_label' => $validated['channel_label'] ?? null,
+            'occurred_on' => $validated['occurred_on'] ?? null,
+            'raw_text' => $validated['raw_text'],
+            'summary' => $validated['summary'] ?? null,
+            'suggested_type' => $validated['suggested_type'] ?? null,
+            'suggested_priority' => $validated['suggested_priority'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        if ($markReviewed) {
+            $inboxItem->status = 'reviewed';
+            $inboxItem->reviewed_by_user_id = $request->user()?->id;
+            $inboxItem->reviewed_at = AppTime::now();
+        }
+
+        $inboxItem->save();
+
+        AuditLogger::log(
+            'requirement_intake_updated',
+            'Project Master',
+            'Memperbarui klasifikasi Requirement Inbox pada proyek <strong>' . e($project->name) . '</strong>',
+            $inboxItem,
+            ['project_id' => $project->id, 'requirement_inbox_item_id' => $inboxItem->id],
+            [
+                'project_id' => $project->id,
+                'requirement_inbox_item_id' => $inboxItem->id,
+                'source' => $inboxItem->source,
+                'status' => $inboxItem->status,
+                'suggested_type' => $inboxItem->suggested_type,
+                'suggested_priority' => $inboxItem->suggested_priority,
+                'summary' => $this->safeIntakeAuditSummary($inboxItem),
+            ],
+        );
+
+        return $this->backToIntake($project, 'Requirement Inbox berhasil diperbarui.');
+    }
+
+    public function convertRequirementToChangeRequest(Project $project, ProjectRequirementInboxItem $inboxItem)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $inboxItem->project_id === (int) $project->id, 404);
+        abort_unless($this->intakeCanDecide(), 403);
+
+        if ($this->intakeAlreadyConverted($inboxItem)) {
+            return $this->backToIntake($project, 'Requirement Inbox ini sudah dikonversi atau diabaikan.');
+        }
+
+        $changeRequest = null;
+        DB::transaction(function () use ($project, $inboxItem, &$changeRequest) {
+            $title = $this->intakeConversionTitle($inboxItem);
+            $changeRequest = $project->changeRequests()->create([
+                'requested_by_user_id' => $inboxItem->captured_by_user_id ?: auth()->id(),
+                'title' => $title,
+                'description' => $inboxItem->raw_text,
+                'source' => $inboxItem->source,
+                'type' => $inboxItem->suggested_type,
+                'priority' => $inboxItem->suggested_priority,
+                'status' => 'needs_review',
+                'affected_module_id' => null,
+                'impact_summary' => $inboxItem->summary ?: $inboxItem->notes,
+            ]);
+
+            $inboxItem->forceFill([
+                'status' => 'converted',
+                'converted_to' => 'change_request',
+                'converted_change_request_id' => $changeRequest->id,
+                'reviewed_by_user_id' => auth()->id(),
+                'reviewed_at' => AppTime::now(),
+                'converted_at' => AppTime::now(),
+            ])->save();
+        });
+
+        AuditLogger::log(
+            'requirement_intake_converted_cr',
+            'Project Master',
+            'Mengonversi Requirement Inbox menjadi Change Request pada proyek <strong>' . e($project->name) . '</strong>',
+            $inboxItem,
+            ['project_id' => $project->id, 'requirement_inbox_item_id' => $inboxItem->id],
+            [
+                'project_id' => $project->id,
+                'requirement_inbox_item_id' => $inboxItem->id,
+                'change_request_id' => $changeRequest?->id,
+                'summary' => $this->safeIntakeAuditSummary($inboxItem),
+            ],
+        );
+
+        return $this->backToIntake($project, 'Requirement Inbox dikonversi menjadi Change Request dengan status perlu review.');
+    }
+
+    public function convertRequirementToTask(Project $project, ProjectRequirementInboxItem $inboxItem)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $inboxItem->project_id === (int) $project->id, 404);
+        abort_unless($this->intakeCanDecide(), 403);
+
+        if ($this->intakeAlreadyConverted($inboxItem)) {
+            return $this->backToIntake($project, 'Requirement Inbox ini sudah dikonversi atau diabaikan.');
+        }
+
+        if ($this->phaseKey($project->phase) === 'done') {
+            return $this->backToIntake($project, 'Project sudah selesai (Done). Requirement tidak dapat dikonversi menjadi task baru.');
+        }
+
+        $task = null;
+        DB::transaction(function () use ($project, $inboxItem, &$task) {
+            $module = $project->modules()->firstOrCreate(
+                ['title' => 'Scope Tambahan'],
+                [
+                    'description' => 'Task tambahan hasil konversi Requirement Inbox.',
+                    'status' => 'approved',
+                    'estimate_hours' => 0,
+                    'sort_order' => (int) $project->modules()->max('sort_order') + 1,
+                ],
+            );
+
+            $descriptionParts = array_filter([
+                'Sumber: ' . (self::INTAKE_SOURCE_LABELS[$inboxItem->source] ?? ($inboxItem->source ?: 'Requirement Inbox')),
+                filled($inboxItem->channel_label) ? 'Channel: ' . $inboxItem->channel_label : null,
+                'Raw intake: ' . $inboxItem->raw_text,
+                filled($inboxItem->summary) ? 'Ringkasan: ' . $inboxItem->summary : null,
+                filled($inboxItem->notes) ? 'Catatan internal: ' . $inboxItem->notes : null,
+            ]);
+
+            $task = $project->tasks()->create([
+                'project_module_id' => $module->id,
+                'assigned_to' => null,
+                'title' => $this->intakeConversionTitle($inboxItem),
+                'description' => implode("\n\n", $descriptionParts),
+                'status' => 'planned',
+                'priority' => $this->mapCrPriorityToTaskPriority($inboxItem->suggested_priority),
+                'estimate_hours' => 0,
+                'sort_order' => (int) $project->tasks()->max('sort_order') + 1,
+            ]);
+
+            $inboxItem->forceFill([
+                'status' => 'converted',
+                'converted_to' => 'task',
+                'converted_task_id' => $task->id,
+                'reviewed_by_user_id' => auth()->id(),
+                'reviewed_at' => AppTime::now(),
+                'converted_at' => AppTime::now(),
+            ])->save();
+        });
+
+        AuditLogger::log(
+            'requirement_intake_converted_task',
+            'Project Master',
+            'Mengonversi Requirement Inbox menjadi task pada proyek <strong>' . e($project->name) . '</strong>',
+            $inboxItem,
+            ['project_id' => $project->id, 'requirement_inbox_item_id' => $inboxItem->id],
+            [
+                'project_id' => $project->id,
+                'requirement_inbox_item_id' => $inboxItem->id,
+                'task_id' => $task?->id,
+                'summary' => $this->safeIntakeAuditSummary($inboxItem),
+            ],
+        );
+
+        $note = $this->phaseKey($project->phase) === 'design'
+            ? ' Task masuk backlog dan mengikuti phase lock Design.'
+            : '';
+
+        return $this->backToIntake($project, 'Requirement Inbox dikonversi menjadi task baru.' . $note);
+    }
+
+    public function convertRequirementToMom(Project $project, ProjectRequirementInboxItem $inboxItem)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $inboxItem->project_id === (int) $project->id, 404);
+        abort_unless($this->intakeCanDecide(), 403);
+
+        if ($this->intakeAlreadyConverted($inboxItem)) {
+            return $this->backToIntake($project, 'Requirement Inbox ini sudah dikonversi atau diabaikan.');
+        }
+
+        $mom = null;
+        DB::transaction(function () use ($project, $inboxItem, &$mom) {
+            $mom = $project->moms()->create([
+                'created_by' => auth()->id(),
+                'meeting_date' => $inboxItem->occurred_on ?: AppTime::now()->toDateString(),
+                'notes' => $inboxItem->raw_text,
+                'summary' => $inboxItem->summary,
+                'status' => 'draft',
+            ]);
+
+            $inboxItem->forceFill([
+                'status' => 'converted',
+                'converted_to' => 'mom',
+                'converted_mom_id' => $mom->id,
+                'reviewed_by_user_id' => auth()->id(),
+                'reviewed_at' => AppTime::now(),
+                'converted_at' => AppTime::now(),
+            ])->save();
+        });
+
+        AuditLogger::log(
+            'requirement_intake_converted_mom',
+            'Project Master',
+            'Mengonversi Requirement Inbox menjadi MoM draft pada proyek <strong>' . e($project->name) . '</strong>',
+            $inboxItem,
+            ['project_id' => $project->id, 'requirement_inbox_item_id' => $inboxItem->id],
+            [
+                'project_id' => $project->id,
+                'requirement_inbox_item_id' => $inboxItem->id,
+                'mom_id' => $mom?->id,
+                'summary' => $this->safeIntakeAuditSummary($inboxItem),
+            ],
+        );
+
+        return $this->backToIntake($project, 'Requirement Inbox dikonversi menjadi MoM draft.');
+    }
+
+    public function dismissRequirementInboxItem(Project $project, ProjectRequirementInboxItem $inboxItem)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $inboxItem->project_id === (int) $project->id, 404);
+        abort_unless($this->intakeCanDecide(), 403);
+
+        if ($this->intakeAlreadyConverted($inboxItem)) {
+            return $this->backToIntake($project, 'Item yang sudah dikonversi tidak dapat diabaikan.');
+        }
+
+        $inboxItem->forceFill([
+            'status' => 'dismissed',
+            'reviewed_by_user_id' => auth()->id(),
+            'reviewed_at' => AppTime::now(),
+        ])->save();
+
+        AuditLogger::log(
+            'requirement_intake_dismissed',
+            'Project Master',
+            'Mengabaikan Requirement Inbox pada proyek <strong>' . e($project->name) . '</strong>',
+            $inboxItem,
+            ['project_id' => $project->id, 'requirement_inbox_item_id' => $inboxItem->id],
+            [
+                'project_id' => $project->id,
+                'requirement_inbox_item_id' => $inboxItem->id,
+                'summary' => $this->safeIntakeAuditSummary($inboxItem),
+            ],
+        );
+
+        return $this->backToIntake($project, 'Requirement Inbox diabaikan.');
+    }
+
     /* ===================== Change Request / Scope Control ===================== */
 
     /**
@@ -3302,6 +3647,162 @@ class ProjectController extends Controller
             && ! $project->tasks()->exists()
             && ! $project->moms()->exists()
             && ! $project->qcTests()->exists();
+    }
+
+    /* ---- Requirement Inbox helpers ------------------------------------- */
+
+    private function intakeCanContribute(Project $project): bool
+    {
+        if ($this->intakeCanDecide()) {
+            return true;
+        }
+
+        $role = $this->currentRoleName();
+        if (! in_array($role, self::OPERATIONAL_ROLES, true)) {
+            return false;
+        }
+
+        return TeamAssignment::query()
+            ->where('user_id', auth()->id())
+            ->where('project_id', $project->id)
+            ->exists();
+    }
+
+    private function intakeCanDecide(): bool
+    {
+        return in_array($this->currentRoleName(), self::CR_DECISION_ROLES, true);
+    }
+
+    private function backToIntake(Project $project, string $status = 'success')
+    {
+        return redirect()
+            ->to(route('projects.show', $project) . '#intake')
+            ->with('status', $status);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validateRequirementInbox(Request $request): array
+    {
+        return $request->validate([
+            'source' => ['nullable', Rule::in(ProjectRequirementInboxItem::SOURCES)],
+            'channel_label' => ['nullable', 'string', 'max:120'],
+            'occurred_on' => ['nullable', 'date'],
+            'raw_text' => ['required', 'string', 'max:20000'],
+            'summary' => ['nullable', 'string', 'max:6000'],
+            'suggested_type' => ['nullable', Rule::in(ProjectChangeRequest::TYPES)],
+            'suggested_priority' => ['nullable', Rule::in(ProjectChangeRequest::PRIORITIES)],
+            'notes' => ['nullable', 'string', 'max:6000'],
+        ], [
+            'raw_text.required' => 'Isi catatan requirement wajib diisi.',
+            'raw_text.max' => 'Catatan requirement terlalu panjang.',
+            'source.in' => 'Sumber requirement tidak valid.',
+            'suggested_type.in' => 'Tipe klasifikasi tidak valid.',
+            'suggested_priority.in' => 'Prioritas tidak valid.',
+        ]);
+    }
+
+    private function projectRequirementInboxRows(Project $project): array
+    {
+        $col = $project->relationLoaded('requirementInboxItems')
+            ? $project->requirementInboxItems
+            : $project->requirementInboxItems()
+                ->with(['capturedBy:id,name', 'reviewer:id,name', 'changeRequest:id,title', 'task:id,title', 'mom:id,meeting_date'])
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->get();
+
+        return $col->map(function (ProjectRequirementInboxItem $item) use ($project) {
+            $convertedTarget = null;
+            $convertedUrl = null;
+            if ($item->converted_to === 'change_request' && $item->changeRequest) {
+                $convertedTarget = 'CR: ' . $item->changeRequest->title;
+                $convertedUrl = route('projects.show', $project) . '#scope';
+            } elseif ($item->converted_to === 'task' && $item->task) {
+                $convertedTarget = 'Task: ' . $item->task->title;
+                $convertedUrl = route('projects.show', $project) . '#workspace';
+            } elseif ($item->converted_to === 'mom' && $item->mom) {
+                $convertedTarget = 'MoM: ' . optional($item->mom->meeting_date)->format('d M Y');
+                $convertedUrl = route('projects.show', $project) . '#aiplanning';
+            }
+
+            $rawPreview = Str::limit(preg_replace('/\s+/', ' ', trim((string) $item->raw_text)), 220);
+            $summaryPreview = Str::limit(preg_replace('/\s+/', ' ', trim((string) ($item->summary ?: $item->notes ?: ''))), 180);
+
+            return [
+                'id' => $item->id,
+                'source' => $item->source,
+                'source_label' => $item->source ? (self::INTAKE_SOURCE_LABELS[$item->source] ?? $item->source) : 'Belum diklasifikasi',
+                'channel_label' => $item->channel_label,
+                'occurred_on' => $item->occurred_on?->format('Y-m-d'),
+                'occurred_label' => $item->occurred_on ? $this->formatDateLongId(AppTime::cast($item->occurred_on)) : null,
+                'raw_text' => $item->raw_text,
+                'raw_preview' => $rawPreview,
+                'summary' => $item->summary,
+                'summary_preview' => $summaryPreview,
+                'suggested_type' => $item->suggested_type,
+                'suggested_type_label' => $item->suggested_type ? (self::CR_TYPE_LABELS[$item->suggested_type] ?? $item->suggested_type) : null,
+                'suggested_priority' => $item->suggested_priority,
+                'suggested_priority_label' => $item->suggested_priority ? (self::CR_PRIORITY_LABELS[$item->suggested_priority] ?? $item->suggested_priority) : null,
+                'status' => $item->status,
+                'status_label' => self::INTAKE_STATUS_LABELS[$item->status] ?? $item->status,
+                'notes' => $item->notes,
+                'captured_by' => $item->capturedBy?->name,
+                'captured_by_user_id' => $item->captured_by_user_id,
+                'created_at' => AppTime::diff($item->created_at),
+                'reviewed_by' => $item->reviewer?->name,
+                'reviewed_at' => $item->reviewed_at ? AppTime::cast($item->reviewed_at)?->format('d M Y H:i') : null,
+                'converted_to' => $item->converted_to,
+                'converted_target' => $convertedTarget,
+                'converted_url' => $convertedUrl,
+                'converted_at' => $item->converted_at ? AppTime::cast($item->converted_at)?->format('d M Y H:i') : null,
+            ];
+        })->all();
+    }
+
+    private function projectRequirementInboxSummary(Project $project): array
+    {
+        $col = $project->relationLoaded('requirementInboxItems')
+            ? $project->requirementInboxItems
+            : $project->requirementInboxItems()->get(['status']);
+        $by = $col->countBy('status');
+
+        return [
+            'total' => (int) $col->count(),
+            'new' => (int) ($by['new'] ?? 0),
+            'reviewed' => (int) ($by['reviewed'] ?? 0),
+            'converted' => (int) ($by['converted'] ?? 0),
+            'dismissed' => (int) ($by['dismissed'] ?? 0),
+        ];
+    }
+
+    private function intakeAlreadyConverted(ProjectRequirementInboxItem $item): bool
+    {
+        return in_array($item->status, ['converted', 'dismissed'], true)
+            || filled($item->converted_to)
+            || filled($item->converted_change_request_id)
+            || filled($item->converted_task_id)
+            || filled($item->converted_mom_id);
+    }
+
+    private function intakeConversionTitle(ProjectRequirementInboxItem $item): string
+    {
+        $title = trim((string) ($item->summary ?: ''));
+        if ($title === '') {
+            $title = trim((string) Str::limit(preg_replace('/\s+/', ' ', $item->raw_text), 120, ''));
+        }
+
+        return $title !== '' ? $title : 'Requirement Intake #' . $item->id;
+    }
+
+    private function safeIntakeAuditSummary(ProjectRequirementInboxItem $item): string
+    {
+        $summary = trim((string) ($item->summary ?: $item->notes ?: ''));
+
+        return $summary !== ''
+            ? Str::limit(preg_replace('/\s+/', ' ', $summary), 120)
+            : 'Requirement Inbox #' . $item->id;
     }
 
     /* ---- Change Request helpers ---------------------------------------- */
@@ -4101,6 +4602,7 @@ class ProjectController extends Controller
         $moduleTotal = $project->relationLoaded('modules') ? $project->modules->count() : $project->modules()->count();
         $taskTotal = $project->relationLoaded('tasks') ? $project->tasks->count() : $project->tasks()->count();
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
+        $intakeTotal = $project->relationLoaded('requirementInboxItems') ? $project->requirementInboxItems->count() : $project->requirementInboxItems()->count();
         $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
         $uatTotal = $project->relationLoaded('uatItems') ? $project->uatItems->count() : $project->uatItems()->count();
         $crTotal = $project->relationLoaded('changeRequests') ? $project->changeRequests->count() : $project->changeRequests()->count();
@@ -4111,6 +4613,7 @@ class ProjectController extends Controller
             ['id' => 'overview',   'label' => 'Overview',         'count' => $moduleTotal],
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $taskTotal],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
+            ['id' => 'intake',     'label' => 'Requirement Inbox', 'count' => $intakeTotal],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
             ['id' => 'signoff',    'label' => 'UAT & Sign-off',   'count' => $uatTotal],
             ['id' => 'scope',      'label' => 'Scope Control',    'count' => $crTotal],

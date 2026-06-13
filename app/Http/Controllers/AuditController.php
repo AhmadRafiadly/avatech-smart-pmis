@@ -55,6 +55,12 @@ class AuditController extends Controller
         'change_request_approved'  => 'CR DISETUJUI',
         'change_request_rejected'  => 'CR DITOLAK',
         'change_request_converted' => 'CR JADI TASK',
+        'requirement_intake_created' => 'INTAKE BARU',
+        'requirement_intake_updated' => 'INTAKE DIUBAH',
+        'requirement_intake_converted_cr' => 'INTAKE -> CR',
+        'requirement_intake_converted_task' => 'INTAKE -> TASK',
+        'requirement_intake_converted_mom' => 'INTAKE -> MOM',
+        'requirement_intake_dismissed' => 'INTAKE DIABAIKAN',
         'handover_pack_generated'  => 'HANDOVER PACK DIBUAT',
         'handover_pack_updated'    => 'HANDOVER PACK DIUBAH',
         'handover_pack_finalized'  => 'HANDOVER PACK FINAL',
@@ -212,6 +218,7 @@ class AuditController extends Controller
     private static function deepLinkAnchorForAction(string $action): string
     {
         return match (true) {
+            str_starts_with($action, 'requirement_intake_') => '#intake',
             str_starts_with($action, 'qc_')   => '#qc',
             str_starts_with($action, 'handover_pack_') => '#handover',
             str_starts_with($action, 'change_request_') => '#scope',

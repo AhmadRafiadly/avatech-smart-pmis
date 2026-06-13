@@ -513,7 +513,7 @@
 
     {{-- =============== TABS =============== --}}
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-2 mb-6">
-        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-2">
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-9 gap-2">
             @foreach ($tabs as $idx => $t)
                 <button
                     type="button"
@@ -2937,6 +2937,284 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
     </div>
 
+    {{-- =============== REQUIREMENT INBOX =============== --}}
+    @php
+        $intakeRows = $requirementInbox ?? [];
+        $intakeSummary = $requirementInboxSummary ?? ['total' => 0, 'new' => 0, 'reviewed' => 0, 'converted' => 0, 'dismissed' => 0];
+        $intakeCanAdd = (bool) ($intakeCanContribute ?? false) && ! $useReferenceProjectData;
+        $intakeCanReview = (bool) ($intakeCanDecide ?? false) && ! $useReferenceProjectData;
+        $intakeStatusBadge = [
+            'new' => 'bg-blue-50 text-blue-700 border border-blue-100',
+            'reviewed' => 'bg-violet-50 text-violet-700 border border-violet-100',
+            'converted' => 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+            'dismissed' => 'bg-slate-100 text-slate-600 border border-slate-200',
+        ];
+        $intakePriorityBadge = [
+            'low' => 'bg-slate-50 text-slate-600 border border-slate-100',
+            'medium' => 'bg-amber-50 text-amber-700 border border-amber-100',
+            'high' => 'bg-rose-50 text-rose-700 border border-rose-100',
+            'urgent' => 'bg-rose-100 text-rose-800 border border-rose-200',
+        ];
+    @endphp
+    <div id="intake" data-panel="intake" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+        <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
+            <div class="flex items-center gap-3">
+                <span class="pd-section-bar"></span>
+                <div>
+                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Requirement Inbox</h3>
+                    <p class="text-[12px] text-slate-500 mt-0.5 max-w-3xl">Gunakan area ini untuk menampung chat WhatsApp, catatan meeting, email, atau request client sebelum diubah menjadi task, change request, atau MoM.</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2 text-[11px]">
+                @foreach ([['Baru', 'new'], ['Direview', 'reviewed'], ['Dikonversi', 'converted'], ['Diabaikan', 'dismissed']] as [$label, $key])
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 font-semibold text-violet-700">
+                        {{ $label }} <strong>{{ $intakeSummary[$key] ?? 0 }}</strong>
+                    </span>
+                @endforeach
+                <span class="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-600">
+                    Total <strong>{{ $intakeSummary['total'] ?? count($intakeRows) }}</strong>
+                </span>
+            </div>
+        </div>
+
+        <div class="p-6 md:p-7 space-y-5">
+            @if ($intakeCanAdd)
+                <details class="rounded-2xl border border-violet-100 bg-violet-50/30 overflow-hidden" @if ($errors->any() && old('_form') === 'requirement_inbox') open @endif>
+                    <summary class="cursor-pointer select-none px-5 py-3.5 text-[13px] font-bold text-violet-700 flex items-center gap-2">
+                        <x-heroicon-o-inbox class="w-5 h-5" />
+                        Tambah Intake Requirement
+                    </summary>
+                    <form method="POST" action="{{ route('projects.requirement-inbox.store', $project) }}" class="px-5 pb-5 pt-1 grid grid-cols-1 md:grid-cols-12 gap-3">
+                        @csrf
+                        <input type="hidden" name="_form" value="requirement_inbox">
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Sumber</label>
+                            <select name="source" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">Pilih sumber</option>
+                                @foreach ($intakeSourceOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected(old('_form') === 'requirement_inbox' && old('source') === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Channel / konteks</label>
+                            <input name="channel_label" value="{{ old('_form') === 'requirement_inbox' ? old('channel_label') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="WA Grup Client / Zoom / Email" />
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tanggal</label>
+                            <input type="date" name="occurred_on" value="{{ old('_form') === 'requirement_inbox' ? old('occurred_on') : '' }}" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Prioritas</label>
+                            <select name="suggested_priority" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">Belum dinilai</option>
+                                @foreach ($intakePriorityOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected(old('_form') === 'requirement_inbox' && old('suggested_priority') === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-12">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Catatan mentah client</label>
+                            <textarea name="raw_text" rows="5" required class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Tempel ringkasan chat WhatsApp, catatan meeting, atau email client di sini.">{{ old('_form') === 'requirement_inbox' ? old('raw_text') : '' }}</textarea>
+                            @if (old('_form') === 'requirement_inbox') @error('raw_text')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror @endif
+                        </div>
+                        <div class="md:col-span-7">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Ringkasan aman</label>
+                            <textarea name="summary" rows="2" class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Ringkas inti request tanpa detail sensitif.">{{ old('_form') === 'requirement_inbox' ? old('summary') : '' }}</textarea>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tipe</label>
+                            <select name="suggested_type" class="w-full h-10 rounded-xl border border-violet-100 bg-white px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                <option value="">Belum diklasifikasi</option>
+                                @foreach ($intakeTypeOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected(old('_form') === 'requirement_inbox' && old('suggested_type') === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Catatan</label>
+                            <textarea name="notes" rows="2" class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('_form') === 'requirement_inbox' ? old('notes') : '' }}</textarea>
+                        </div>
+                        <div class="md:col-span-12 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <p class="text-[11.5px] text-slate-500">Konversi ke Change Request, Task, atau MoM tetap dilakukan manual oleh PM/SA setelah review.</p>
+                            <button type="submit" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-[#1E1B4B] text-white font-semibold text-[13px] hover:bg-violet-900 transition cursor-pointer">
+                                <x-heroicon-o-plus class="w-4 h-4" />
+                                Simpan Intake
+                            </button>
+                        </div>
+                    </form>
+                </details>
+            @else
+                <div class="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[12.5px] text-slate-500 leading-relaxed">
+                    Requirement Inbox dapat diisi oleh PM/SA/admin-tier atau user operasional yang ditugaskan ke project ini.
+                </div>
+            @endif
+
+            <div class="space-y-4">
+                @forelse ($intakeRows as $item)
+                    @php
+                        $intakeLocked = in_array($item['status'], ['converted', 'dismissed'], true);
+                    @endphp
+                    <article class="rounded-2xl border border-violet-100 bg-white shadow-[0_1px_4px_rgba(124,58,237,0.05)] overflow-hidden">
+                        <div class="px-5 py-4">
+                            <div class="flex items-start justify-between gap-3 flex-wrap">
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                                        <span class="text-[10px] font-bold rounded-full px-2 py-0.5 {{ $intakeStatusBadge[$item['status']] ?? 'bg-slate-100 text-slate-600 border border-slate-200' }}">{{ $item['status_label'] }}</span>
+                                        <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-violet-50 text-violet-700 border border-violet-100">{{ $item['source_label'] }}</span>
+                                        @if ($item['suggested_type_label'])
+                                            <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 bg-slate-50 text-slate-600 border border-slate-100">{{ $item['suggested_type_label'] }}</span>
+                                        @endif
+                                        @if ($item['suggested_priority_label'])
+                                            <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 {{ $intakePriorityBadge[$item['suggested_priority']] ?? 'bg-slate-50 text-slate-600 border border-slate-100' }}">{{ $item['suggested_priority_label'] }}</span>
+                                        @endif
+                                    </div>
+                                    <h4 class="text-[14.5px] font-extrabold text-[#1E1B4B] leading-snug">{{ $item['summary_preview'] ?: $item['raw_preview'] }}</h4>
+                                    <p class="mt-1 text-[11.5px] text-slate-400">
+                                        Ditangkap {{ $item['captured_by'] ?? 'User' }}{{ $item['created_at'] ? ' - ' . $item['created_at'] : '' }}
+                                        @if ($item['channel_label']) - {{ $item['channel_label'] }} @endif
+                                        @if ($item['occurred_label']) - {{ $item['occurred_label'] }} @endif
+                                    </p>
+                                </div>
+                                @if ($item['converted_target'])
+                                    <a href="{{ $item['converted_url'] }}" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 text-[12px] font-semibold hover:bg-emerald-100 transition">
+                                        <x-heroicon-o-arrow-top-right-on-square class="w-4 h-4" />
+                                        {{ $item['converted_target'] }}
+                                    </a>
+                                @endif
+                            </div>
+
+                            <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                                    <div class="text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan mentah</div>
+                                    <p class="text-[12.5px] text-slate-600 leading-relaxed whitespace-pre-line">{{ $item['raw_text'] }}</p>
+                                </div>
+                                <div class="rounded-xl border border-violet-100 bg-violet-50/30 px-4 py-3">
+                                    <div class="text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Review internal</div>
+                                    @if ($item['summary'])
+                                        <p class="text-[12.5px] text-slate-700 leading-relaxed whitespace-pre-line">{{ $item['summary'] }}</p>
+                                    @else
+                                        <p class="text-[12.5px] text-slate-400 italic">Belum ada ringkasan aman.</p>
+                                    @endif
+                                    @if ($item['notes'])
+                                        <p class="mt-2 text-[12px] text-slate-500 leading-relaxed whitespace-pre-line"><strong>Catatan:</strong> {{ $item['notes'] }}</p>
+                                    @endif
+                                    @if ($item['reviewed_by'] || $item['converted_at'])
+                                        <p class="mt-2 text-[11px] text-slate-400">
+                                            @if ($item['reviewed_by']) Direview {{ $item['reviewed_by'] }}@if ($item['reviewed_at']) - {{ $item['reviewed_at'] }}@endif @endif
+                                            @if ($item['converted_at']) - Dikonversi {{ $item['converted_at'] }} @endif
+                                        </p>
+                                    @endif
+                                </div>
+                            </div>
+
+                            @if ($intakeCanReview && ! $intakeLocked)
+                                <div class="mt-4 flex flex-col gap-3">
+                                    <details class="rounded-xl border border-violet-100 bg-white overflow-hidden">
+                                        <summary class="cursor-pointer select-none px-4 py-2.5 text-[12.5px] font-bold text-violet-700 flex items-center gap-2">
+                                            <x-heroicon-o-pencil-square class="w-4 h-4" />
+                                            Edit Review / Klasifikasi
+                                        </summary>
+                                        <form method="POST" action="{{ route('projects.requirement-inbox.update', [$project, $item['id']]) }}" class="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-12 gap-3">
+                                            @csrf @method('PUT')
+                                            <input type="hidden" name="status" value="reviewed">
+                                            <div class="md:col-span-3">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Sumber</label>
+                                                <select name="source" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    <option value="">Pilih sumber</option>
+                                                    @foreach ($intakeSourceOptions as $value => $label)
+                                                        <option value="{{ $value }}" @selected($item['source'] === $value)>{{ $label }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="md:col-span-4">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Channel</label>
+                                                <input name="channel_label" value="{{ $item['channel_label'] }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                            </div>
+                                            <div class="md:col-span-3">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Tanggal</label>
+                                                <input type="date" name="occurred_on" value="{{ $item['occurred_on'] }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Prioritas</label>
+                                                <select name="suggested_priority" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    <option value="">Belum dinilai</option>
+                                                    @foreach ($intakePriorityOptions as $value => $label)
+                                                        <option value="{{ $value }}" @selected($item['suggested_priority'] === $value)>{{ $label }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="md:col-span-12">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan mentah</label>
+                                                <textarea name="raw_text" rows="4" required class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $item['raw_text'] }}</textarea>
+                                            </div>
+                                            <div class="md:col-span-6">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Ringkasan aman</label>
+                                                <textarea name="summary" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $item['summary'] }}</textarea>
+                                            </div>
+                                            <div class="md:col-span-3">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Tipe</label>
+                                                <select name="suggested_type" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    <option value="">Belum diklasifikasi</option>
+                                                    @foreach ($intakeTypeOptions as $value => $label)
+                                                        <option value="{{ $value }}" @selected($item['suggested_type'] === $value)>{{ $label }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="md:col-span-3">
+                                                <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan internal</label>
+                                                <textarea name="notes" rows="2" class="w-full rounded-lg border border-violet-100 bg-white px-3 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $item['notes'] }}</textarea>
+                                            </div>
+                                            <div class="md:col-span-12 flex justify-end">
+                                                <button type="submit" class="h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">Simpan Review</button>
+                                            </div>
+                                        </form>
+                                    </details>
+
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <form method="POST" action="{{ route('projects.requirement-inbox.convert-cr', [$project, $item['id']]) }}" onsubmit="return confirm('Konversi intake ini menjadi Change Request?');">
+                                            @csrf
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#1E1B4B] text-white text-[12px] font-semibold hover:bg-violet-900 transition cursor-pointer">
+                                                <x-heroicon-o-arrows-right-left class="w-4 h-4" />
+                                                Convert ke CR
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="{{ route('projects.requirement-inbox.convert-task', [$project, $item['id']]) }}" onsubmit="return confirm('Konversi intake ini menjadi task baru?');">
+                                            @csrf
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer">
+                                                <x-heroicon-o-clipboard-document-list class="w-4 h-4" />
+                                                Convert ke Task
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="{{ route('projects.requirement-inbox.convert-mom', [$project, $item['id']]) }}" onsubmit="return confirm('Konversi intake ini menjadi draft MoM?');">
+                                            @csrf
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-100 bg-white text-violet-700 text-[12px] font-semibold hover:bg-violet-50 transition cursor-pointer">
+                                                <x-heroicon-o-document-text class="w-4 h-4" />
+                                                Convert ke MoM
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="{{ route('projects.requirement-inbox.dismiss', [$project, $item['id']]) }}" onsubmit="return confirm('Abaikan intake ini?');">
+                                            @csrf @method('PATCH')
+                                            <button type="submit" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-slate-500 text-[12px] font-semibold hover:bg-slate-50 transition cursor-pointer">
+                                                <x-heroicon-o-archive-box class="w-4 h-4" />
+                                                Abaikan
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            @endif
+                        </div>
+                    </article>
+                @empty
+                    <div class="text-[13px] text-slate-400 text-center py-12 leading-relaxed">
+                        Belum ada Requirement Inbox untuk project ini.
+                        @if ($intakeCanAdd) Tambahkan chat WhatsApp, catatan meeting, atau request client pertama sebagai bahan review. @endif
+                    </div>
+                @endforelse
+            </div>
+        </div>
+    </div>
+
     {{-- =============== PROJECT UPDATE SUMMARY MODAL =============== --}}
     <div data-project-summary-modal class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="project-summary-title">
         <div data-project-summary-close class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
@@ -3350,7 +3628,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
 
                 /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc', 'signoff', 'scope', 'clientportal', 'handover'];
+                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'intake', 'qc', 'signoff', 'scope', 'clientportal', 'handover'];
                 const setHash = (id) => {
                     if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
                 };

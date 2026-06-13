@@ -58,6 +58,11 @@ class Project extends Model
         return $this->hasMany(ProjectChangeRequest::class);
     }
 
+    public function requirementInboxItems(): HasMany
+    {
+        return $this->hasMany(ProjectRequirementInboxItem::class);
+    }
+
     public function clientReviews(): HasMany
     {
         return $this->hasMany(ProjectClientReview::class);

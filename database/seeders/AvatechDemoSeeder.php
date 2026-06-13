@@ -12,6 +12,7 @@ use App\Models\ProjectClientReview;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
+use App\Models\ProjectRequirementInboxItem;
 use App\Models\ProjectSignoff;
 use App\Models\ProjectTask;
 use App\Models\ProjectTaskDesignDeliverable;
@@ -646,6 +647,7 @@ class AvatechDemoSeeder extends Seeder
         $this->seedQc($project, $modules, $tasks, $bp['qc'] ?? [], $users['adly'] ?? $lead);
         $this->seedChangeRequests($project, $users);
         $this->seedHandoverPacks($project, $users);
+        $this->seedRequirementInboxItems($project, $users);
         $this->seedClientReviews($project, $users);
         $this->seedUatAndSignoffs($project, $users);
 
@@ -984,6 +986,107 @@ class AvatechDemoSeeder extends Seeder
                     'created_task_id' => $task->id,
                 ])->save();
             }
+        }
+    }
+
+    /**
+     * Requirement Inbox demo data for Milestone 5. These are deliberately
+     * short, dummy client-intake snippets so the workflow is visible without
+     * storing real WhatsApp exports or sensitive client text.
+     *
+     * @param array<string, User> $users
+     */
+    private function seedRequirementInboxItems(Project $project, array $users): void
+    {
+        $map = [
+            'DM01' => [[
+                'source' => 'whatsapp',
+                'channel' => 'WA Grup Client',
+                'occurred' => 8,
+                'raw' => "Client demo meminta tambahan section testimonial di homepage agar trust lebih terlihat.\nTidak perlu detail panjang, cukup 3 kartu testimonial dan bisa diubah dari CMS.",
+                'summary' => 'Client meminta tambahan section testimonial pada company profile.',
+                'type' => 'new_scope',
+                'priority' => 'medium',
+                'status' => 'converted',
+                'notes' => 'Sudah dikonversi menjadi Change Request demo.',
+                'converted_cr_title' => 'Tambah section testimonial client',
+            ]],
+            'DM02' => [[
+                'source' => 'whatsapp',
+                'channel' => 'WA Grup Client',
+                'occurred' => 1,
+                'raw' => "Catatan dummy: client ingin filter kategori program donasi supaya donatur bisa memilih program pendidikan, sosial, atau darurat.\nTim perlu review apakah ini masuk scope awal atau CR.",
+                'summary' => 'Client meminta filter kategori program donasi agar donatur lebih mudah memilih program.',
+                'type' => 'new_scope',
+                'priority' => 'high',
+                'status' => 'new',
+                'notes' => 'Bahan review PM/SA sebelum diputuskan menjadi CR atau task tambahan.',
+            ]],
+            'DM03' => [[
+                'source' => 'meeting',
+                'channel' => 'Zoom Review Sprint',
+                'occurred' => 2,
+                'raw' => "Catatan meeting demo: client ingin wishlist dan rekomendasi course lebih mudah ditemukan dari homepage.\nBelum diputuskan apakah dibuat di sprint ini atau setelah UAT blocker selesai.",
+                'summary' => 'Client meminta wishlist dan rekomendasi produk tampil lebih jelas di homepage.',
+                'type' => 'revision',
+                'priority' => 'medium',
+                'status' => 'reviewed',
+                'notes' => 'Direview sebagai revisi kecil setelah UAT utama stabil.',
+            ]],
+            'DM08' => [[
+                'source' => 'client_call',
+                'channel' => 'Telepon Follow-up',
+                'occurred' => 3,
+                'raw' => "Catatan telepon dummy: client minta label listing properti komersial dan residensial dibuat lebih jelas.\nBelum perlu dikerjakan sebelum approval desain.",
+                'summary' => 'Client meminta label tipe listing properti dibuat lebih jelas.',
+                'type' => 'revision',
+                'priority' => 'low',
+                'status' => 'dismissed',
+                'notes' => 'Diabaikan untuk scope saat ini; akan dibahas ulang setelah approval desain.',
+            ]],
+        ];
+
+        $rows = $map[$project->code] ?? [];
+        if (empty($rows)) {
+            return;
+        }
+
+        $capturer = $users['adly'] ?? null;
+        $reviewer = $users['joshua'] ?? $capturer;
+
+        foreach ($rows as $row) {
+            $convertedCr = ! empty($row['converted_cr_title'])
+                ? $project->changeRequests()->where('title', $row['converted_cr_title'])->first()
+                : null;
+            $status = $row['status'];
+            if ($status === 'converted' && ! $convertedCr) {
+                $status = 'reviewed';
+            }
+
+            $isReviewed = in_array($status, ['reviewed', 'converted', 'dismissed'], true);
+            $isConverted = $status === 'converted' && $convertedCr;
+
+            ProjectRequirementInboxItem::updateOrCreate(
+                ['project_id' => $project->id, 'summary' => $row['summary']],
+                [
+                    'captured_by_user_id' => $capturer?->id,
+                    'source' => $row['source'],
+                    'channel_label' => $row['channel'],
+                    'occurred_on' => AppTime::now()->copy()->subDays($row['occurred'])->toDateString(),
+                    'raw_text' => $row['raw'],
+                    'suggested_type' => $row['type'],
+                    'suggested_priority' => $row['priority'],
+                    'status' => $status,
+                    'notes' => $row['notes'],
+                    'reviewed_by_user_id' => $isReviewed ? $reviewer?->id : null,
+                    'reviewed_at' => $isReviewed ? AppTime::now()->copy()->subDays(max(1, $row['occurred'] - 1)) : null,
+                    'converted_to' => $isConverted ? 'change_request' : null,
+                    'converted_change_request_id' => $isConverted ? $convertedCr->id : null,
+                    'converted_task_id' => null,
+                    'converted_mom_id' => null,
+                    'converted_at' => $isConverted ? AppTime::now()->copy()->subDays(max(1, $row['occurred'] - 2)) : null,
+                ],
+            );
         }
     }
 
