@@ -52,4 +52,9 @@ class Project extends Model
     {
         return $this->hasMany(ProjectQcTest::class);
     }
+
+    public function requirementInboxItems(): HasMany
+    {
+        return $this->hasMany(ProjectRequirementInboxItem::class);
+    }
 }

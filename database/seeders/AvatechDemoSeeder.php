@@ -77,6 +77,9 @@ class AvatechDemoSeeder extends Seeder
             $projectCount++;
         }
 
+        // TODO: Seed ProjectRequirementInboxItem demo data for AIS Universitas project
+        // when AIS Universitas project blueprint is added to portfolio().
+
         $this->command?->info("AvatechDemoSeeder selesai: {$projectCount} demo project, " . count($users) . ' user, ' . count($clients) . ' client.');
     }
 

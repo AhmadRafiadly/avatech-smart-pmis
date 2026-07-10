@@ -789,6 +789,7 @@ class AiPlanner
         $momNotes    = self::str($context['mom_notes'] ?? '');
         $momSourceLabel = $momSummary !== '' ? 'Proper MoM Summary' : 'Raw MoM Notes';
         $momSourceText = $momSummary !== '' ? $momSummary : $momNotes;
+        $requirementIntakeContext = self::str($context['requirement_intake_context'] ?? '');
         $existingModules = self::listContext($context['existing_module_titles'] ?? []);
         $existingTasks = self::listContext($context['existing_task_titles'] ?? []);
         $requiresDesign = (bool) ($context['requires_design'] ?? false);
@@ -876,7 +877,8 @@ JSON;
             . '- Tanggal: ' . ($momDate !== '' ? $momDate : '-') . "\n"
             . '- Sumber utama: ' . $momSourceLabel . "\n"
             . '- Isi sumber utama: ' . ($momSourceText !== '' ? $momSourceText : '-') . "\n"
-            . '- Catatan mentah pendukung: ' . ($momSummary !== '' && $momNotes !== '' ? $momNotes : '-');
+            . '- Catatan mentah pendukung: ' . ($momSummary !== '' && $momNotes !== '' ? $momNotes : '-')
+            . ($requirementIntakeContext !== '' ? "\n\nKonteks Requirement Intake tambahan:\n" . $requirementIntakeContext : '');
 
         return $intro
             . "\n\nInstruksi output:\n- " . implode("\n- ", $rules)
@@ -894,6 +896,7 @@ JSON;
         $projectClient = self::str($context['project_client'] ?? '');
         $momDate = self::str($context['mom_date'] ?? '');
         $rawNotes = self::str($context['mom_notes'] ?? '');
+        $requirementIntakeContext = self::str($context['requirement_intake_context'] ?? '');
 
         $intro = 'Kamu adalah Smart-PMIS meeting analyst untuk proyek perangkat lunak. '
             . 'Rapikan notulensi mentah menjadi MoM formal yang terstruktur agar siap dipakai PM untuk WBS.';
@@ -980,6 +983,7 @@ JSON;
             . '- Client: ' . ($projectClient !== '' ? $projectClient : '-') . "\n"
             . '- Deskripsi proyek: ' . ($projectDesc !== '' ? $projectDesc : '-') . "\n"
             . '- Tanggal MoM tersimpan: ' . ($momDate !== '' ? $momDate : '-') . "\n"
+            . ($requirementIntakeContext !== '' ? "Konteks Requirement Intake tambahan:\n" . $requirementIntakeContext . "\n\n" : '')
             . "Notulensi mentah aktual:\n"
             . ($rawNotes !== '' ? $rawNotes : '-');
 
@@ -997,6 +1001,7 @@ JSON;
         $projectCode = self::str($context['project_code'] ?? '');
         $projectDesc = self::str($context['project_description'] ?? '');
         $projectClient = self::str($context['project_client'] ?? '');
+        $requirementIntakeContext = self::str($context['requirement_intake_context'] ?? '');
         $modules = self::listContext($context['module_context'] ?? []);
         $tasks = self::listContext($context['task_context'] ?? []);
         $existingQc = self::listContext($context['existing_qc_titles'] ?? []);
@@ -1055,7 +1060,8 @@ JSON;
             . '- Deskripsi: ' . ($projectDesc !== '' ? $projectDesc : '-') . "\n"
             . '- Modul WBS: ' . $modules . "\n"
             . '- Task implementasi: ' . $tasks . "\n"
-            . '- Test case yang sudah ada: ' . $existingQc;
+            . '- Test case yang sudah ada: ' . $existingQc
+            . ($requirementIntakeContext !== '' ? "\n\nKonteks Requirement Intake tambahan:\n" . $requirementIntakeContext : '');
 
         return $intro
             . "\n\nInstruksi output:\n- " . implode("\n- ", $rules)

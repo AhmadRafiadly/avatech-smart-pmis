@@ -14,6 +14,7 @@
         ['id' => 'overview',   'label' => 'Overview',         'count' => 0],
         ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => 14],
         ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => 1],
+        ['id' => 'intake',     'label' => 'Requirement Intake','count' => 0],
         ['id' => 'qc',         'label' => 'Quality Control',  'count' => 10],
     ];
 
@@ -106,6 +107,7 @@
             ['id' => 'overview',   'label' => 'Overview',         'count' => 0],
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => 0],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => 0],
+            ['id' => 'intake',     'label' => 'Requirement Intake','count' => 0],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => 0],
         ];
 
@@ -513,7 +515,7 @@
 
     {{-- =============== TABS =============== --}}
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-2 mb-6">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
             @foreach ($tabs as $idx => $t)
                 <button
                     type="button"
@@ -1360,8 +1362,15 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                         Otomatis rapikan MoM mentah Anda menggunakan AI agar siap diproses.
                     </p>
                     @if (($momFixerState['tone'] ?? 'muted') === 'ready' && $canEdit && ! $useReferenceProjectData)
-                        <form method="POST" action="{{ route('projects.ai-mom.fix', $project) }}" class="w-full" data-loading-form data-loading-label="Merapikan MoM...">
+                        <form method="POST" action="{{ route('projects.ai-mom.fix', $project) }}" class="w-full space-y-3" data-loading-form data-loading-label="Merapikan MoM...">
                             @csrf
+                            <label class="flex items-start gap-2 rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-left cursor-pointer">
+                                <input type="checkbox" name="use_requirement_intake" value="1" checked class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-400">
+                                <span class="text-[11.5px] text-slate-600 leading-relaxed">
+                                    <span class="font-semibold text-[#1E1B4B]">Gunakan Requirement Intake sebagai konteks AI</span><br>
+                                    Hanya ringkasan Requirement Intake yang dikirim ke AI. File upload/PDF/link tidak diparse.
+                                </span>
+                            </label>
                             <button
                                 type="submit"
                                 title="{{ $momFixerState['tooltip'] }}"
@@ -1585,6 +1594,13 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                     @endforeach
                                 </select>
                             </div>
+                            <label class="flex items-start gap-2 rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-left cursor-pointer">
+                                <input type="checkbox" name="use_requirement_intake" value="1" checked class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-400">
+                                <span class="text-[11.5px] text-slate-600 leading-relaxed">
+                                    <span class="font-semibold text-[#1E1B4B]">Gunakan Requirement Intake sebagai konteks AI</span><br>
+                                    Hanya ringkasan Requirement Intake yang dikirim ke AI. File upload/PDF/link tidak diparse.
+                                </span>
+                            </label>
                             <button
                                 type="submit"
                                 title="{{ $wbsBtnState['tooltip'] }}"
@@ -1622,6 +1638,211 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
             </div>
         </div>
     </div>
+
+    {{-- =============== REQUIREMENT INTAKE =============== --}}
+    @php
+        $intakeItems   = $dbIntakeItems   ?? [];
+        $intakeSummary = $dbIntakeSummary ?? ['total' => 0, 'draft' => 0, 'reviewed' => 0, 'used' => 0];
+        $intakeCanAdd  = $intakeCanContribute ?? false;
+        $intakeSources    = $intakeSourceOptions   ?? [];
+        $intakePriorities = $intakePriorityOptions ?? [];
+        $intakeStatuses   = $intakeStatusOptions   ?? [];
+    @endphp
+    <div id="intake" data-panel="intake" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+        <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
+            <div class="flex items-center gap-3">
+                <span class="pd-section-bar"></span>
+                <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Requirement Intake</h3>
+            </div>
+            <div class="text-[13px] text-slate-500 font-medium">
+                {{ $intakeSummary['total'] }} item &middot;
+                <span class="text-amber-600 font-semibold">{{ $intakeSummary['draft'] }} draft</span> &middot;
+                <span class="text-blue-600 font-semibold">{{ $intakeSummary['reviewed'] }} reviewed</span> &middot;
+                <span class="text-emerald-600 font-semibold">{{ $intakeSummary['used'] }} used</span>
+            </div>
+        </div>
+
+        @if (count($intakeItems) > 0)
+            <div class="divide-y divide-violet-100/50">
+                @foreach ($intakeItems as $ri)
+                    <div class="p-5 md:px-7 hover:bg-violet-50/30 transition">
+                        <div class="flex flex-wrap items-start justify-between gap-3 mb-2">
+                            <div class="min-w-0 flex-1">
+                                <h4 class="text-[14.5px] font-bold text-[#1E1B4B] leading-snug">{{ $ri['title'] }}</h4>
+                                <div class="flex flex-wrap items-center gap-2 mt-1.5">
+                                    @php
+                                        $srcColors = ['prd' => 'bg-indigo-100 text-indigo-700', 'process_document' => 'bg-cyan-100 text-cyan-700', 'meeting_note' => 'bg-amber-100 text-amber-700', 'client_brief' => 'bg-pink-100 text-pink-700', 'google_drive_link' => 'bg-green-100 text-green-700', 'other' => 'bg-slate-100 text-slate-600'];
+                                        $priColors = ['must' => 'bg-rose-100 text-rose-700', 'should' => 'bg-amber-100 text-amber-700', 'could' => 'bg-blue-100 text-blue-700', 'wont' => 'bg-slate-100 text-slate-500'];
+                                        $stColors  = ['draft' => 'bg-amber-100 text-amber-700', 'reviewed' => 'bg-blue-100 text-blue-700', 'used' => 'bg-emerald-100 text-emerald-700'];
+                                    @endphp
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold {{ $srcColors[$ri['source_type']] ?? $srcColors['other'] }}">{{ $ri['source_label'] }}</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold {{ $priColors[$ri['priority']] ?? $priColors['should'] }}">{{ $ri['priority_label'] }}</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold {{ $stColors[$ri['status']] ?? $stColors['draft'] }}">{{ $ri['status_label'] }}</span>
+                                </div>
+                            </div>
+                            <div class="text-right text-[11.5px] text-slate-400 whitespace-nowrap">
+                                <div>{{ $ri['created_by'] ?? '-' }}</div>
+                                <div>{{ $ri['created_at'] }}</div>
+                            </div>
+                        </div>
+                        <p class="text-[13px] text-slate-600 leading-relaxed mb-2">{{ Str::limit($ri['summary'], 300) }}</p>
+                        <div class="flex flex-wrap items-center gap-3 text-[12px]">
+                            @if ($ri['file_url'])
+                                <a href="{{ $ri['file_url'] }}" target="_blank" class="inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 font-medium">
+                                    <x-heroicon-o-paper-clip class="w-3.5 h-3.5" /> File
+                                </a>
+                            @endif
+                            @if ($ri['external_url'])
+                                <a href="{{ $ri['external_url'] }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 font-medium">
+                                    <x-heroicon-o-link class="w-3.5 h-3.5" /> Link
+                                </a>
+                            @endif
+                            @if ($intakeCanAdd && ! $useReferenceProjectData)
+                                <button
+                                    type="button"
+                                    data-intake-edit-trigger
+                                    data-intake-action="{{ route('projects.requirement-intake.update', [$project, $ri['id']]) }}"
+                                    data-intake-title="{{ $ri['title'] }}"
+                                    data-intake-source="{{ $ri['source_type'] }}"
+                                    data-intake-priority="{{ $ri['priority'] }}"
+                                    data-intake-status="{{ $ri['status'] }}"
+                                    data-intake-summary="{{ $ri['summary'] }}"
+                                    data-intake-url="{{ $ri['external_url'] }}"
+                                    class="inline-flex items-center gap-1 text-slate-500 hover:text-violet-700 font-medium cursor-pointer"
+                                >
+                                    <x-heroicon-o-pencil-square class="w-3.5 h-3.5" /> Edit
+                                </button>
+                                <form method="POST" action="{{ route('projects.requirement-intake.destroy', [$project, $ri['id']]) }}" class="inline" onsubmit="return confirm('Hapus requirement ini?')">
+                                    @csrf @method('DELETE')
+                                    <button type="submit" class="inline-flex items-center gap-1 text-rose-500 hover:text-rose-700 font-medium cursor-pointer">
+                                        <x-heroicon-o-trash class="w-3.5 h-3.5" /> Hapus
+                                    </button>
+                                </form>
+                            @endif
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @else
+            <div class="p-10 text-center text-[13px] font-medium text-slate-400">
+                Belum ada requirement intake. Tambahkan dokumen kebutuhan proyek di bawah.
+            </div>
+        @endif
+
+        @if ($intakeCanAdd && ! $useReferenceProjectData)
+            <div class="border-t border-violet-100/60 p-6 md:px-7">
+                <h4 class="text-[14px] font-bold text-[#1E1B4B] mb-4">Tambah Requirement</h4>
+                <form method="POST" action="{{ route('projects.requirement-intake.store', $project) }}" enctype="multipart/form-data" class="space-y-4">
+                    @csrf
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">Judul <span class="text-rose-500">*</span></label>
+                            <input type="text" name="title" required maxlength="255" value="{{ old('title') }}" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition" placeholder="Nama/judul requirement">
+                        </div>
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">Tipe Sumber</label>
+                            <select name="source_type" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition">
+                                @foreach ($intakeSources as $val => $lbl)
+                                    <option value="{{ $val }}" {{ old('source_type', 'other') === $val ? 'selected' : '' }}>{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">Prioritas</label>
+                            <select name="priority" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition">
+                                @foreach ($intakePriorities as $val => $lbl)
+                                    <option value="{{ $val }}" {{ old('priority', 'should') === $val ? 'selected' : '' }}>{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Ringkasan <span class="text-rose-500">*</span></label>
+                        <textarea name="summary" required rows="3" maxlength="10000" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition resize-y" placeholder="Ringkasan kebutuhan proyek (digunakan sebagai konteks AI)">{{ old('summary') }}</textarea>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">File (opsional, maks 10MB)</label>
+                            <input type="file" name="file" class="w-full text-[13px] file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-2 file:text-[12px] file:font-semibold file:text-violet-700 hover:file:bg-violet-100 transition">
+                        </div>
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">External URL (opsional)</label>
+                            <input type="url" name="external_url" value="{{ old('external_url') }}" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition" placeholder="https://...">
+                        </div>
+                    </div>
+                    <div class="flex justify-end">
+                        <button type="submit" class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-violet-600 text-white font-semibold text-[13px] shadow hover:bg-violet-700 transition cursor-pointer">
+                            <x-heroicon-o-plus class="w-4 h-4" /> Tambah Requirement
+                        </button>
+                    </div>
+                </form>
+            </div>
+        @endif
+    </div>
+
+    {{-- Requirement Intake Edit Modal --}}
+    @if ($intakeCanAdd && ! $useReferenceProjectData)
+        <div id="intake-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true">
+            <div data-intake-modal-overlay class="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
+            <div class="relative w-full max-w-xl rounded-2xl bg-white border border-violet-100 shadow-xl overflow-hidden">
+                <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-violet-100/70 bg-violet-50/40">
+                    <h3 class="text-[15px] font-extrabold tracking-tight text-[#1E1B4B]">Edit Requirement</h3>
+                    <button type="button" data-intake-modal-close class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white transition cursor-pointer inline-flex items-center justify-center" aria-label="Tutup">&times;</button>
+                </div>
+                <form id="intake-edit-form" method="POST" enctype="multipart/form-data" class="p-5 space-y-4">
+                    @csrf @method('PUT')
+                    <div>
+                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Judul</label>
+                        <input type="text" name="title" required maxlength="255" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition">
+                    </div>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">Tipe</label>
+                            <select name="source_type" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
+                                @foreach ($intakeSources as $val => $lbl)
+                                    <option value="{{ $val }}">{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">Prioritas</label>
+                            <select name="priority" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
+                                @foreach ($intakePriorities as $val => $lbl)
+                                    <option value="{{ $val }}">{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">Status</label>
+                            <select name="status" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
+                                @foreach ($intakeStatuses as $val => $lbl)
+                                    <option value="{{ $val }}">{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Ringkasan</label>
+                        <textarea name="summary" required rows="3" maxlength="10000" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] resize-y"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">File (opsional)</label>
+                            <input type="file" name="file" class="w-full text-[13px]">
+                        </div>
+                        <div>
+                            <label class="block text-[12px] font-semibold text-slate-600 mb-1">External URL</label>
+                            <input type="url" name="external_url" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]" placeholder="https://...">
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-3">
+                        <button type="button" data-intake-modal-close class="h-10 px-4 rounded-xl bg-slate-100 text-slate-600 font-semibold text-[13px] hover:bg-slate-200 transition cursor-pointer">Batal</button>
+                        <button type="submit" class="h-10 px-5 rounded-xl bg-violet-600 text-white font-semibold text-[13px] shadow hover:bg-violet-700 transition cursor-pointer">Simpan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endif
 
     {{-- =============== QUALITY CONTROL =============== --}}
     <div id="qc" data-panel="qc" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
@@ -1949,25 +2170,34 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 <div class="flex flex-col items-end gap-1.5 w-full sm:w-auto">
                     @if ($qcAiState['tone'] === 'ready')
                         @php $qcSourceModules = collect($modules)->filter(fn ($m) => ! empty($m['id']))->values(); @endphp
-                        <form method="POST" action="{{ route('projects.ai-test-cases.generate', $project) }}" class="flex flex-col sm:flex-row sm:items-end gap-2 w-full sm:w-auto" data-loading-form data-loading-label="Membuat Test Case...">
+                        <form method="POST" action="{{ route('projects.ai-test-cases.generate', $project) }}" class="flex flex-col gap-2 w-full sm:w-auto" data-loading-form data-loading-label="Membuat Test Case...">
                             @csrf
-                            <div class="text-left">
-                                <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Pilih sumber test case</label>
-                                <select name="source_module_id" class="w-full sm:w-64 h-10 rounded-xl border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                    <option value="">Semua modul/task</option>
-                                    @foreach ($qcSourceModules as $srcMod)
-                                        <option value="{{ $srcMod['id'] }}" @selected($loop->first)>{{ \Illuminate\Support\Str::limit($srcMod['name'] ?? 'Modul', 50, '…') }}</option>
-                                    @endforeach
-                                </select>
+                            <div class="flex flex-col sm:flex-row sm:items-end gap-2 w-full sm:w-auto">
+                                <div class="text-left">
+                                    <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Pilih sumber test case</label>
+                                    <select name="source_module_id" class="w-full sm:w-64 h-10 rounded-xl border border-violet-100 bg-white px-3 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                        <option value="">Semua modul/task</option>
+                                        @foreach ($qcSourceModules as $srcMod)
+                                            <option value="{{ $srcMod['id'] }}" @selected($loop->first)>{{ \Illuminate\Support\Str::limit($srcMod['name'] ?? 'Modul', 50, '…') }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                    <button
+                                    type="submit"
+                                    title="{{ $qcAiState['tooltip'] }}"
+                                    class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-violet-500 to-pink-500 text-white font-semibold text-[13px] shadow-lg shadow-violet-500/20 hover:scale-[1.02] transition cursor-pointer disabled:opacity-70 disabled:cursor-wait"
+                                >
+                                    <x-heroicon-o-sparkles class="w-4 h-4" />
+                                    <span data-loading-text>{{ $qcAiState['label'] }}</span>
+                                </button>
                             </div>
-                            <button
-                                type="submit"
-                                title="{{ $qcAiState['tooltip'] }}"
-                                class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-violet-500 to-pink-500 text-white font-semibold text-[13px] shadow-lg shadow-violet-500/20 hover:scale-[1.02] transition cursor-pointer disabled:opacity-70 disabled:cursor-wait"
-                            >
-                                <x-heroicon-o-sparkles class="w-4 h-4" />
-                                <span data-loading-text>{{ $qcAiState['label'] }}</span>
-                            </button>
+                            <label class="flex items-start gap-2 rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-left cursor-pointer">
+                                <input type="checkbox" name="use_requirement_intake" value="1" checked class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-400">
+                                <span class="text-[11.5px] text-slate-600 leading-relaxed">
+                                    <span class="font-semibold text-[#1E1B4B]">Gunakan Requirement Intake sebagai konteks AI</span><br>
+                                    Hanya ringkasan Requirement Intake yang dikirim ke AI. File upload/PDF/link tidak diparse.
+                                </span>
+                            </label>
                         </form>
                     @else
                         <button
@@ -2400,7 +2630,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
 
                 /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'qc'];
+                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'intake', 'qc'];
                 const setHash = (id) => {
                     if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
                 };
@@ -2470,6 +2700,45 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     };
                     modCb.addEventListener('change', sync);
                 });
+
+                /* ===== Requirement Intake edit modal ===== */
+                const intakeModal = document.getElementById('intake-edit-modal');
+                if (intakeModal) {
+                    const intakeForm = document.getElementById('intake-edit-form');
+                    const setIntake = (name, value) => {
+                        const el = intakeForm.querySelector('[name="' + name + '"]');
+                        if (el) el.value = value ?? '';
+                    };
+                    const openIntakeModal = (btn) => {
+                        intakeForm.setAttribute('action', btn.dataset.intakeAction || '');
+                        setIntake('title', btn.dataset.intakeTitle);
+                        setIntake('source_type', btn.dataset.intakeSource);
+                        setIntake('priority', btn.dataset.intakePriority);
+                        setIntake('status', btn.dataset.intakeStatus);
+                        setIntake('summary', btn.dataset.intakeSummary);
+                        setIntake('external_url', btn.dataset.intakeUrl);
+                        intakeModal.classList.remove('hidden');
+                        intakeModal.classList.add('flex');
+                        document.body.classList.add('overflow-hidden');
+                        const first = intakeForm.querySelector('[name="title"]');
+                        if (first) setTimeout(() => first.focus(), 30);
+                    };
+                    const closeIntakeModal = () => {
+                        intakeModal.classList.add('hidden');
+                        intakeModal.classList.remove('flex');
+                        document.body.classList.remove('overflow-hidden');
+                    };
+
+                    document.querySelectorAll('[data-intake-edit-trigger]').forEach(btn => {
+                        btn.addEventListener('click', () => openIntakeModal(btn));
+                    });
+                    intakeModal.querySelectorAll('[data-intake-modal-close], [data-intake-modal-overlay]').forEach(el => {
+                        el.addEventListener('click', closeIntakeModal);
+                    });
+                    document.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape' && ! intakeModal.classList.contains('hidden')) closeIntakeModal();
+                    });
+                }
 
                 /* ===== QC Edit modal (shared, satu dialog untuk semua baris) ===== */
                 const qcModal = document.getElementById('qc-edit-modal');

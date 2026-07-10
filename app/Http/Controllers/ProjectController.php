@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
+use App\Models\ProjectRequirementInboxItem;
 use App\Models\ProjectTask;
 use App\Models\ProjectTaskDesignDeliverable;
 use App\Models\TeamAssignment;
@@ -88,6 +89,30 @@ class ProjectController extends Controller
         'medium' => 'Medium',
         'high'   => 'High',
     ];
+
+    private const INTAKE_SOURCE_LABELS = [
+        'prd'               => 'PRD',
+        'process_document'  => 'Dokumen Proses',
+        'meeting_note'      => 'Catatan Rapat',
+        'client_brief'      => 'Client Brief',
+        'google_drive_link' => 'Google Drive Link',
+        'other'             => 'Lainnya',
+    ];
+
+    private const INTAKE_PRIORITY_LABELS = [
+        'must'   => 'Must',
+        'should' => 'Should',
+        'could'  => 'Could',
+        'wont'   => 'Won\'t',
+    ];
+
+    private const INTAKE_STATUS_LABELS = [
+        'draft'    => 'Draft',
+        'reviewed' => 'Reviewed',
+        'used'     => 'Used',
+    ];
+
+    private const INTAKE_MANAGER_ROLES = ['ceo_pm', 'sa_qa', 'admin', 'super_admin', 'developer'];
 
     private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
     private const QUICK_ASSIGN_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
@@ -304,6 +329,9 @@ class ProjectController extends Controller
             'qcTests' => fn ($query) => $query->with(['module:id,title', 'task:id,title', 'creator:id,name'])
                 ->orderBy('created_at')
                 ->orderBy('id'),
+            'requirementInboxItems' => fn ($query) => $query->with('creator:id,name')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -352,6 +380,12 @@ class ProjectController extends Controller
             'taskPriorityOptions' => self::TASK_PRIORITY_LABELS,
             'assigneeOptions' => $this->projectAssignedUsers($project),
             'quickAssignUsers' => $this->canQuickAssignTeam() ? $this->quickAssignUserRows($project) : [],
+            'dbIntakeItems'       => $this->projectIntakeRows($project),
+            'dbIntakeSummary'     => $this->projectIntakeSummary($project),
+            'intakeCanContribute' => $this->intakeCanContribute($project),
+            'intakeSourceOptions'   => self::INTAKE_SOURCE_LABELS,
+            'intakePriorityOptions' => self::INTAKE_PRIORITY_LABELS,
+            'intakeStatusOptions'   => self::INTAKE_STATUS_LABELS,
         ]);
     }
 
@@ -1118,6 +1152,10 @@ class ProjectController extends Controller
                 ->with('status', 'AI belum dikonfigurasi.');
         }
 
+        $validated = $request->validate([
+            'use_requirement_intake' => ['nullable', 'boolean'],
+        ]);
+
         $project->loadMissing('client');
 
         $result = AiPlanner::generateMomSummary([
@@ -1129,6 +1167,9 @@ class ProjectController extends Controller
             'project_client'      => (string) ($project->client?->name ?: ''),
             'mom_date'            => optional($latestMom->meeting_date)->format('Y-m-d'),
             'mom_notes'           => (string) $latestMom->notes,
+            'requirement_intake_context' => ! empty($validated['use_requirement_intake'])
+                ? $this->projectRequirementAiContext($project)
+                : '',
         ]);
 
         if (! ($result['ok'] ?? false)) {
@@ -1219,6 +1260,7 @@ class ProjectController extends Controller
         // WBS source (meeting history). Default to the latest MoM when none chosen.
         $validated = $request->validate([
             'source_mom_id' => ['nullable', Rule::exists('project_moms', 'id')->where('project_id', $project->id)],
+            'use_requirement_intake' => ['nullable', 'boolean'],
         ], [
             'source_mom_id.exists' => 'MoM sumber tidak ditemukan pada proyek ini.',
         ]);
@@ -1256,6 +1298,9 @@ class ProjectController extends Controller
             'mom_date'           => optional($sourceMom->meeting_date)->format('Y-m-d'),
             'mom_summary'        => (string) ($sourceMom->summary ?: ''),
             'mom_notes'          => (string) $sourceMom->notes,
+            'requirement_intake_context' => ! empty($validated['use_requirement_intake'])
+                ? $this->projectRequirementAiContext($project)
+                : '',
         ];
 
         $result = AiPlanner::generateWbsDraft($context);
@@ -1478,6 +1523,7 @@ class ProjectController extends Controller
         // and no module exists, fall back to whole-project task context.
         $validated = $request->validate([
             'source_module_id' => ['nullable', Rule::exists('project_modules', 'id')->where('project_id', $project->id)],
+            'use_requirement_intake' => ['nullable', 'boolean'],
         ], [
             'source_module_id.exists' => 'Modul sumber tidak ditemukan pada proyek ini.',
         ]);
@@ -1537,6 +1583,9 @@ class ProjectController extends Controller
             'module_context'      => $moduleContext,
             'task_context'        => $taskContext,
             'existing_qc_titles'  => $project->qcTests->pluck('title')->filter()->values()->all(),
+            'requirement_intake_context' => ! empty($validated['use_requirement_intake'])
+                ? $this->projectRequirementAiContext($project)
+                : '',
         ];
 
         $result = AiPlanner::generateTestCaseDraft($context);
@@ -1854,6 +1903,120 @@ class ProjectController extends Controller
         return redirect()
             ->to(route('projects.show', $project) . '#qc')
             ->with('status', 'Test case "' . $title . '" berhasil dihapus.');
+    }
+
+    /* ===================== Requirement Intake ===================== */
+
+    public function storeRequirementIntake(Request $request, Project $project)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($this->intakeCanContribute($project), 403);
+
+        $validated = $this->validateRequirementIntake($request);
+
+        $filePath = null;
+        if ($request->hasFile('file')) {
+            $filePath = $request->file('file')->store('project-requirements/' . $project->id, 'public');
+        }
+
+        $item = $project->requirementInboxItems()->create([
+            'created_by'   => $request->user()?->id,
+            'title'        => $validated['title'],
+            'source_type'  => $validated['source_type'],
+            'priority'     => $validated['priority'],
+            'status'       => 'draft',
+            'summary'      => $validated['summary'],
+            'file_path'    => $filePath,
+            'external_url' => $validated['external_url'] ?? null,
+        ]);
+
+        AuditLogger::log(
+            'requirement_intake_created',
+            'Project Master',
+            'Menambah Requirement Intake <strong>' . e($item->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $item,
+            null,
+            ['project_id' => $project->id, 'item_id' => $item->id, 'source_type' => $item->source_type, 'priority' => $item->priority],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#intake')
+            ->with('status', 'Requirement "' . $item->title . '" berhasil ditambahkan.');
+    }
+
+    public function updateRequirementIntake(Request $request, Project $project, ProjectRequirementInboxItem $intake)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $intake->project_id === (int) $project->id, 404);
+        abort_unless($this->intakeCanContribute($project), 403);
+
+        $validated = $this->validateRequirementIntake($request);
+
+        $old = ['status' => $intake->status, 'priority' => $intake->priority, 'source_type' => $intake->source_type];
+
+        if ($request->hasFile('file')) {
+            if ($intake->file_path) {
+                Storage::disk('public')->delete($intake->file_path);
+            }
+            $intake->file_path = $request->file('file')->store('project-requirements/' . $project->id, 'public');
+        }
+
+        $intake->fill([
+            'title'        => $validated['title'],
+            'source_type'  => $validated['source_type'],
+            'priority'     => $validated['priority'],
+            'status'       => $validated['status'] ?? $intake->status,
+            'summary'      => $validated['summary'],
+            'external_url' => $validated['external_url'] ?? null,
+        ]);
+        $intake->save();
+
+        AuditLogger::log(
+            'requirement_intake_updated',
+            'Project Master',
+            'Memperbarui Requirement Intake <strong>' . e($intake->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+            $intake,
+            $old,
+            ['project_id' => $project->id, 'item_id' => $intake->id, 'status' => $intake->status, 'priority' => $intake->priority],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#intake')
+            ->with('status', 'Requirement "' . $intake->title . '" berhasil diperbarui.');
+    }
+
+    public function destroyRequirementIntake(Request $request, Project $project, ProjectRequirementInboxItem $intake)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $intake->project_id === (int) $project->id, 404);
+        abort_unless($this->intakeCanContribute($project), 403);
+
+        $title = $intake->title;
+
+        if ($intake->file_path) {
+            Storage::disk('public')->delete($intake->file_path);
+        }
+
+        AuditLogger::log(
+            'requirement_intake_deleted',
+            'Project Master',
+            'Menghapus Requirement Intake <strong>' . e($title) . '</strong> dari proyek <strong>' . e($project->name) . '</strong>',
+            $project,
+            ['project_id' => $project->id, 'item_id' => $intake->id, 'title' => $title],
+            null,
+        );
+
+        $intake->delete();
+
+        return redirect()
+            ->to(route('projects.show', $project) . '#intake')
+            ->with('status', 'Requirement "' . $title . '" berhasil dihapus.');
     }
 
     /* ===================== PDF Exports ===================== */
@@ -2512,11 +2675,13 @@ class ProjectController extends Controller
         $taskTotal = $project->relationLoaded('tasks') ? $project->tasks->count() : $project->tasks()->count();
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
         $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
+        $intakeTotal = $project->relationLoaded('requirementInboxItems') ? $project->requirementInboxItems->count() : $project->requirementInboxItems()->count();
 
         return [
             ['id' => 'overview',   'label' => 'Overview',         'count' => $moduleTotal],
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $taskTotal],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
+            ['id' => 'intake',     'label' => 'Requirement Intake','count' => $intakeTotal],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
         ];
     }
@@ -2533,6 +2698,124 @@ class ProjectController extends Controller
             'failed'  => (int) ($by['failed']  ?? 0),
             'retest'  => (int) ($by['retest']  ?? 0),
         ];
+    }
+
+    /* ---- Requirement Intake helpers ---- */
+
+    private function intakeCanContribute(Project $project): bool
+    {
+        $role = auth()->user()?->roles?->first()?->name;
+        if (in_array($role, self::INTAKE_MANAGER_ROLES, true)) {
+            return true;
+        }
+        if (! in_array($role, self::OPERATIONAL_ROLES, true)) {
+            return false;
+        }
+
+        return TeamAssignment::query()
+            ->where('user_id', auth()->id())
+            ->where('project_id', $project->id)
+            ->exists();
+    }
+
+    private function validateRequirementIntake(Request $request): array
+    {
+        return $request->validate([
+            'title'        => ['required', 'string', 'max:255'],
+            'source_type'  => ['required', Rule::in(ProjectRequirementInboxItem::SOURCE_TYPES)],
+            'priority'     => ['required', Rule::in(ProjectRequirementInboxItem::PRIORITIES)],
+            'status'       => ['nullable', Rule::in(ProjectRequirementInboxItem::STATUSES)],
+            'summary'      => ['required', 'string', 'max:10000'],
+            'external_url' => ['nullable', 'url', 'max:1000'],
+            'file'         => ['nullable', 'file', 'max:10240'],
+        ], [
+            'title.required'   => 'Judul requirement wajib diisi.',
+            'summary.required' => 'Ringkasan wajib diisi.',
+            'source_type.in'   => 'Tipe sumber tidak valid.',
+            'priority.in'      => 'Prioritas tidak valid.',
+            'external_url.url' => 'URL harus valid.',
+            'file.max'         => 'File maksimal 10MB.',
+        ]);
+    }
+
+    private function projectIntakeRows(Project $project): array
+    {
+        $col = $project->relationLoaded('requirementInboxItems')
+            ? $project->requirementInboxItems
+            : $project->requirementInboxItems()->with('creator:id,name')->orderByDesc('created_at')->get();
+
+        return $col->map(function (ProjectRequirementInboxItem $item) {
+            return [
+                'id'            => $item->id,
+                'title'         => $item->title,
+                'source_type'   => $item->source_type,
+                'source_label'  => self::INTAKE_SOURCE_LABELS[$item->source_type] ?? $item->source_type,
+                'priority'      => $item->priority,
+                'priority_label'=> self::INTAKE_PRIORITY_LABELS[$item->priority] ?? $item->priority,
+                'status'        => $item->status,
+                'status_label'  => self::INTAKE_STATUS_LABELS[$item->status] ?? $item->status,
+                'summary'       => $item->summary,
+                'file_path'     => $item->file_path,
+                'file_url'      => $item->file_path ? Storage::disk('public')->url($item->file_path) : null,
+                'external_url'  => $item->external_url,
+                'created_by'    => $item->creator?->name,
+                'created_at'    => AppTime::diff($item->created_at),
+            ];
+        })->all();
+    }
+
+    private function projectIntakeSummary(Project $project): array
+    {
+        $col = $project->relationLoaded('requirementInboxItems')
+            ? $project->requirementInboxItems
+            : $project->requirementInboxItems()->get(['status']);
+        $by = $col->countBy('status');
+
+        return [
+            'total'    => (int) $col->count(),
+            'draft'    => (int) ($by['draft']    ?? 0),
+            'reviewed' => (int) ($by['reviewed'] ?? 0),
+            'used'     => (int) ($by['used']     ?? 0),
+        ];
+    }
+
+    private function projectRequirementAiContext(Project $project): string
+    {
+        $items = $project->relationLoaded('requirementInboxItems')
+            ? $project->requirementInboxItems
+            : $project->requirementInboxItems()->get(['title', 'source_type', 'priority', 'status', 'summary']);
+
+        $preferred = $items
+            ->filter(fn (ProjectRequirementInboxItem $item) => in_array($item->status, ['used', 'reviewed'], true))
+            ->values();
+
+        $selected = $preferred->isNotEmpty()
+            ? $preferred
+            : $items->filter(fn (ProjectRequirementInboxItem $item) => trim((string) $item->summary) !== '')->values();
+
+        $lines = $selected
+            ->filter(fn (ProjectRequirementInboxItem $item) => trim((string) $item->summary) !== '')
+            ->take(8)
+            ->map(function (ProjectRequirementInboxItem $item) {
+                $source = self::INTAKE_SOURCE_LABELS[$item->source_type] ?? $item->source_type;
+                $priority = self::INTAKE_PRIORITY_LABELS[$item->priority] ?? $item->priority;
+                $title = trim((string) $item->title);
+                $summary = trim(preg_replace('/\s+/', ' ', (string) $item->summary));
+
+                return '- [' . strtoupper((string) $item->status) . '] '
+                    . ($title !== '' ? $title . ' — ' : '')
+                    . $summary
+                    . ' (Sumber: ' . $source . '; Prioritas: ' . $priority . ')';
+            })
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($lines === []) {
+            return '';
+        }
+
+        return "Requirement Intake Summary:\n" . implode("\n", $lines);
     }
 
     private function projectQcTestRows(Project $project): array

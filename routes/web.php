@@ -99,6 +99,9 @@ Route::middleware('auth')->group(function () {
     Route::patch('/projects/{project}/qc/{qc}', [ProjectController::class, 'updateQcTest'])->name('projects.qc.update');
     Route::put('/projects/{project}/qc/{qc}', [ProjectController::class, 'editQcTest'])->name('projects.qc.edit');
     Route::delete('/projects/{project}/qc/{qc}', [ProjectController::class, 'destroyQcTest'])->name('projects.qc.destroy');
+    Route::post('/projects/{project}/requirement-intake', [ProjectController::class, 'storeRequirementIntake'])->name('projects.requirement-intake.store');
+    Route::put('/projects/{project}/requirement-intake/{intake}', [ProjectController::class, 'updateRequirementIntake'])->name('projects.requirement-intake.update');
+    Route::delete('/projects/{project}/requirement-intake/{intake}', [ProjectController::class, 'destroyRequirementIntake'])->name('projects.requirement-intake.destroy');
     Route::get('/projects/{project}/export/wbs.pdf',       [ProjectController::class, 'exportWbsPdf'])->name('projects.export.wbs');
     Route::get('/projects/{project}/export/test-cases.pdf',[ProjectController::class, 'exportTestCasesPdf'])->name('projects.export.test-cases');
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
