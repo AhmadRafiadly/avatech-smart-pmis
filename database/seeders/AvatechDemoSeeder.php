@@ -12,6 +12,7 @@ use App\Models\ProjectQcTest;
 use App\Models\ProjectTask;
 use App\Models\ProjectTaskDesignDeliverable;
 use App\Models\TeamAssignment;
+use App\Models\TestingEvidence;
 use App\Models\User;
 use App\Support\AppTime;
 use Illuminate\Database\Seeder;
@@ -76,6 +77,8 @@ class AvatechDemoSeeder extends Seeder
             $this->seedProject($blueprint, $users, $clients);
             $projectCount++;
         }
+
+        $this->seedTestingEvidence();
 
         // TODO: Seed ProjectRequirementInboxItem demo data for AIS Universitas project
         // when AIS Universitas project blueprint is added to portfolio().
@@ -979,6 +982,59 @@ class AvatechDemoSeeder extends Seeder
     /* ===================================================================
      |  HELPERS
      * =================================================================== */
+
+    private function seedTestingEvidence(): void
+    {
+        $rows = [
+            [
+                'category' => 'Black-Box Testing',
+                'title' => 'Rekap Final Black-Box Sidang',
+                'total_scenarios' => 12,
+                'passed_scenarios' => 12,
+                'failed_scenarios' => 0,
+                'result_status' => 'Lulus',
+                'tested_at' => '2026-07-10',
+                'notes' => 'Seluruh skenario black-box utama berjalan sesuai hasil yang diharapkan pada build sidang final.',
+            ],
+            [
+                'category' => 'UAT Terbatas',
+                'title' => 'Rekap UAT Terbatas Pengguna Internal',
+                'total_scenarios' => 5,
+                'passed_scenarios' => 5,
+                'failed_scenarios' => 0,
+                'result_status' => 'Diterima',
+                'tested_at' => '2026-07-10',
+                'notes' => 'User terbatas menerima alur demo inti: project detail, AI planning, QC, dan audit trail.',
+            ],
+            [
+                'category' => 'Validasi Keluaran LLM',
+                'title' => 'Validasi Draft AI untuk MoM, WBS, dan Test Case',
+                'total_scenarios' => 6,
+                'passed_scenarios' => 6,
+                'failed_scenarios' => 0,
+                'result_status' => 'Valid',
+                'tested_at' => '2026-07-10',
+                'notes' => 'Seluruh keluaran AI yang diuji masih berupa draft dan lolos validasi reviewer manusia sebelum apply.',
+            ],
+            [
+                'category' => 'TestSprite',
+                'title' => 'Rekap Otomasi TestSprite',
+                'total_scenarios' => 15,
+                'passed_scenarios' => 15,
+                'failed_scenarios' => 0,
+                'result_status' => 'Lulus',
+                'tested_at' => '2026-07-10',
+                'notes' => 'Seluruh skenario otomasi TestSprite yang dijadikan evidence sidang berhasil lulus.',
+            ],
+        ];
+
+        foreach ($rows as $row) {
+            TestingEvidence::updateOrCreate(
+                ['category' => $row['category'], 'title' => $row['title']],
+                $row,
+            );
+        }
+    }
 
     private function computeProgress(Project $project): int
     {

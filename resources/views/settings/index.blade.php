@@ -166,6 +166,26 @@
                     </div>
                 @endif
 
+                @if (\Illuminate\Support\Facades\Route::has('testing-evidence.index'))
+                    <div class="bg-violet-50/70 border border-violet-200 rounded-2xl p-6 mb-5 flex items-start justify-between gap-4 flex-wrap">
+                        <div class="flex items-start gap-4 min-w-0">
+                            <div class="w-11 h-11 rounded-xl bg-white text-violet-700 flex items-center justify-center border border-violet-100 flex-shrink-0">
+                                <x-heroicon-o-beaker class="w-5 h-5" />
+                            </div>
+                            <div class="min-w-0">
+                                <h3 class="text-[15px] font-bold text-[#1E1B4B]">Testing Evidence</h3>
+                                <p class="text-[12.5px] text-slate-500 mt-1 max-w-xl">
+                                    Tampilkan ringkasan Black-Box, UAT, Validasi LLM, dan TestSprite sebagai evidence sidang final.
+                                </p>
+                            </div>
+                        </div>
+                        <a href="{{ route('testing-evidence.index') }}" class="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-white border border-violet-200 text-violet-700 text-[12.5px] font-semibold hover:border-violet-400 transition">
+                            <x-heroicon-o-arrow-top-right-on-square class="w-4 h-4" />
+                            Buka Testing Evidence
+                        </a>
+                    </div>
+                @endif
+
                 <div class="hidden bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-7">
                     <h3 class="text-[16px] font-bold text-[#1E1B4B] mb-1">Tampilan</h3>
                     <p class="text-[13px] text-slate-500 mb-5">Personalisasi tampilan dan kepadatan layout.</p>

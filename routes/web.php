@@ -10,6 +10,7 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SystemHealthController;
 use App\Http\Controllers\TeamController;
+use App\Http\Controllers\TestingEvidenceController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login');
@@ -105,6 +106,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects/{project}/export/wbs.pdf',       [ProjectController::class, 'exportWbsPdf'])->name('projects.export.wbs');
     Route::get('/projects/{project}/export/test-cases.pdf',[ProjectController::class, 'exportTestCasesPdf'])->name('projects.export.test-cases');
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
+    Route::get('/testing-evidence', [TestingEvidenceController::class, 'index'])->name('testing-evidence.index');
+    Route::post('/testing-evidence', [TestingEvidenceController::class, 'store'])->name('testing-evidence.store');
+    Route::delete('/testing-evidence/{evidence}', [TestingEvidenceController::class, 'destroy'])->name('testing-evidence.destroy');
     Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
     Route::get('/audit/export.csv', [AuditController::class, 'exportCsv'])->name('audit.export');
     Route::get('/audit/report', [AuditController::class, 'report'])->name('audit.report');
