@@ -1174,7 +1174,9 @@ class ProjectController extends Controller
 
         if (! ($result['ok'] ?? false)) {
             return redirect()->to($backUrl)
-                ->with('status', 'AI MoM Fixer gagal: ' . ($result['error'] ?? 'tidak diketahui.'));
+                ->with('status', 'Layanan AI sementara belum dapat memproses permintaan. Silakan coba beberapa saat lagi atau lanjutkan pengisian data secara manual.')
+                ->with('status_title', 'Layanan AI belum tersedia')
+                ->with('status_tone', 'warning');
         }
 
         $formatted = trim((string) ($result['data']['formatted'] ?? ''));
@@ -1307,7 +1309,9 @@ class ProjectController extends Controller
 
         if (! ($result['ok'] ?? false)) {
             return redirect()->to($backUrl)
-                ->with('status', 'Generator AI gagal: ' . ($result['error'] ?? 'tidak diketahui.'));
+                ->with('status', 'Layanan AI sementara belum dapat memproses permintaan. Silakan coba beberapa saat lagi atau lanjutkan pengisian data secara manual.')
+                ->with('status_title', 'Layanan AI belum tersedia')
+                ->with('status_tone', 'warning');
         }
 
         $modules = $result['data']['modules'] ?? [];
@@ -1592,7 +1596,9 @@ class ProjectController extends Controller
 
         if (! ($result['ok'] ?? false)) {
             return redirect()->to($backUrl)
-                ->with('status', 'Generator AI gagal: ' . ($result['error'] ?? 'tidak diketahui.'));
+                ->with('status', 'Layanan AI sementara belum dapat memproses permintaan. Silakan coba beberapa saat lagi atau lanjutkan pengisian data secara manual.')
+                ->with('status_title', 'Layanan AI belum tersedia')
+                ->with('status_tone', 'warning');
         }
 
         $testCases = $result['data']['test_cases'] ?? [];

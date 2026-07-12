@@ -436,6 +436,19 @@
         @endif
     </section>
 
+    @if (session('status_tone') === 'warning' && session('status'))
+        <section class="mb-6 rounded-2xl border border-amber-200 bg-amber-50/90 px-5 py-4">
+            <div class="flex items-start gap-3">
+                <x-heroicon-o-exclamation-triangle class="w-5 h-5 text-amber-700 mt-0.5 flex-shrink-0" />
+                <div>
+                    <div class="text-[13px] font-bold text-amber-900">{{ session('status_title', 'Layanan AI belum tersedia') }}</div>
+                    <p class="text-[13px] leading-relaxed text-amber-800">{{ session('status') }}</p>
+                    <p class="mt-1 text-[11.5px] text-amber-700">Detail teknis disimpan sebagai metadata pada AI Monitor.</p>
+                </div>
+            </div>
+        </section>
+    @endif
+
     {{-- =============== STITCH-STYLE STEPPER =============== --}}
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-10 mb-8 relative overflow-hidden">
         <div class="relative flex items-start justify-between">

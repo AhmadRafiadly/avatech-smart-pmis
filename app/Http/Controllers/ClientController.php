@@ -138,7 +138,7 @@ class ClientController extends Controller
         $result = AiPlanner::generateClientWhatsappDraft($this->clientDraftContext($client));
         if (! ($result['ok'] ?? false)) {
             return response()->json([
-                'message' => $result['error'] ?? 'AI gagal menghasilkan respons. Coba ulangi beberapa saat lagi.',
+                'message' => 'Layanan AI sementara belum dapat memproses permintaan. Silakan coba beberapa saat lagi atau lanjutkan pengisian data secara manual.',
                 'fallback' => $this->insights->clientWhatsappDraft($client),
             ], 422);
         }
@@ -163,7 +163,7 @@ class ClientController extends Controller
         $result = AiPlanner::generateClientEmailDraft($this->clientDraftContext($client));
         if (! ($result['ok'] ?? false)) {
             return response()->json([
-                'message' => $result['error'] ?? 'AI gagal menghasilkan respons. Coba ulangi beberapa saat lagi.',
+                'message' => 'Layanan AI sementara belum dapat memproses permintaan. Silakan coba beberapa saat lagi atau lanjutkan pengisian data secara manual.',
                 'fallback' => $this->insights->clientEmailDraft($client),
             ], 422);
         }

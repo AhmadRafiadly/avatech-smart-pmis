@@ -952,6 +952,32 @@ class AvatechDemoSeeder extends Seeder
             $rows[] = ['feature' => 'test_case_generator', 'provider' => 'groq', 'model' => 'llama-3.1-70b-versatile', 'status' => 'success', 'fallback' => ['gemini_failed', 'groq'], 'pt' => 1140, 'ct' => 500, 'lat' => 1890, 'at' => $now->copy()->subDays(3)];
         }
 
+        $rows[] = [
+            'feature' => 'fallback_diagnostic',
+            'provider' => 'groq',
+            'model' => 'llama3-8b-8192',
+            'status' => 'success',
+            'fallback' => ['gemini_failed', 'groq'],
+            'pt' => 150,
+            'ct' => 50,
+            'lat' => 1250,
+            'at' => $now->copy()->subDays(1),
+            'error' => 'Pemeriksaan Operasional: simulasi kegagalan provider utama Gemini. Fallback ke Groq berhasil.',
+        ];
+
+        $rows[] = [
+            'feature' => 'fallback_diagnostic',
+            'provider' => 'openrouter',
+            'model' => 'openrouter/auto',
+            'status' => 'success',
+            'fallback' => ['gemini_failed', 'groq_failed', 'openrouter'],
+            'pt' => 200,
+            'ct' => 60,
+            'lat' => 1680,
+            'at' => $now->copy()->subHours(6),
+            'error' => 'Pemeriksaan Operasional: simulasi kegagalan provider utama Gemini dan Groq. Fallback ke OpenRouter berhasil.',
+        ];
+
         foreach ($rows as $row) {
             $log = AiRequestLog::firstOrNew([
                 'project_id' => $project->id,
@@ -969,7 +995,7 @@ class AvatechDemoSeeder extends Seeder
                 'completion_tokens' => $row['ct'],
                 'total_tokens'      => $row['pt'] + $row['ct'],
                 'latency_ms'        => $row['lat'],
-                'error_message'     => null,
+                'error_message'     => $row['error'] ?? null,
             ]);
 
             $log->forceFill([
@@ -988,13 +1014,13 @@ class AvatechDemoSeeder extends Seeder
         $rows = [
             [
                 'category' => 'Black-Box Testing',
-                'title' => 'Rekap Final Black-Box Sidang',
+                'title' => 'Rekap Final Black-Box',
                 'total_scenarios' => 12,
                 'passed_scenarios' => 12,
                 'failed_scenarios' => 0,
                 'result_status' => 'Lulus',
                 'tested_at' => '2026-07-10',
-                'notes' => 'Seluruh skenario black-box utama berjalan sesuai hasil yang diharapkan pada build sidang final.',
+                'notes' => 'Seluruh skenario black-box utama berjalan sesuai hasil yang diharapkan pada build production final.',
             ],
             [
                 'category' => 'UAT Terbatas',
@@ -1024,7 +1050,7 @@ class AvatechDemoSeeder extends Seeder
                 'failed_scenarios' => 0,
                 'result_status' => 'Lulus',
                 'tested_at' => '2026-07-10',
-                'notes' => 'Seluruh skenario otomasi TestSprite yang dijadikan evidence sidang berhasil lulus.',
+                'notes' => 'Seluruh skenario otomasi TestSprite berhasil lulus.',
             ],
         ];
 

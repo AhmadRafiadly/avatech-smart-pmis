@@ -43,6 +43,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/executive', [ExecutiveController::class, 'index'])->name('executive.index');
         Route::get('/executive/insights', [ExecutiveController::class, 'insights'])->name('executive.insights');
         Route::get('/ai-monitor', [AiMonitorController::class, 'index'])->name('ai-monitor.index');
+        Route::post('/ai-monitor/check-providers', [AiMonitorController::class, 'checkProviders'])->name('ai-monitor.check-providers');
+        Route::post('/ai-monitor/fallback-diagnostic', [AiMonitorController::class, 'runFallbackDiagnostic'])->name('ai-monitor.fallback-diagnostic');
         Route::get('/system-health', [SystemHealthController::class, 'index'])->name('system-health.index');
         Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
         Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
