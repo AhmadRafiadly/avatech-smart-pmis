@@ -1020,7 +1020,7 @@ class AvatechDemoSeeder extends Seeder
                 'failed_scenarios' => 0,
                 'result_status' => 'Lulus',
                 'tested_at' => '2026-07-10',
-                'notes' => 'Seluruh skenario black-box utama berjalan sesuai hasil yang diharapkan pada build production final.',
+                'notes' => 'Seluruh skenario black-box utama berjalan sesuai hasil yang diharapkan pada rilis final.',
             ],
             [
                 'category' => 'UAT Terbatas',
@@ -1059,6 +1059,35 @@ class AvatechDemoSeeder extends Seeder
                 ['category' => $row['category'], 'title' => $row['title']],
                 $row,
             );
+        }
+
+        // Purge stale rows from earlier seeds (e.g. "Rekap Final Black-Box Sidang")
+        // that still carry thesis-only wording. This also removes the duplicate
+        // Black-Box row that previously made the summary read 24/24. Filtering in
+        // PHP keeps the match case-insensitive across DB drivers (SQLite/MySQL).
+        $thesisTerms = ['sidang', 'skripsi', 'dosen', 'thesis', 'final defense'];
+        $canonicalTitles = array_map(fn ($row) => $row['title'], $rows);
+
+        $stale = TestingEvidence::get(['id', 'title', 'notes'])
+            ->filter(function ($ev) use ($thesisTerms, $canonicalTitles) {
+                if (in_array($ev->title, $canonicalTitles, true)) {
+                    return false;
+                }
+
+                $haystack = mb_strtolower(($ev->title ?? '') . ' ' . ($ev->notes ?? ''));
+
+                foreach ($thesisTerms as $term) {
+                    if (str_contains($haystack, $term)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })
+            ->pluck('id');
+
+        if ($stale->isNotEmpty()) {
+            TestingEvidence::whereIn('id', $stale)->delete();
         }
     }
 

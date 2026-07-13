@@ -23,6 +23,12 @@ class TestingEvidenceController extends Controller
         $evidences = TestingEvidence::orderByDesc('tested_at')
             ->orderByDesc('id')
             ->get()
+            // Show only one canonical row per category (the latest) so stale
+            // duplicate rows never surface in the list, even before a re-seed.
+            ->groupBy('category')
+            ->map(fn ($group) => $group->first())
+            ->sortBy(fn ($ev) => array_search($ev->category, array_keys(self::CATEGORIES), true))
+            ->values()
             ->map(function ($ev) {
                 return [
                     'id' => $ev->id,
@@ -40,19 +46,37 @@ class TestingEvidenceController extends Controller
                 ];
             });
 
-        $summaries = TestingEvidence::get(['category', 'total_scenarios', 'passed_scenarios', 'failed_scenarios'])
-            ->groupBy('category')
-            ->map(function ($group, $category) {
+        $statusLabels = [
+            'Black-Box Testing' => 'Lulus',
+            'UAT Terbatas' => 'Diterima',
+            'Validasi Keluaran LLM' => 'Valid',
+            'TestSprite' => 'Lulus',
+        ];
+
+        $groupedEvidence = TestingEvidence::orderByDesc('tested_at')
+            ->orderByDesc('id')
+            ->get(['id', 'category', 'total_scenarios', 'passed_scenarios', 'failed_scenarios', 'tested_at'])
+            ->groupBy('category');
+
+        $summaries = collect(self::CATEGORIES)
+            ->keys()
+            ->map(function ($category) use ($groupedEvidence, $statusLabels) {
+                // Use the latest/final canonical evidence per category instead of
+                // summing every row — that keeps the summary correct (e.g. 12/12)
+                // even if older or duplicate rows still linger in the table.
+                $latest = $groupedEvidence->get($category, collect())->first();
+
                 return [
                     'category' => $category,
-                    'total' => $group->sum('total_scenarios'),
-                    'passed' => $group->sum('passed_scenarios'),
-                    'failed' => $group->sum('failed_scenarios'),
+                    'total' => (int) ($latest->total_scenarios ?? 0),
+                    'passed' => (int) ($latest->passed_scenarios ?? 0),
+                    'failed' => (int) ($latest->failed_scenarios ?? 0),
+                    'status' => $statusLabels[$category] ?? 'Tervalidasi',
                 ];
             });
 
         return view('testing-evidence.index', [
-            'title' => 'Testing Evidence',
+            'title' => 'QA Evidence',
             'evidences' => $evidences,
             'summaries' => $summaries,
             'categories' => self::CATEGORIES,

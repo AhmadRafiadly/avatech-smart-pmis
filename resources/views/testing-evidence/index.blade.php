@@ -10,12 +10,13 @@
 <x-layouts.authenticated :title="$title">
     <section class="mb-8 flex items-end justify-between gap-5 flex-wrap">
         <div>
+            <div class="text-[11px] font-bold tracking-[0.22em] uppercase text-violet-500 mb-3">Support Utility</div>
             <h1 class="text-[42px] leading-[1.05] font-bold tracking-tight text-[#1E1B4B]">
-                Testing
+                QA
                 <span class="bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#A855F7]">Evidence</span>
             </h1>
             <p class="mt-3 text-[15px] text-slate-500 max-w-2xl">
-                Bukti ringkas hasil pengujian untuk sidang final: Black-Box, UAT, Validasi LLM, dan TestSprite.
+                QA Evidence menampilkan ringkasan bukti pengujian sistem. Detail skenario dan hasil pengujian tetap dikelola pada dokumen pengujian dan lampiran.
             </p>
         </div>
         <div class="flex gap-2 flex-wrap">
@@ -39,16 +40,16 @@
                 <span class="absolute left-5 right-5 top-0 h-[3px] rounded-b-[4px]" style="background: {{ $style['bar'] }};"></span>
                 <div class="text-[12px] font-semibold text-slate-500 uppercase tracking-wider">{{ $sum['category'] }}</div>
                 <div class="mt-3 text-[28px] font-bold text-[#1E1B4B]">{{ $sum['passed'] }}/{{ $sum['total'] }}</div>
-                <p class="mt-1 text-[12.5px] text-slate-500">{{ $sum['failed'] }} gagal · {{ max(0, ($sum['total'] - $sum['failed'])) }} tervalidasi</p>
+                <p class="mt-1 text-[12.5px] text-slate-500">{{ $sum['passed'] }}/{{ $sum['total'] }} {{ $sum['status'] }} · {{ $sum['failed'] }} gagal</p>
             </article>
         @endforeach
     </section>
 
-    <section class="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-6 mb-8">
+    <section class="grid grid-cols-1 gap-6 mb-8">
         <article class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] overflow-hidden">
             <div class="px-6 py-5 border-b border-violet-100/70 bg-violet-50/40">
-                <h2 class="text-[18px] font-bold text-[#1E1B4B]">Daftar Evidence</h2>
-                <p class="mt-1 text-[12.5px] text-slate-500">Bukti hasil pengujian yang ditampilkan di dalam sistem tanpa menggantikan dokumen pengujian utama.</p>
+                <h2 class="text-[18px] font-bold text-[#1E1B4B]">Ringkasan QA Evidence</h2>
+                <p class="mt-1 text-[12.5px] text-slate-500">Utilitas support read-only untuk membaca status pengujian tanpa menggantikan dokumen pengujian utama.</p>
             </div>
             <div class="divide-y divide-violet-100/60">
                 @forelse ($evidences as $ev)
@@ -81,85 +82,17 @@
                                             <x-heroicon-o-link class="w-4 h-4" /> Link Bukti
                                         </a>
                                     @endif
-                                    <form method="POST" action="{{ route('testing-evidence.destroy', $ev['id']) }}" class="inline" onsubmit="return confirm('Hapus evidence ini?')">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-rose-600 hover:text-rose-800 transition cursor-pointer">
-                                            <x-heroicon-o-trash class="w-4 h-4" /> Hapus
-                                        </button>
-                                    </form>
+                                    <span class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-400">
+                                        <x-heroicon-o-lock-closed class="w-4 h-4" /> Read-only
+                                    </span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 @empty
-                    <div class="p-10 text-center text-[13px] text-slate-400">Belum ada data Testing Evidence.</div>
+                    <div class="p-10 text-center text-[13px] text-slate-400">Belum ada data QA Evidence.</div>
                 @endforelse
             </div>
-        </article>
-
-        <article class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
-            <h2 class="text-[18px] font-bold text-[#1E1B4B]">Tambah Evidence</h2>
-            <p class="mt-1 text-[12.5px] text-slate-500">Upload screenshot/PDF sederhana atau tautkan evidence eksternal bila diperlukan.</p>
-
-            <form method="POST" action="{{ route('testing-evidence.store') }}" enctype="multipart/form-data" class="mt-5 space-y-4">
-                @csrf
-                <div>
-                    <label class="block text-[12px] font-semibold text-slate-600 mb-1">Kategori</label>
-                    <select name="category" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition">
-                        @foreach ($categories as $key => $label)
-                            <option value="{{ $key }}">{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[12px] font-semibold text-slate-600 mb-1">Judul</label>
-                    <input type="text" name="title" required maxlength="255" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition" placeholder="Contoh: Final Black-Box Test Sidang">
-                </div>
-                <div class="grid grid-cols-3 gap-3">
-                    <div>
-                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Total</label>
-                        <input type="number" name="total_scenarios" min="0" required class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
-                    </div>
-                    <div>
-                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Lulus</label>
-                        <input type="number" name="passed_scenarios" min="0" required class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
-                    </div>
-                    <div>
-                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Gagal</label>
-                        <input type="number" name="failed_scenarios" min="0" required class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Status Hasil</label>
-                        <input type="text" name="result_status" required maxlength="50" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]" placeholder="Lulus / Diterima / Valid">
-                    </div>
-                    <div>
-                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Tanggal Uji</label>
-                        <input type="date" name="tested_at" required class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-[12px] font-semibold text-slate-600 mb-1">Catatan</label>
-                    <textarea name="notes" rows="3" maxlength="5000" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] resize-y" placeholder="Ringkasan hasil atau konteks pengujian"></textarea>
-                </div>
-                <div class="grid grid-cols-1 gap-3">
-                    <div>
-                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">File Bukti (opsional, maks 10MB)</label>
-                        <input type="file" name="file" class="w-full text-[13px] file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-2 file:text-[12px] file:font-semibold file:text-violet-700 hover:file:bg-violet-100 transition">
-                    </div>
-                    <div>
-                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">External URL (opsional)</label>
-                        <input type="url" name="evidence_url" maxlength="1000" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]" placeholder="https://...">
-                    </div>
-                </div>
-                <div class="flex justify-end">
-                    <button type="submit" class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-violet-600 text-white font-semibold text-[13px] shadow hover:bg-violet-700 transition cursor-pointer">
-                        <x-heroicon-o-plus class="w-4 h-4" /> Tambah Evidence
-                    </button>
-                </div>
-            </form>
         </article>
     </section>
 
@@ -167,7 +100,7 @@
         <div class="flex items-start gap-3">
             <x-heroicon-o-information-circle class="w-5 h-5 text-violet-700 mt-0.5 flex-shrink-0" />
             <p class="text-[12.5px] leading-relaxed text-violet-800">
-                Testing Evidence adalah bukti ringkas di dalam sistem untuk sidang final. Halaman ini tidak menggantikan dokumen pengujian utama, hanya merangkum hasil dan menyimpan tautan/file pendukung bila diperlukan.
+                QA Evidence menampilkan ringkasan bukti pengujian sistem. Detail skenario dan hasil pengujian tetap dikelola pada dokumen pengujian dan lampiran.
             </p>
         </div>
     </section>
