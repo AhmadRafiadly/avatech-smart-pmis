@@ -57,4 +57,9 @@ class Project extends Model
     {
         return $this->hasMany(ProjectRequirementInboxItem::class);
     }
+
+    public function taskDependencies(): HasMany
+    {
+        return $this->hasMany(ProjectTaskDependency::class);
+    }
 }

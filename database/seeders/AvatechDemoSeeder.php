@@ -10,6 +10,7 @@ use App\Models\ProjectMom;
 use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
 use App\Models\ProjectTask;
+use App\Models\ProjectTaskDependency;
 use App\Models\ProjectTaskDesignDeliverable;
 use App\Models\TeamAssignment;
 use App\Models\TestingEvidence;
@@ -641,6 +642,7 @@ class AvatechDemoSeeder extends Seeder
 
         $modules = $this->seedModules($project, $bp['modules'] ?? []);
         $tasks = $this->seedTasks($project, $modules, $bp['modules'] ?? [], $users);
+        $this->seedTaskDependencies($project, $tasks, $lead);
         $this->seedDeliverables($project, $tasks, $bp['deliverables'] ?? [], $users);
         $this->seedTeam($project, $bp['team'] ?? [], $users);
         $this->seedMoms($project, $bp['moms'] ?? [], $lead);
@@ -712,6 +714,31 @@ class AvatechDemoSeeder extends Seeder
         }
 
         return $tasks;
+    }
+
+    private function seedTaskDependencies(Project $project, array $tasks, ?User $creator): void
+    {
+        $ordered = collect($tasks)->values();
+        $pairs = $ordered->zip($ordered->slice(1))->filter(fn ($pair) => $pair[0] && $pair[1])->take(2);
+
+        foreach ($pairs as $pair) {
+            ProjectTaskDependency::updateOrCreate(
+                [
+                    'project_id' => $project->id,
+                    'predecessor_task_id' => $pair[0]->id,
+                    'successor_task_id' => $pair[1]->id,
+                ],
+                [
+                    'dependency_type' => 'finish_to_start',
+                    'notes' => 'Urutan kerja demo untuk membantu PM melihat task yang dapat berjalan paralel atau perlu menunggu.',
+                    'created_by' => $creator?->id,
+                    'task_id' => $pair[1]->id,
+                    'depends_on_task_id' => $pair[0]->id,
+                    'type' => 'finish_to_start',
+                    'created_by_user_id' => $creator?->id,
+                ],
+            );
+        }
     }
 
     /**

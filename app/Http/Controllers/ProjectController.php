@@ -10,6 +10,7 @@ use App\Models\ProjectModule;
 use App\Models\ProjectQcTest;
 use App\Models\ProjectRequirementInboxItem;
 use App\Models\ProjectTask;
+use App\Models\ProjectTaskDependency;
 use App\Models\ProjectTaskDesignDeliverable;
 use App\Models\TeamAssignment;
 use App\Models\User;
@@ -112,7 +113,7 @@ class ProjectController extends Controller
         'used'     => 'Used',
     ];
 
-    private const INTAKE_MANAGER_ROLES = ['ceo_pm', 'sa_qa', 'admin', 'super_admin', 'developer'];
+    private const INTAKE_MANAGER_ROLES = ['sa_qa'];
 
     private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
     private const QUICK_ASSIGN_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
@@ -324,6 +325,7 @@ class ProjectController extends Controller
                 'module',
                 'assignee',
                 'designDeliverables' => fn ($deliverables) => $deliverables->with('creator:id,name')->orderBy('id'),
+                'successorDependencies.predecessorTask:id,title,status,due_date',
             ])->orderBy('sort_order')->orderBy('id'),
             'moms' => fn ($query) => $query->with('creator:id,name')->orderByDesc('meeting_date')->orderByDesc('id'),
             'qcTests' => fn ($query) => $query->with(['module:id,title', 'task:id,title', 'creator:id,name'])
@@ -332,6 +334,9 @@ class ProjectController extends Controller
             'requirementInboxItems' => fn ($query) => $query->with('creator:id,name')
                 ->orderByDesc('created_at')
                 ->orderByDesc('id'),
+            'taskDependencies' => fn ($query) => $query->with(['predecessorTask:id,title,status,due_date', 'successorTask:id,title,status,due_date', 'creator:id,name'])
+                ->orderBy('created_at')
+                ->orderBy('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -386,6 +391,10 @@ class ProjectController extends Controller
             'intakeSourceOptions'   => self::INTAKE_SOURCE_LABELS,
             'intakePriorityOptions' => self::INTAKE_PRIORITY_LABELS,
             'intakeStatusOptions'   => self::INTAKE_STATUS_LABELS,
+            'taskDependencyRows' => $this->projectTaskDependencyRows($project),
+            'blockedTaskRows' => $this->blockedTaskRows($project),
+            'dependencyTaskOptions' => $project->tasks->map(fn (ProjectTask $task) => ['id' => $task->id, 'title' => $task->title])->values(),
+            'canManageDependencies' => $this->canManageDependencies($project),
         ]);
     }
 
@@ -774,6 +783,86 @@ class ProjectController extends Controller
         return redirect()
             ->to(route('projects.show', $project) . '#workspace')
             ->with('status', 'Task "' . $title . '" berhasil dihapus.');
+    }
+
+    public function storeTaskDependency(Request $request, Project $project)
+    {
+        abort_unless($this->canManageDependencies($project), 403);
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+
+        $validated = $request->validate([
+            'predecessor_task_id' => ['required', Rule::exists('project_tasks', 'id')->where('project_id', $project->id)],
+            'successor_task_id' => ['required', Rule::exists('project_tasks', 'id')->where('project_id', $project->id)],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'predecessor_task_id.required' => 'Task pendahulu wajib dipilih.',
+            'successor_task_id.required' => 'Task yang bergantung wajib dipilih.',
+        ]);
+
+        $predecessorId = (int) $validated['predecessor_task_id'];
+        $successorId = (int) $validated['successor_task_id'];
+
+        if ($predecessorId === $successorId) {
+            throw ValidationException::withMessages(['successor_task_id' => 'Task pendahulu dan task yang bergantung tidak boleh sama.']);
+        }
+
+        if ($project->taskDependencies()->where('predecessor_task_id', $predecessorId)->where('successor_task_id', $successorId)->exists()) {
+            throw ValidationException::withMessages(['successor_task_id' => 'Dependency ini sudah ada.']);
+        }
+
+        if ($this->wouldCreateDependencyCycle($project, $predecessorId, $successorId)) {
+            throw ValidationException::withMessages(['successor_task_id' => 'Dependency ini membentuk siklus. Periksa kembali urutan task.']);
+        }
+
+        $dependency = $project->taskDependencies()->create($this->taskDependencyPayload($predecessorId, $successorId, $validated['notes'] ?? null));
+
+        $dependency->load(['predecessorTask:id,title', 'successorTask:id,title']);
+
+        AuditLogger::log(
+            'task_dependency_created',
+            'Project Master',
+            'Menambah dependency task <strong>' . e($dependency->predecessorTask?->title) . '</strong> → <strong>' . e($dependency->successorTask?->title) . '</strong>',
+            $dependency,
+            null,
+            ['project_id' => $project->id, 'predecessor_task_id' => $predecessorId, 'successor_task_id' => $successorId],
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '?tab=dependencies#dependencies')
+            ->with('status', 'Dependency task berhasil ditambahkan.');
+    }
+
+    public function destroyTaskDependency(Project $project, ProjectTaskDependency $dependency)
+    {
+        abort_unless($this->canManageDependencies($project), 403);
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless($dependency->project_id === $project->id, 404);
+
+        $dependency->load(['predecessorTask:id,title', 'successorTask:id,title']);
+        $old = [
+            'project_id' => $project->id,
+            'predecessor_task_id' => $dependency->predecessor_task_id,
+            'successor_task_id' => $dependency->successor_task_id,
+        ];
+        $label = ($dependency->predecessorTask?->title ?? 'Task') . ' → ' . ($dependency->successorTask?->title ?? 'Task');
+        $dependency->delete();
+
+        AuditLogger::log(
+            'task_dependency_deleted',
+            'Project Master',
+            'Menghapus dependency task <strong>' . e($label) . '</strong>',
+            null,
+            $old,
+            null,
+        );
+
+        return redirect()
+            ->to(route('projects.show', $project) . '?tab=dependencies#dependencies')
+            ->with('status', 'Dependency task berhasil dihapus.');
     }
 
     public function updateTaskStatus(Request $request, Project $project, ProjectTask $task)
@@ -2682,12 +2771,15 @@ class ProjectController extends Controller
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
         $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
         $intakeTotal = $project->relationLoaded('requirementInboxItems') ? $project->requirementInboxItems->count() : $project->requirementInboxItems()->count();
+        $dependencyTotal = $project->relationLoaded('taskDependencies') ? $project->taskDependencies->count() : $project->taskDependencies()->count();
+        $blockedTotal = count($this->blockedTaskRows($project));
 
         return [
             ['id' => 'overview',   'label' => 'Overview',         'count' => $moduleTotal],
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $taskTotal],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
             ['id' => 'intake',     'label' => 'Requirement Intake','count' => $intakeTotal],
+            ['id' => 'dependencies', 'label' => 'Dependencies', 'count' => max($dependencyTotal, $blockedTotal)],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
         ];
     }
@@ -2711,9 +2803,6 @@ class ProjectController extends Controller
     private function intakeCanContribute(Project $project): bool
     {
         $role = auth()->user()?->roles?->first()?->name;
-        if (in_array($role, self::INTAKE_MANAGER_ROLES, true)) {
-            return true;
-        }
         if (! in_array($role, self::OPERATIONAL_ROLES, true)) {
             return false;
         }
@@ -2949,6 +3038,100 @@ class ProjectController extends Controller
         };
     }
 
+    private function projectTaskDependencyRows(Project $project): array
+    {
+        return $project->taskDependencies->map(function (ProjectTaskDependency $dependency) {
+            $predecessor = $dependency->predecessorTask;
+            $successor = $dependency->successorTask;
+
+            return [
+                'id' => $dependency->id,
+                'predecessor_title' => $predecessor?->title ?? 'Task tidak ditemukan',
+                'successor_title' => $successor?->title ?? 'Task tidak ditemukan',
+                'predecessor_done' => $predecessor ? $this->isDoneStatus($predecessor->status) : false,
+                'successor_due' => $successor?->due_date ? $this->formatDateId($successor->due_date) : null,
+                'predecessor_due' => $predecessor?->due_date ? $this->formatDateId($predecessor->due_date) : null,
+                'timeline_warning' => false,
+                'notes' => $dependency->notes,
+            ];
+        })->values()->all();
+    }
+
+    private function blockedTaskRows(Project $project): array
+    {
+        return $project->taskDependencies
+            ->filter(fn (ProjectTaskDependency $dependency) => $dependency->predecessorTask && $dependency->successorTask && ! $this->isDoneStatus($dependency->predecessorTask->status) && ! $this->isDoneStatus($dependency->successorTask->status))
+            ->map(fn (ProjectTaskDependency $dependency) => [
+                'task_title' => $dependency->successorTask->title,
+                'predecessor_title' => $dependency->predecessorTask->title,
+            ])
+            ->unique(fn (array $row) => $row['task_title'] . '|' . $row['predecessor_title'])
+            ->values()
+            ->all();
+    }
+
+    private function taskBlockedByDependencies(ProjectTask $task): bool
+    {
+        return $task->successorDependencies
+            ->contains(fn (ProjectTaskDependency $dependency) => $dependency->predecessorTask && ! $this->isDoneStatus($dependency->predecessorTask->status));
+    }
+
+    private function taskDependencyPayload(int $predecessorId, int $successorId, ?string $notes): array
+    {
+        return [
+            'predecessor_task_id' => $predecessorId,
+            'successor_task_id' => $successorId,
+            'dependency_type' => 'finish_to_start',
+            'notes' => $notes,
+            'created_by' => auth()->id(),
+            'task_id' => $successorId,
+            'depends_on_task_id' => $predecessorId,
+            'type' => 'finish_to_start',
+            'created_by_user_id' => auth()->id(),
+        ];
+    }
+
+    private function wouldCreateDependencyCycle(Project $project, int $predecessorId, int $successorId): bool
+    {
+        $edges = $project->taskDependencies()
+            ->get(['predecessor_task_id', 'successor_task_id'])
+            ->groupBy('predecessor_task_id')
+            ->map(fn ($rows) => $rows->pluck('successor_task_id')->map(fn ($id) => (int) $id)->all());
+
+        $edges[$predecessorId] = array_values(array_unique(array_merge($edges[$predecessorId] ?? [], [$successorId])));
+        $stack = [$successorId];
+        $seen = [];
+
+        while ($stack) {
+            $current = array_pop($stack);
+            if ($current === $predecessorId) {
+                return true;
+            }
+            if (isset($seen[$current])) {
+                continue;
+            }
+            $seen[$current] = true;
+            foreach ($edges[$current] ?? [] as $next) {
+                $stack[] = $next;
+            }
+        }
+
+        return false;
+    }
+
+    private function canManageDependencies(Project $project): bool
+    {
+        $role = auth()->user()?->roles?->first()?->name;
+        if (! in_array($role, self::OPERATIONAL_ROLES, true)) {
+            return false;
+        }
+
+        return TeamAssignment::query()
+            ->where('user_id', auth()->id())
+            ->where('project_id', $project->id)
+            ->exists();
+    }
+
     private function projectKanbanColumns(Project $project): array
     {
         $columnDefs = [
@@ -2992,6 +3175,7 @@ class ProjectController extends Controller
                 'can_edit_design_deliverables' => $this->canEditDesignDeliverables($task),
                 'status_locked' => filled($statusLockMessage),
                 'status_lock_message' => $statusLockMessage,
+                'is_blocked_by_dependency' => $this->taskBlockedByDependencies($task),
                 'design_deliverables' => $task->designDeliverables->map(function (ProjectTaskDesignDeliverable $deliverable) use ($task) {
                     $hasPdf = filled($deliverable->pdf_file_path) && Storage::disk('public')->exists($deliverable->pdf_file_path);
 

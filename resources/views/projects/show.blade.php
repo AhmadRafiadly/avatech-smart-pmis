@@ -15,6 +15,7 @@
         ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => 14],
         ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => 1],
         ['id' => 'intake',     'label' => 'Requirement Intake','count' => 0],
+        ['id' => 'dependencies', 'label' => 'Dependencies', 'count' => 0],
         ['id' => 'qc',         'label' => 'Quality Control',  'count' => 10],
     ];
 
@@ -108,6 +109,7 @@
             ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => 0],
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => 0],
             ['id' => 'intake',     'label' => 'Requirement Intake','count' => 0],
+            ['id' => 'dependencies', 'label' => 'Dependencies', 'count' => count($taskDependencyRows ?? [])],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => 0],
         ];
 
@@ -528,7 +530,7 @@
 
     {{-- =============== TABS =============== --}}
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-2 mb-6">
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
             @foreach ($tabs as $idx => $t)
                 <button
                     type="button"
@@ -895,6 +897,9 @@
                                     @endif
                                     @if (! empty($task['due']))
                                         <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">{{ $task['due'] }}</span>
+                                    @endif
+                                    @if (! empty($task['is_blocked_by_dependency']))
+                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-rose-50 text-rose-700">Blocked</span>
                                     @endif
                                     @if (! empty($task['is_design_deliverable']))
                                         <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-pink-50 text-pink-700">Design handover</span>
@@ -1857,6 +1862,123 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
     @endif
 
+    {{-- =============== DEPENDENCIES =============== --}}
+    <div id="dependencies" data-panel="dependencies" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+        <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
+            <div class="flex items-center gap-3">
+                <span class="pd-section-bar"></span>
+                <div>
+                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Dependencies</h3>
+                    <p class="mt-1 text-[12.5px] text-slate-500">Dependency membantu PM melihat task yang harus menunggu task pendahulu selesai. Sistem tidak mengubah due date otomatis.</p>
+                </div>
+            </div>
+        </div>
+
+        @if (! ($canManageDependencies ?? false))
+            <div class="mx-6 md:mx-7 mt-6 rounded-2xl border border-violet-100 bg-violet-50/50 px-5 py-4 text-[13px] font-medium text-violet-700">
+                Anda memiliki akses lihat saja pada dependency proyek ini.
+            </div>
+        @endif
+
+        <div class="grid grid-cols-1 xl:grid-cols-[0.95fr_1.05fr] gap-6 p-6 md:p-7">
+            <div class="space-y-5">
+                @if (($canManageDependencies ?? false) && ! $useReferenceProjectData)
+                    <div class="rounded-2xl border border-violet-100 bg-violet-50/30 p-5">
+                        <h4 class="text-[14px] font-bold text-[#1E1B4B] mb-4">Tambah Dependency</h4>
+                        <form method="POST" action="{{ route('projects.task-dependencies.store', $project) }}?tab=dependencies" class="space-y-4">
+                            @csrf
+                            <div>
+                                <label class="block text-[12px] font-semibold text-slate-600 mb-1">Task pendahulu</label>
+                                <select name="predecessor_task_id" required data-dependency-predecessor class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    <option value="">Pilih task</option>
+                                    @foreach (($dependencyTaskOptions ?? []) as $taskOption)
+                                        <option value="{{ $taskOption['id'] }}" @selected(old('predecessor_task_id') == $taskOption['id'])>{{ $taskOption['title'] }}</option>
+                                    @endforeach
+                                </select>
+                                @error('predecessor_task_id')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                            </div>
+                            <div>
+                                <label class="block text-[12px] font-semibold text-slate-600 mb-1">Task yang bergantung</label>
+                                <select name="successor_task_id" required data-dependency-successor class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                    <option value="">Pilih task</option>
+                                    @foreach (($dependencyTaskOptions ?? []) as $taskOption)
+                                        <option value="{{ $taskOption['id'] }}" @selected(old('successor_task_id') == $taskOption['id'])>{{ $taskOption['title'] }}</option>
+                                    @endforeach
+                                </select>
+                                @error('successor_task_id')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                            </div>
+                            <div>
+                                <label class="block text-[12px] font-semibold text-slate-600 mb-1">Notes</label>
+                                <textarea name="notes" rows="2" maxlength="1000" class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Opsional">{{ old('notes') }}</textarea>
+                                @error('notes')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
+                            </div>
+                            <div class="flex justify-end">
+                                <button type="submit" class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-violet-600 text-white font-semibold text-[13px] shadow hover:bg-violet-700 transition cursor-pointer">
+                                    <x-heroicon-o-plus class="w-4 h-4" /> Tambah Dependency
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                @endif
+
+                <div class="rounded-2xl border border-amber-100 bg-amber-50/40 p-5">
+                    <h4 class="text-[14px] font-bold text-[#1E1B4B] mb-3">Blocked Tasks</h4>
+                    <div class="space-y-3">
+                        @forelse (($blockedTaskRows ?? []) as $row)
+                            <div class="rounded-xl border border-amber-100 bg-white p-4">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-700">Blocked</span>
+                                    <span class="text-[13px] font-bold text-[#1E1B4B]">{{ $row['task_title'] }}</span>
+                                </div>
+                                <p class="text-[12.5px] text-slate-500">Menunggu task pendahulu selesai: <strong>{{ $row['predecessor_title'] }}</strong>.</p>
+                            </div>
+                        @empty
+                            <p class="text-[12.5px] text-slate-400">Tidak ada task yang blocked oleh dependency.</p>
+                        @endforelse
+                    </div>
+                </div>
+            </div>
+
+            <div class="rounded-2xl border border-violet-100 overflow-hidden">
+                <div class="px-5 py-4 bg-violet-50/50 border-b border-violet-100">
+                    <h4 class="text-[14px] font-bold text-[#1E1B4B]">Daftar Dependency</h4>
+                </div>
+                <div class="divide-y divide-violet-100/60">
+                    @forelse (($taskDependencyRows ?? []) as $dependency)
+                        <div class="p-5 flex items-start justify-between gap-4">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap mb-2">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-violet-50 text-violet-700">Finish-to-Start</span>
+                                    @if (! $dependency['predecessor_done'])
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-700">Blocked</span>
+                                    @endif
+                                </div>
+                                <p class="text-[14px] font-bold text-[#1E1B4B] leading-snug">{{ $dependency['predecessor_title'] }} → {{ $dependency['successor_title'] }}</p>
+                                @if ($dependency['notes'])
+                                    <p class="mt-2 text-[12.5px] text-slate-500 leading-relaxed">{{ $dependency['notes'] }}</p>
+                                @endif
+                                @if ($dependency['timeline_warning'])
+                                    <p class="mt-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-[12px] font-medium text-amber-700">Jadwal task ini dimulai sebelum task pendahulu selesai. Periksa kembali timeline atau dependency.</p>
+                                @endif
+                            </div>
+                            @if (($canManageDependencies ?? false) && ! $useReferenceProjectData)
+                                <form method="POST" action="{{ route('projects.task-dependencies.destroy', [$project, $dependency['id']]) }}?tab=dependencies" onsubmit="return confirm('Hapus dependency ini?')" class="shrink-0">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="inline-flex items-center gap-1 text-[12.5px] font-semibold text-rose-600 hover:text-rose-800 transition cursor-pointer">
+                                        <x-heroicon-o-trash class="w-4 h-4" /> Hapus
+                                    </button>
+                                </form>
+                            @endif
+                        </div>
+                    @empty
+                        <div class="p-8 text-center text-[13px] text-slate-400">Belum ada dependency antar task.</div>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- =============== QUALITY CONTROL =============== --}}
     <div id="qc" data-panel="qc" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
         <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
@@ -2643,7 +2765,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
 
                 /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'intake', 'qc'];
+                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'intake', 'dependencies', 'qc'];
                 const setHash = (id) => {
                     if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
                 };
@@ -2659,11 +2781,26 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 }));
 
                 const hashToTab = () => {
+                    const params = new URLSearchParams(window.location.search || '');
+                    const q = (params.get('tab') || '').trim();
                     const h = (window.location.hash || '').replace(/^#/, '').trim();
+                    if (q && TAB_IDS.includes(q)) return activate(q);
                     if (h && TAB_IDS.includes(h)) activate(h);
                 };
                 hashToTab();
                 window.addEventListener('hashchange', hashToTab);
+
+                const dependencyPredecessor = document.querySelector('[data-dependency-predecessor]');
+                const dependencySuccessor = document.querySelector('[data-dependency-successor]');
+                if (dependencyPredecessor && dependencySuccessor) {
+                    const syncDependencyOptions = () => {
+                        dependencyPredecessor.querySelectorAll('option').forEach(option => option.disabled = option.value !== '' && option.value === dependencySuccessor.value);
+                        dependencySuccessor.querySelectorAll('option').forEach(option => option.disabled = option.value !== '' && option.value === dependencyPredecessor.value);
+                    };
+                    dependencyPredecessor.addEventListener('change', syncDependencyOptions);
+                    dependencySuccessor.addEventListener('change', syncDependencyOptions);
+                    syncDependencyOptions();
+                }
 
                 /* === Kanban Filter Anggota === */
                 const kbnSelect = document.querySelector('[data-kanban-filter]');

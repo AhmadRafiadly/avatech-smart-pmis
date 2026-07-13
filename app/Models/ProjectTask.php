@@ -53,4 +53,14 @@ class ProjectTask extends Model
     {
         return $this->hasMany(ProjectTaskDesignDeliverable::class);
     }
+
+    public function predecessorDependencies(): HasMany
+    {
+        return $this->hasMany(ProjectTaskDependency::class, 'predecessor_task_id');
+    }
+
+    public function successorDependencies(): HasMany
+    {
+        return $this->hasMany(ProjectTaskDependency::class, 'successor_task_id');
+    }
 }

@@ -83,6 +83,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{project}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
     Route::put('/projects/{project}/tasks/{task}', [ProjectController::class, 'updateTask'])->name('projects.tasks.update');
     Route::delete('/projects/{project}/tasks/{task}', [ProjectController::class, 'destroyTask'])->name('projects.tasks.destroy');
+    Route::post('/projects/{project}/task-dependencies', [ProjectController::class, 'storeTaskDependency'])->name('projects.task-dependencies.store');
+    Route::delete('/projects/{project}/task-dependencies/{dependency}', [ProjectController::class, 'destroyTaskDependency'])->name('projects.task-dependencies.destroy');
     Route::patch('/projects/{project}/tasks/{task}/status', [ProjectController::class, 'updateTaskStatus'])->name('projects.tasks.status');
     Route::patch('/projects/{project}/tasks/{task}/design-deliverable', [ProjectController::class, 'updateDesignDeliverable'])->name('projects.tasks.design-deliverable');
     Route::post('/projects/{project}/tasks/{task}/design-deliverables', [ProjectController::class, 'storeDesignDeliverable'])->name('projects.tasks.design-deliverables.store');
