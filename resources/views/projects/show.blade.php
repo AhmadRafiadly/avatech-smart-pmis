@@ -586,6 +586,15 @@
                 </div>
             </div>
 
+            @if ($project->phase === 'Planning' && (int) ($workspaceTaskTotal ?? 0) > 0)
+                <div class="rounded-2xl border border-amber-100 bg-amber-50/50 px-5 py-4 flex items-start gap-3">
+                    <x-heroicon-o-information-circle class="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <p class="text-[12.5px] leading-relaxed text-amber-700">
+                        Proyek masih berada di fase Planning. Perpindahan fase dilakukan setelah WBS diterapkan melalui AI Planning, bukan dari task manual.
+                    </p>
+                </div>
+            @endif
+
             <div class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
                 <div class="flex items-center justify-between mb-6">
                     <h3 class="text-[16px] font-bold text-[#1E1B4B]">Pipeline WBS</h3>
@@ -1197,6 +1206,9 @@
                             @endif
                         </div>
                     @endforeach
+                    <div class="rounded-xl border border-violet-100 bg-violet-50/50 px-4 py-3 text-[11.5px] leading-relaxed text-violet-700">
+                        Fase proyek akan diperbarui setelah WBS disimpan. Jika proyek membutuhkan desain, fase berpindah ke Design. Jika tidak, fase berpindah ke Development.
+                    </div>
                     <div class="flex items-center justify-end gap-2">
                         <a href="{{ route('projects.show', $project) }}?cancel_ai_preview=1#aiplanning" class="h-9 px-4 inline-flex items-center rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer no-underline">Batal</a>
                         <button type="submit" class="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 text-white text-[12.5px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
