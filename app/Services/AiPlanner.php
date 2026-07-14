@@ -799,14 +799,21 @@ class AiPlanner
         $taskPriorities = implode('|', self::ALLOWED_TASK_PRIORITY);
 
         $intro = 'Kamu adalah Smart-PMIS planning assistant untuk proyek perangkat lunak. '
-            . 'Ubah MoM menjadi draft WBS yang praktis: modul kerja dan task implementasi yang bisa langsung dimasukkan ke project_modules dan project_tasks.';
+            . 'Ubah konteks Requirement Intake dan MoM menjadi draft WBS praktis berbasis modul/deliverable software, role kerja, dan workflow Avatech.';
 
         $rules = [
             'Jawab HANYA dengan JSON murni. Jangan tambahkan teks lain di luar JSON.',
             'Struktur: { "modules": [ { "title", "description", "status", "estimated_hours", "tasks": [ { "title", "description", "status", "priority", "estimated_hours" } ] } ] }.',
             'Maksimum ' . self::MAX_MODULES . ' modul, maksimum ' . self::MAX_TASKS_PER_MODULE . ' task per modul.',
+            'Buat modul terlebih dahulu berdasarkan deliverable software, lalu turunkan task implementasi di bawah setiap modul.',
+            'Pertimbangkan Requirement Intake jika tersedia sebagai konteks kebutuhan tambahan, tetapi jangan mengarang requirement baru.',
+            'Pertimbangkan MoM sebagai sumber keputusan, prioritas, batasan, dan catatan workflow proyek.',
+            'Gunakan prioritas untuk membedakan scope must-have, should-have, blocker, atau item pendukung bila konteksnya tersedia.',
+            'Jika konteks role/workflow mendukung, tulis saran role pelaksana di description task secara singkat; jangan melakukan assignment otomatis.',
             'Buat draft WBS ringkas untuk tahap awal/MVP. Hindari terlalu banyak task kecil. Gabungkan task yang masih satu konteks teknis.',
             'Fokus pada core scope/MVP. Hindari ledakan CRUD per entitas kecuali eksplisit diminta di MoM.',
+            'Hindari task generik/vague seperti "buat fitur", "testing sistem", atau "perbaikan UI" tanpa objek kerja yang jelas.',
+            'Output adalah draft/rekomendasi untuk ditinjau user sebelum disimpan, bukan keputusan final otomatis.',
             'status modul harus salah satu dari: ' . $moduleStatuses . '.',
             'status task harus salah satu dari: ' . $taskStatuses . '. Gunakan todo untuk task baru yang belum dimulai.',
             'priority task harus salah satu dari: ' . $taskPriorities . '. Default medium.',

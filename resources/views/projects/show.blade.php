@@ -1220,6 +1220,7 @@
                     <div>
                         <h3 class="text-[14.5px] font-extrabold text-[#1E1B4B]">Draf WBS (AI)</h3>
                         <p class="text-[11.5px] text-slate-500">Tinjau, sunting, dan centang item yang ingin disimpan. Belum tersimpan sampai Anda klik <strong>Simpan</strong>.</p>
+                        <p class="text-[10.5px] text-slate-400 italic mt-0.5">Preview WBS ini masih berupa draft. User dapat meninjau, memilih, dan menyimpan item yang sesuai.</p>
                         <p class="text-[10.5px] text-slate-400 italic mt-0.5">Generate ulang akan mengganti draf yang belum disimpan.</p>
                     </div>
                 </div>
@@ -1521,6 +1522,16 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     <span class="px-2.5 py-1 rounded-full bg-[#EDE9FE] text-violet-700 text-[10px] font-bold">{{ count($modules) }} MODUL</span>
                 </div>
 
+                <div class="rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3 flex items-start gap-3">
+                    <span class="mt-0.5 w-8 h-8 rounded-xl bg-white text-violet-600 border border-violet-100 flex items-center justify-center flex-shrink-0">
+                        <x-heroicon-o-information-circle class="w-4 h-4" />
+                    </span>
+                    <div class="min-w-0">
+                        <h4 class="text-[12px] font-extrabold tracking-[0.12em] uppercase text-violet-700">Dasar Penyusunan WBS</h4>
+                        <p class="mt-1 text-[12.5px] text-slate-600 leading-relaxed">WBS disusun berdasarkan modul/deliverable proyek software, konteks Requirement Intake, MoM, prioritas, role tim, dan workflow Avatech. Hasil AI tetap berupa draft yang harus direview sebelum disimpan.</p>
+                    </div>
+                </div>
+
                 @if ($canEdit && ! $useReferenceProjectData)
                     <form method="POST" action="{{ route('projects.modules.store', $project) }}" class="rounded-xl border border-violet-100 bg-violet-50/30 p-4">
                         @csrf
@@ -1674,10 +1685,6 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     }
                 @endphp
                 <div class="p-5 rounded-2xl border border-dashed border-violet-300 bg-violet-50/40 flex flex-col gap-3">
-                    <p class="text-[12px] text-slate-500 leading-relaxed text-center font-medium">
-                        WBS akan dibuat berdasarkan MoM yang dipilih. Hasil AI tetap berupa draf dan harus ditinjau sebelum disimpan.
-                    </p>
-
                     @if ($wbsBtnState['tone'] === 'ready' && $canEdit && ! $useReferenceProjectData)
                         <form method="POST" action="{{ route('projects.ai-wbs.generate', $project) }}" class="w-full space-y-3" data-loading-form data-loading-label="Menyusun WBS...">
                             @csrf
