@@ -395,6 +395,7 @@ class ProjectController extends Controller
             'blockedTaskRows' => $this->blockedTaskRows($project),
             'dependencyTaskOptions' => $project->tasks->map(fn (ProjectTask $task) => ['id' => $task->id, 'title' => $task->title])->values(),
             'canManageDependencies' => $this->canManageDependencies($project),
+            'timelineData' => $this->projectTimelineData($project),
         ]);
     }
 
@@ -2780,6 +2781,7 @@ class ProjectController extends Controller
             ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
             ['id' => 'intake',     'label' => 'Requirement Intake','count' => $intakeTotal],
             ['id' => 'dependencies', 'label' => 'Dependencies', 'count' => max($dependencyTotal, $blockedTotal)],
+            ['id' => 'timeline', 'label' => 'Timeline', 'count' => $taskTotal],
             ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
         ];
     }
@@ -3036,6 +3038,94 @@ class ProjectController extends Controller
             str_starts_with($action, 'wbs_module_') => '#3B82F6',
             default => '#7C3AED',
         };
+    }
+
+    private function projectTimelineData(Project $project): array
+    {
+        $today = AppTime::now()->startOfDay();
+        $weekEnd = $today->copy()->addDays(7)->endOfDay();
+        $taskRows = $project->tasks->map(fn (ProjectTask $task) => $this->projectTimelineTaskRow($task, $today))->values();
+
+        return [
+            'summary' => [
+                'total' => $taskRows->count(),
+                'done' => $taskRows->where('is_done', true)->count(),
+                'overdue' => $taskRows->where('bucket', 'overdue')->count(),
+                'due_soon' => $taskRows->where('bucket', 'next_7_days')->count(),
+                'blocked' => $taskRows->where('is_blocked', true)->count(),
+            ],
+            'groups' => [
+                ['key' => 'overdue', 'label' => 'Overdue', 'tasks' => $taskRows->where('bucket', 'overdue')->values()->all()],
+                ['key' => 'today', 'label' => 'Hari ini', 'tasks' => $taskRows->where('bucket', 'today')->values()->all()],
+                ['key' => 'next_7_days', 'label' => '7 hari ke depan', 'tasks' => $taskRows->where('bucket', 'next_7_days')->values()->all()],
+                ['key' => 'after_7_days', 'label' => 'Setelah 7 hari', 'tasks' => $taskRows->where('bucket', 'after_7_days')->values()->all()],
+                ['key' => 'no_due_date', 'label' => 'Tanpa due date', 'tasks' => $taskRows->where('bucket', 'no_due_date')->values()->all()],
+            ],
+            'ready' => $taskRows
+                ->reject(fn (array $task) => $task['is_done'] || $task['is_blocked'])
+                ->values()
+                ->all(),
+            'blocked' => $taskRows
+                ->where('is_blocked', true)
+                ->reject(fn (array $task) => $task['is_done'])
+                ->values()
+                ->all(),
+            'has_due_dates' => $taskRows->contains(fn (array $task) => filled($task['due_date'])),
+        ];
+    }
+
+    private function projectTimelineTaskRow(ProjectTask $task, Carbon $today): array
+    {
+        $due = $task->due_date ? AppTime::cast($task->due_date)->startOfDay() : null;
+        $isDone = $this->isDoneStatus($task->status);
+        $predecessors = $task->successorDependencies
+            ->filter(fn (ProjectTaskDependency $dependency) => $dependency->predecessorTask)
+            ->map(fn (ProjectTaskDependency $dependency) => [
+                'title' => $dependency->predecessorTask->title,
+                'is_done' => $this->isDoneStatus($dependency->predecessorTask->status),
+            ])
+            ->values();
+        $unfinishedPredecessors = $predecessors->where('is_done', false)->pluck('title')->values()->all();
+
+        return [
+            'id' => $task->id,
+            'title' => $task->title,
+            'module' => $task->module?->title,
+            'status' => self::TASK_STATUS_LABELS[$task->status] ?? $task->status,
+            'status_key' => $task->status,
+            'assignee' => $task->assignee?->name ?? 'Belum Ditugaskan',
+            'priority' => self::TASK_PRIORITY_LABELS[$task->priority] ?? $task->priority,
+            'priority_key' => $task->priority,
+            'due_date' => $task->due_date?->format('Y-m-d'),
+            'due_label' => $task->due_date ? $this->formatDateId($task->due_date) : null,
+            'hours' => (int) $task->estimate_hours,
+            'is_done' => $isDone,
+            'is_blocked' => count($unfinishedPredecessors) > 0,
+            'unfinished_predecessors' => $unfinishedPredecessors,
+            'predecessors' => $predecessors->pluck('title')->all(),
+            'bucket' => $this->timelineBucket($due, $today, $isDone),
+        ];
+    }
+
+    private function timelineBucket(?Carbon $due, Carbon $today, bool $isDone): string
+    {
+        if (! $due) {
+            return 'no_due_date';
+        }
+
+        if (! $isDone && $due->lt($today)) {
+            return 'overdue';
+        }
+
+        if ($due->isSameDay($today)) {
+            return 'today';
+        }
+
+        if ($due->lte($today->copy()->addDays(7)->endOfDay())) {
+            return 'next_7_days';
+        }
+
+        return 'after_7_days';
     }
 
     private function projectTaskDependencyRows(Project $project): array

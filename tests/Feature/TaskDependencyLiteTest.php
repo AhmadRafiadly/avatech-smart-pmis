@@ -25,6 +25,41 @@ class TaskDependencyLiteTest extends TestCase
             ->assertSee('Dependency membantu PM melihat task yang harus menunggu task pendahulu selesai. Sistem tidak mengubah due date otomatis.');
     }
 
+    public function test_authenticated_allowed_user_can_access_timeline_section(): void
+    {
+        [$user, $project, $a] = $this->projectContextWithTasks(1);
+
+        $this->actingAs($user)
+            ->get(route('projects.show', $project) . '?tab=timeline')
+            ->assertOk()
+            ->assertSee('Timeline menampilkan ringkasan jadwal task berdasarkan due date manual, status task, dan dependency. Sistem tidak mengubah jadwal otomatis.')
+            ->assertSee($a->title);
+    }
+
+    public function test_ceo_pm_can_view_timeline(): void
+    {
+        [$user, $project] = $this->projectContext('ceo_pm');
+
+        $this->actingAs($user)
+            ->get(route('projects.show', $project) . '?tab=timeline')
+            ->assertOk()
+            ->assertSee('Timeline');
+    }
+
+    public function test_blocked_tasks_appear_in_timeline(): void
+    {
+        [$user, $project, $a, $b] = $this->projectContextWithTasks(2);
+        $this->createDependency($project, $a, $b, $user);
+
+        $this->actingAs($user)
+            ->get(route('projects.show', $project) . '?tab=timeline')
+            ->assertOk()
+            ->assertSee('Task yang Menunggu Task Pendahulu')
+            ->assertSee($b->title)
+            ->assertSee($a->title)
+            ->assertSee('Blocked');
+    }
+
     public function test_ceo_pm_can_view_but_cannot_manage_dependencies(): void
     {
         [$user, $project, $a, $b] = $this->projectContextWithTasks(2, 'ceo_pm');

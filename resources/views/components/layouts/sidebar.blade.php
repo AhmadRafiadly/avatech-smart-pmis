@@ -127,6 +127,7 @@
                                 ['id' => 'workspace',  'label' => 'Kanban Workspace'],
                                 ['id' => 'aiplanning', 'label' => 'AI Planning'],
                                 ['id' => 'dependencies', 'label' => 'Dependencies'],
+                                ['id' => 'timeline', 'label' => 'Timeline'],
                                 ['id' => 'qc',         'label' => 'Quality Control'],
                             ];
                         @endphp
