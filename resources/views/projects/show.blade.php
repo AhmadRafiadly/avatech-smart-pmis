@@ -11,13 +11,10 @@
     $canExecuteQc = (bool) ($canExecuteQc ?? false);
 
     $tabs = [
-        ['id' => 'overview',   'label' => 'Overview',         'count' => 0],
-        ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => 14],
-        ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => 1],
-        ['id' => 'intake',     'label' => 'Requirement Intake','count' => 0],
-        ['id' => 'dependencies', 'label' => 'Dependencies', 'count' => 0],
-        ['id' => 'timeline', 'label' => 'Timeline', 'count' => 0],
-        ['id' => 'qc',         'label' => 'Quality Control',  'count' => 10],
+        ['id' => 'overview', 'label' => 'Overview', 'count' => 14],
+        ['id' => 'gathering-planning', 'label' => 'Gathering & Planning', 'count' => 1],
+        ['id' => 'development-monitoring', 'label' => 'Development Monitoring', 'count' => 14],
+        ['id' => 'testing-evidence', 'label' => 'Testing & Evidence', 'count' => 10],
     ];
 
     $steps = [
@@ -106,13 +103,10 @@
 
     if (! $useReferenceProjectData) {
         $tabs = $dbTabs ?? [
-            ['id' => 'overview',   'label' => 'Overview',         'count' => 0],
-            ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => 0],
-            ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => 0],
-            ['id' => 'intake',     'label' => 'Requirement Intake','count' => 0],
-            ['id' => 'dependencies', 'label' => 'Dependencies', 'count' => count($taskDependencyRows ?? [])],
-            ['id' => 'timeline', 'label' => 'Timeline', 'count' => $workspaceTaskTotal ?? 0],
-            ['id' => 'qc',         'label' => 'Quality Control',  'count' => 0],
+            ['id' => 'overview', 'label' => 'Overview', 'count' => 0],
+            ['id' => 'gathering-planning', 'label' => 'Gathering & Planning', 'count' => count($taskDependencyRows ?? []) + ($workspaceTaskTotal ?? 0)],
+            ['id' => 'development-monitoring', 'label' => 'Development Monitoring', 'count' => $workspaceTaskTotal ?? 0],
+            ['id' => 'testing-evidence', 'label' => 'Testing & Evidence', 'count' => 0],
         ];
 
         $phaseLabels = ['Gathering', 'Planning', 'Design', 'Development', 'QC'];
@@ -218,22 +212,22 @@
         $nextStep = [
             'label' => 'Tambahkan MoM/notulensi mentah pertama.',
             'desc' => 'Paste catatan meeting apa adanya, lalu gunakan AI MoM Fixer untuk merapikan.',
-            'href' => '#aiplanning',
-            'cta' => $isReadOnlyProjectDetail ? 'Lihat AI Planning' : 'Tambah MoM',
+            'href' => '#mom',
+            'cta' => $isReadOnlyProjectDetail ? 'Lihat MoM' : 'Tambah MoM',
         ];
     } elseif (! $hasAiMomSummary) {
         $nextStep = [
             'label' => 'Rapikan MoM dengan AI MoM Fixer.',
             'desc' => 'Gunakan MoM terbaru sebagai sumber ringkasan formal sebelum membuat WBS.',
-            'href' => '#aiplanning',
-            'cta' => $isReadOnlyProjectDetail ? 'Lihat AI Planning' : 'Buka AI Planning',
+            'href' => '#mom',
+            'cta' => $isReadOnlyProjectDetail ? 'Lihat MoM' : 'Buka MoM',
         ];
     } elseif (! $hasWbsOrTasks) {
         $nextStep = [
             'label' => 'Buat draf WBS dari MoM.',
             'desc' => 'Generate draf WBS dari MoM terbaru atau tambahkan modul manual jika scope sudah jelas.',
-            'href' => '#aiplanning',
-            'cta' => $isReadOnlyProjectDetail ? 'Lihat AI Planning' : 'Buat WBS',
+            'href' => '#wbs',
+            'cta' => $isReadOnlyProjectDetail ? 'Lihat WBS' : 'Buat WBS',
         ];
     } elseif (! $hasQc) {
         $nextStep = [
@@ -249,6 +243,33 @@
             'href' => '#qc',
             'cta' => $isReadOnlyProjectDetail ? 'Lihat QC' : 'Validasi QC',
         ];
+    }
+
+    $hasIntake = (int) (($dbIntakeSummary ?? [])['total'] ?? 0) > 0;
+    $gpSections = [
+        ['id' => 'intake',       'label' => 'Requirement',  'icon' => 'inbox-arrow-down'],
+        ['id' => 'mom',          'label' => 'MoM',          'icon' => 'chat-bubble-left-right'],
+        ['id' => 'wbs',          'label' => 'WBS',          'icon' => 'squares-plus'],
+        ['id' => 'timeline',     'label' => 'Timeline',     'icon' => 'calendar-days'],
+        ['id' => 'dependencies', 'label' => 'Dependencies', 'icon' => 'link'],
+    ];
+
+    if (! $hasIntake) {
+        $gpDefaultSection = 'intake';
+    } elseif ($hasMom && ! $hasWbsOrTasks) {
+        $gpDefaultSection = 'wbs';
+    } else {
+        $gpDefaultSection = 'mom';
+    }
+
+    if (! $hasIntake) {
+        $gpNextAction = ['label' => 'Lengkapi Requirement Intake', 'section' => 'intake'];
+    } elseif (! $hasMom) {
+        $gpNextAction = ['label' => 'Tambahkan MoM awal', 'section' => 'mom'];
+    } elseif (! $hasWbsOrTasks) {
+        $gpNextAction = ['label' => 'Generate dan simpan WBS', 'section' => 'wbs'];
+    } else {
+        $gpNextAction = ['label' => 'Periksa timeline dan dependency', 'section' => 'timeline'];
     }
 
     $kanbanById = collect($kanban)->keyBy('id');
@@ -330,6 +351,18 @@
             box-shadow: 0 8px 20px rgba(124,58,237,0.25);
         }
         .pd-tab.is-active .pd-tab-badge { background: rgba(255,255,255,0.25); color: #fff; }
+
+        .pd-gp-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            height: 32px; padding: 0 12px; border-radius: 9999px;
+            font-size: 12px; font-weight: 600;
+            border: 1px solid #EDE9FE; background: #fff; color: #64748B;
+            cursor: pointer; transition: all .15s ease;
+        }
+        .pd-gp-chip:hover { color: #6D28D9; border-color: #C4B5FD; background: #FAF5FF; }
+        .pd-gp-chip.is-active {
+            background: #EDE9FE; border-color: #C4B5FD; color: #6D28D9; font-weight: 700;
+        }
 
         /* === Stitch card border (AI Planning / QC) === */
         .pd-stitch-card { border: 1.5px solid #E9D5FF; box-shadow: 0 2px 8px rgba(124,58,237,0.08); }
@@ -532,7 +565,7 @@
 
     {{-- =============== TABS =============== --}}
     <section class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-2 mb-6">
-        <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
             @foreach ($tabs as $idx => $t)
                 <button
                     type="button"
@@ -759,10 +792,16 @@
     </div>
 
     {{-- =============== WORKSPACE (kept as-is) =============== --}}
-    <div id="workspace" data-panel="workspace" class="hidden bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
+    <div id="development-monitoring" data-panel="development-monitoring" class="hidden space-y-6">
+        <div class="rounded-2xl border border-violet-100 bg-violet-50/50 p-5">
+            <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Development Monitoring</h3>
+            <p class="mt-1 text-[12.5px] text-slate-500">Memantau pengerjaan task, status Kanban, dan blocker selama development.</p>
+        </div>
+
+        <div id="workspace" data-section="workspace" class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-6">
         <div class="flex items-center justify-between mb-5 flex-wrap gap-4">
             <h3 class="inline-flex items-center gap-2 text-[12px] font-bold tracking-[0.12em] uppercase text-violet-600">
-                <span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span> Kanban Proyek
+                <span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span> Kanban Workspace
             </h3>
             <div class="text-[13px] text-slate-400">{{ $workspaceTaskTotal }} task &middot; <span class="font-semibold text-slate-500">{{ $workspaceTaskDone }} selesai</span></div>
         </div>
@@ -1104,14 +1143,50 @@
             @endforeach
         </div>
     </div>
+    </div>
 
-    {{-- =============== AI PLANNING =============== --}}
-    <div id="aiplanning" data-panel="aiplanning" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div id="gathering-planning" data-panel="gathering-planning" class="hidden space-y-6">
+        <div class="rounded-2xl border border-violet-100 bg-violet-50/50 p-5">
+            <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                <div class="min-w-0">
+                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Gathering & Planning</h3>
+                    <p class="mt-1 text-[12.5px] text-slate-500">Mengelola kebutuhan, MoM, WBS, timeline, dan dependency sebelum eksekusi proyek.</p>
+                </div>
+                <div class="flex items-center gap-3 rounded-xl border border-violet-100 bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(124,58,237,0.06)] lg:max-w-xs shrink-0">
+                    <span class="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 border border-violet-100 flex items-center justify-center flex-shrink-0">
+                        <x-heroicon-o-arrow-trending-up class="w-4 h-4" />
+                    </span>
+                    <div class="min-w-0">
+                        <div class="text-[9.5px] font-bold tracking-[0.14em] uppercase text-violet-500">Langkah Berikutnya</div>
+                        <button type="button" data-gp-chip-link="{{ $gpNextAction['section'] }}" class="text-[12.5px] font-bold text-[#1E1B4B] hover:text-violet-700 transition cursor-pointer text-left leading-snug">
+                            {{ $gpNextAction['label'] }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center gap-2" role="tablist" aria-label="Subsection Gathering & Planning">
+                @foreach ($gpSections as $gp)
+                    <button
+                        type="button"
+                        data-gp-chip="{{ $gp['id'] }}"
+                        role="tab"
+                        aria-selected="{{ $gp['id'] === $gpDefaultSection ? 'true' : 'false' }}"
+                        class="pd-gp-chip {{ $gp['id'] === $gpDefaultSection ? 'is-active' : '' }}"
+                    >
+                        <x-dynamic-component :component="'heroicon-o-' . $gp['icon']" class="w-3.5 h-3.5" />
+                        {{ $gp['label'] }}
+                    </button>
+                @endforeach
+            </div>
+        </div>
+
+        {{-- =============== AI PLANNING =============== --}}
+        <div id="aiplanning" data-section="aiplanning" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {{-- ====== HITL PREVIEW: AI MoM Fixer (draf editable, simpan setelah konfirmasi) ====== --}}
         @if ($canEdit && ! $useReferenceProjectData && session('ai_mom_preview'))
             @php $momPrev = session('ai_mom_preview'); @endphp
-            <div class="lg:col-span-2 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 overflow-hidden">
+            <div data-gp-section="mom" class="{{ $gpDefaultSection === 'mom' ? '' : 'hidden' }} lg:col-span-2 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 overflow-hidden">
                 <div class="px-6 py-4 border-b border-violet-100 flex items-center gap-2.5">
                     <x-heroicon-o-sparkles class="w-5 h-5 text-violet-600" />
                     <div>
@@ -1127,7 +1202,7 @@
                     <textarea name="summary" rows="10" class="w-full rounded-xl border border-violet-200 bg-white px-4 py-3 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ old('summary', $momPrev['summary'] ?? '') }}</textarea>
                     @error('summary') <p class="text-[11.5px] font-semibold text-rose-600">{{ $message }}</p> @enderror
                     <div class="flex items-center justify-end gap-2">
-                        <a href="{{ route('projects.show', $project) }}?cancel_ai_preview=1#aiplanning" class="h-9 px-4 inline-flex items-center rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer no-underline">Batal</a>
+                        <a href="{{ route('projects.show', $project) }}?cancel_ai_preview=1#mom" class="h-9 px-4 inline-flex items-center rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer no-underline">Batal</a>
                         <button type="submit" class="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 text-white text-[12.5px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                             <x-heroicon-o-check class="w-4 h-4" /> Simpan sebagai Ringkasan MoM
                         </button>
@@ -1139,7 +1214,7 @@
         {{-- ====== HITL PREVIEW: AI WBS Generator (draf editable + pilih item) ====== --}}
         @if ($canEdit && ! $useReferenceProjectData && session('ai_wbs_preview'))
             @php $wbsPrev = session('ai_wbs_preview'); @endphp
-            <div class="lg:col-span-2 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 overflow-hidden">
+            <div data-gp-section="wbs" class="{{ $gpDefaultSection === 'wbs' ? '' : 'hidden' }} lg:col-span-2 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 overflow-hidden">
                 <div class="px-6 py-4 border-b border-violet-100 flex items-center gap-2.5">
                     <x-heroicon-o-sparkles class="w-5 h-5 text-violet-600" />
                     <div>
@@ -1212,7 +1287,7 @@
                         Fase proyek akan diperbarui setelah WBS disimpan. Jika proyek membutuhkan desain, fase berpindah ke Design. Jika tidak, fase berpindah ke Development.
                     </div>
                     <div class="flex items-center justify-end gap-2">
-                        <a href="{{ route('projects.show', $project) }}?cancel_ai_preview=1#aiplanning" class="h-9 px-4 inline-flex items-center rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer no-underline">Batal</a>
+                        <a href="{{ route('projects.show', $project) }}?cancel_ai_preview=1#wbs" class="h-9 px-4 inline-flex items-center rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer no-underline">Batal</a>
                         <button type="submit" class="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 text-white text-[12.5px] font-semibold shadow-[0_2px_8px_rgba(124,58,237,0.2)] hover:scale-[1.02] transition cursor-pointer">
                             <x-heroicon-o-check class="w-4 h-4" /> Simpan Draf Terpilih
                         </button>
@@ -1222,7 +1297,7 @@
         @endif
 
         {{-- LEFT: Daftar MoM --}}
-        <div class="bg-white rounded-2xl pd-stitch-card flex flex-col">
+        <div id="mom" data-gp-section="mom" class="{{ $gpDefaultSection === 'mom' ? '' : 'hidden' }} lg:col-span-2 bg-white rounded-2xl pd-stitch-card flex flex-col">
             <div class="p-7 flex-1 space-y-5">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
@@ -1436,7 +1511,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
 
         {{-- RIGHT: WBS Terbentuk --}}
-        <div class="bg-white rounded-2xl pd-stitch-card flex flex-col">
+        <div id="wbs" data-gp-section="wbs" class="{{ $gpDefaultSection === 'wbs' ? '' : 'hidden' }} lg:col-span-2 bg-white rounded-2xl pd-stitch-card flex flex-col">
             <div class="p-7 flex-1 space-y-5">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
@@ -1680,7 +1755,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         $intakePriorities = $intakePriorityOptions ?? [];
         $intakeStatuses   = $intakeStatusOptions   ?? [];
     @endphp
-    <div id="intake" data-panel="intake" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+    <div id="intake" data-section="intake" data-gp-section="intake" class="{{ $gpDefaultSection === 'intake' ? '' : 'hidden' }} bg-white rounded-2xl pd-stitch-card overflow-hidden">
         <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
             <div class="flex items-center gap-3">
                 <span class="pd-section-bar"></span>
@@ -1877,7 +1952,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
     @endif
 
     {{-- =============== DEPENDENCIES =============== --}}
-    <div id="dependencies" data-panel="dependencies" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+    <div id="dependencies" data-section="dependencies" data-gp-section="dependencies" class="{{ $gpDefaultSection === 'dependencies' ? '' : 'hidden' }} bg-white rounded-2xl pd-stitch-card overflow-hidden">
         <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
             <div class="flex items-center gap-3">
                 <span class="pd-section-bar"></span>
@@ -2005,7 +2080,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
             ['label' => 'Blocked', 'value' => $timelineSummary['blocked'], 'tone' => 'text-violet-700'],
         ];
     @endphp
-    <div id="timeline" data-panel="timeline" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+    <div id="timeline" data-section="timeline" data-gp-section="timeline" class="{{ $gpDefaultSection === 'timeline' ? '' : 'hidden' }} bg-white rounded-2xl pd-stitch-card overflow-hidden">
         <div class="p-6 md:p-7 border-b border-violet-100/60">
             <div class="flex items-center gap-3">
                 <span class="pd-section-bar"></span>
@@ -2117,12 +2192,18 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
     </div>
 
+    </div>
+
     {{-- =============== QUALITY CONTROL =============== --}}
-    <div id="qc" data-panel="qc" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+    <div id="testing-evidence" data-panel="testing-evidence" class="hidden bg-white rounded-2xl pd-stitch-card overflow-hidden">
+        <div id="qc" data-section="qc" class="sr-only"></div>
         <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
             <div class="flex items-center gap-3">
                 <span class="pd-section-bar"></span>
-                <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Test Case Black-Box</h3>
+                <div>
+                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Testing & Evidence</h3>
+                    <p class="mt-1 text-[12.5px] text-slate-500">Mengelola test case, validasi hasil pengujian, dan bukti testing proyek.</p>
+                </div>
             </div>
             <div class="text-[13px] text-slate-500 font-medium">
                 {{ ($qcSummary['total'] ?? count($testCases)) }} case &middot;
@@ -2869,8 +2950,51 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 const tabs       = document.querySelectorAll('.pd-tab');
                 const sideLinks  = document.querySelectorAll('[data-pd-nav]');
                 const panels     = document.querySelectorAll('[data-panel]');
+                const gpChips    = document.querySelectorAll('[data-gp-chip]');
+                const gpSections = document.querySelectorAll('[data-gp-section]');
+                const gpDefault  = @json($gpDefaultSection);
 
-                const activate = (id) => {
+                const TAB_IDS = ['overview', 'gathering-planning', 'development-monitoring', 'testing-evidence'];
+                const GP_IDS = ['intake', 'mom', 'wbs', 'timeline', 'dependencies'];
+                const ALIASES = {
+                    'requirement-intake': { tab: 'gathering-planning', section: 'intake' },
+                    intake: { tab: 'gathering-planning', section: 'intake' },
+                    mom: { tab: 'gathering-planning', section: 'mom' },
+                    'ai-planning': { tab: 'gathering-planning', section: 'wbs' },
+                    aiplanning: { tab: 'gathering-planning', section: 'wbs' },
+                    wbs: { tab: 'gathering-planning', section: 'wbs' },
+                    timeline: { tab: 'gathering-planning', section: 'timeline' },
+                    dependencies: { tab: 'gathering-planning', section: 'dependencies' },
+                    kanban: { tab: 'development-monitoring' },
+                    workspace: { tab: 'development-monitoring' },
+                    'quality-control': { tab: 'testing-evidence' },
+                    qc: { tab: 'testing-evidence' },
+                };
+                const normalizeTarget = (id) => {
+                    id = (id || '').trim();
+                    if (TAB_IDS.includes(id)) return { tab: id };
+                    return ALIASES[id] || null;
+                };
+                const setHash = (tab, section) => {
+                    const target = section || tab;
+                    if (target) history.replaceState(null, '', '#' + target);
+                };
+
+                const activateGpSection = (section) => {
+                    const activeSection = GP_IDS.includes(section) ? section : gpDefault;
+                    gpChips.forEach(chip => {
+                        const active = chip.dataset.gpChip === activeSection;
+                        chip.classList.toggle('is-active', active);
+                        chip.setAttribute('aria-selected', active ? 'true' : 'false');
+                    });
+                    gpSections.forEach(panel => {
+                        panel.classList.toggle('hidden', panel.dataset.gpSection !== activeSection);
+                    });
+                    return activeSection;
+                };
+
+                const activate = (tab, section = null, updateHash = true) => {
+                    const id = TAB_IDS.includes(tab) ? tab : 'overview';
                     tabs.forEach(x => {
                         const active = x.dataset.tab === id;
                         x.classList.toggle('is-active', active);
@@ -2900,30 +3024,28 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     panels.forEach(p => {
                         p.classList.toggle('hidden', p.dataset.panel !== id);
                     });
+
+                    const activeSection = id === 'gathering-planning' ? activateGpSection(section) : null;
+                    if (updateHash) setHash(id, activeSection);
                 };
 
-                /* Activate tab from URL hash (e.g. /projects/3#aiplanning from notifications/global search) */
-                const TAB_IDS = ['overview', 'workspace', 'aiplanning', 'intake', 'dependencies', 'timeline', 'qc'];
-                const setHash = (id) => {
-                    if (TAB_IDS.includes(id)) history.replaceState(null, '', '#' + id);
-                };
-
-                tabs.forEach(t => t.addEventListener('click', () => {
-                    activate(t.dataset.tab);
-                    setHash(t.dataset.tab);
-                }));
+                tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.tab)));
+                gpChips.forEach(chip => chip.addEventListener('click', () => activate('gathering-planning', chip.dataset.gpChip)));
+                document.querySelectorAll('[data-gp-chip-link]').forEach(link => {
+                    link.addEventListener('click', () => activate('gathering-planning', link.dataset.gpChipLink));
+                });
                 sideLinks.forEach(t => t.addEventListener('click', (e) => {
                     e.preventDefault();
-                    activate(t.dataset.pdNav);
-                    setHash(t.dataset.pdNav);
+                    const target = normalizeTarget(t.dataset.pdNav);
+                    if (target) activate(target.tab, target.section);
                 }));
 
                 const hashToTab = () => {
                     const params = new URLSearchParams(window.location.search || '');
-                    const q = (params.get('tab') || '').trim();
-                    const h = (window.location.hash || '').replace(/^#/, '').trim();
-                    if (q && TAB_IDS.includes(q)) return activate(q);
-                    if (h && TAB_IDS.includes(h)) activate(h);
+                    const q = normalizeTarget(params.get('tab') || '');
+                    const h = normalizeTarget((window.location.hash || '').replace(/^#/, ''));
+                    const target = q || h;
+                    if (target) activate(target.tab, target.section, false);
                 };
                 hashToTab();
                 window.addEventListener('hashchange', hashToTab);

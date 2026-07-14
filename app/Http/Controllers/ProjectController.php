@@ -524,7 +524,7 @@ class ProjectController extends Controller
         AuditLogger::log('wbs_module_created', 'Project Master', 'Menambah modul WBS <strong>' . e($module->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>', $module);
 
         return redirect()
-            ->to(route('projects.show', $project) . '#aiplanning')
+            ->to(route('projects.show', $project) . '#wbs')
             ->with('status', 'Modul WBS "' . $module->title . '" berhasil dibuat.');
     }
 
@@ -576,7 +576,7 @@ class ProjectController extends Controller
         );
 
         return redirect()
-            ->to(route('projects.show', $project) . '#aiplanning')
+            ->to(route('projects.show', $project) . '#wbs')
             ->with('status', 'Modul WBS "' . $module->title . '" berhasil diperbarui.');
     }
 
@@ -590,7 +590,7 @@ class ProjectController extends Controller
 
         if ($module->tasks()->exists()) {
             return redirect()
-                ->to(route('projects.show', $project) . '#aiplanning')
+                ->to(route('projects.show', $project) . '#wbs')
                 ->with('status', 'Modul masih memiliki task. Hapus atau pindahkan task terlebih dahulu.');
         }
 
@@ -608,7 +608,7 @@ class ProjectController extends Controller
         );
 
         return redirect()
-            ->to(route('projects.show', $project) . '#aiplanning')
+            ->to(route('projects.show', $project) . '#wbs')
             ->with('status', 'Modul WBS "' . $title . '" berhasil dihapus.');
     }
 
@@ -1181,7 +1181,7 @@ class ProjectController extends Controller
         );
 
         return redirect()
-            ->to(route('projects.show', $project) . '#aiplanning')
+            ->to(route('projects.show', $project) . '#mom')
             ->with('status', 'MoM untuk ' . $mom->meeting_date->format('d M Y') . ' berhasil disimpan.');
     }
 
@@ -1214,7 +1214,7 @@ class ProjectController extends Controller
         );
 
         return redirect()
-            ->to(route('projects.show', $project) . '#aiplanning')
+            ->to(route('projects.show', $project) . '#mom')
             ->with('status', 'Ringkasan MoM berhasil diperbarui.');
     }
 
@@ -1225,7 +1225,7 @@ class ProjectController extends Controller
             return $redirect;
         }
 
-        $backUrl = route('projects.show', $project) . '#aiplanning';
+        $backUrl = route('projects.show', $project) . '#mom';
 
         $latestMom = $project->moms()
             ->orderByDesc('meeting_date')
@@ -1299,7 +1299,7 @@ class ProjectController extends Controller
             return $redirect;
         }
 
-        $backUrl = route('projects.show', $project) . '#aiplanning';
+        $backUrl = route('projects.show', $project) . '#mom';
 
         $validated = $request->validate([
             'mom_id'  => ['required', Rule::exists('project_moms', 'id')->where('project_id', $project->id)],
@@ -1346,7 +1346,7 @@ class ProjectController extends Controller
             return $redirect;
         }
 
-        $backUrl = route('projects.show', $project) . '#aiplanning';
+        $backUrl = route('projects.show', $project) . '#wbs';
 
         // Explicit source selection: the user may choose which MoM to use as the
         // WBS source (meeting history). Default to the latest MoM when none chosen.
@@ -1434,7 +1434,7 @@ class ProjectController extends Controller
             return $redirect;
         }
 
-        $backUrl = route('projects.show', $project) . '#aiplanning';
+        $backUrl = route('projects.show', $project) . '#wbs';
 
         $validated = $request->validate([
             'source_mom_id'                 => ['nullable', Rule::exists('project_moms', 'id')->where('project_id', $project->id)],
@@ -2776,13 +2776,10 @@ class ProjectController extends Controller
         $blockedTotal = count($this->blockedTaskRows($project));
 
         return [
-            ['id' => 'overview',   'label' => 'Overview',         'count' => $moduleTotal],
-            ['id' => 'workspace',  'label' => 'Kanban Workspace', 'count' => $taskTotal],
-            ['id' => 'aiplanning', 'label' => 'AI Planning',      'count' => $momTotal + $moduleTotal],
-            ['id' => 'intake',     'label' => 'Requirement Intake','count' => $intakeTotal],
-            ['id' => 'dependencies', 'label' => 'Dependencies', 'count' => max($dependencyTotal, $blockedTotal)],
-            ['id' => 'timeline', 'label' => 'Timeline', 'count' => $taskTotal],
-            ['id' => 'qc',         'label' => 'Quality Control',  'count' => $qcTotal],
+            ['id' => 'overview', 'label' => 'Overview', 'count' => $moduleTotal + $taskTotal],
+            ['id' => 'gathering-planning', 'label' => 'Gathering & Planning', 'count' => $intakeTotal + $momTotal + $moduleTotal + $dependencyTotal + $blockedTotal + $taskTotal],
+            ['id' => 'development-monitoring', 'label' => 'Development Monitoring', 'count' => $taskTotal],
+            ['id' => 'testing-evidence', 'label' => 'Testing & Evidence', 'count' => $qcTotal],
         ];
     }
 

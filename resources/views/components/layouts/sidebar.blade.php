@@ -123,12 +123,10 @@
                             $currentProject = request()->route('project');
                             $projectName    = $currentProject?->name ?? 'Proyek aktif';
                             $pdNavItems = [
-                                ['id' => 'overview',   'label' => 'Overview'],
-                                ['id' => 'workspace',  'label' => 'Kanban Workspace'],
-                                ['id' => 'aiplanning', 'label' => 'AI Planning'],
-                                ['id' => 'dependencies', 'label' => 'Dependencies'],
-                                ['id' => 'timeline', 'label' => 'Timeline'],
-                                ['id' => 'qc',         'label' => 'Quality Control'],
+                                ['id' => 'overview', 'label' => 'Overview'],
+                                ['id' => 'gathering-planning', 'label' => 'Gathering & Planning'],
+                                ['id' => 'development-monitoring', 'label' => 'Development Monitoring'],
+                                ['id' => 'testing-evidence', 'label' => 'Testing & Evidence'],
                             ];
                         @endphp
                         <div class="mt-10 flex flex-col">

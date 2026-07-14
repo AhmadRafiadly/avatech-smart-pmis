@@ -14,6 +14,45 @@ use Tests\TestCase;
 
 class TaskDependencyLiteTest extends TestCase
 {
+    public function test_project_detail_shows_grouped_workflow_tabs_and_sections(): void
+    {
+        [$user, $project] = $this->projectContext();
+
+        $this->actingAs($user)
+            ->get(route('projects.show', $project) . '?tab=gathering-planning')
+            ->assertOk()
+            ->assertSee('Overview')
+            ->assertSee('Gathering &amp; Planning', false)
+            ->assertSee('Development Monitoring')
+            ->assertSee('Testing &amp; Evidence', false)
+            ->assertSee('Requirement Intake')
+            ->assertSee('Dependencies')
+            ->assertSee('Timeline')
+            ->assertSee('Kanban Workspace')
+            ->assertSee('data-gp-chip="intake"', false)
+            ->assertSee('data-gp-chip="mom"', false)
+            ->assertSee('data-gp-chip="wbs"', false)
+            ->assertSee('data-gp-chip="timeline"', false)
+            ->assertSee('data-gp-chip="dependencies"', false)
+            ->assertSee('data-gp-section="intake"', false)
+            ->assertSee('data-gp-section="mom"', false)
+            ->assertSee('data-gp-section="wbs"', false)
+            ->assertSee('Testing &amp; Evidence', false);
+    }
+
+    public function test_project_detail_keeps_old_hash_aliases_in_tab_mapper(): void
+    {
+        [$user, $project] = $this->projectContext();
+
+        $this->actingAs($user)
+            ->get(route('projects.show', $project) . '?tab=requirement-intake')
+            ->assertOk()
+            ->assertSee("'requirement-intake': { tab: 'gathering-planning', section: 'intake' }", false)
+            ->assertSee("aiplanning: { tab: 'gathering-planning', section: 'wbs' }", false)
+            ->assertSee("kanban: { tab: 'development-monitoring' }", false)
+            ->assertSee("'quality-control': { tab: 'testing-evidence' }", false);
+    }
+
     public function test_authenticated_user_can_access_dependency_section(): void
     {
         [$user, $project] = $this->projectContext();
