@@ -799,13 +799,13 @@ class AiPlanner
         $taskPriorities = implode('|', self::ALLOWED_TASK_PRIORITY);
 
         $intro = 'Kamu adalah Smart-PMIS planning assistant untuk proyek perangkat lunak. '
-            . 'Ubah konteks Requirement Intake dan MoM menjadi draft WBS praktis berbasis modul/deliverable software, role kerja, dan workflow Avatech.';
+            . 'Ubah konteks Requirement Intake dan MoM menjadi draft WBS praktis dengan top-down decomposition berbasis modul/deliverable proyek software, role kerja, dan workflow Avatech.';
 
         $rules = [
             'Jawab HANYA dengan JSON murni. Jangan tambahkan teks lain di luar JSON.',
             'Struktur: { "modules": [ { "title", "description", "status", "estimated_hours", "tasks": [ { "title", "description", "status", "priority", "estimated_hours" } ] } ] }.',
             'Maksimum ' . self::MAX_MODULES . ' modul, maksimum ' . self::MAX_TASKS_PER_MODULE . ' task per modul.',
-            'Buat modul terlebih dahulu berdasarkan deliverable software, lalu turunkan task implementasi di bawah setiap modul.',
+            'Gunakan top-down decomposition berbasis modul/deliverable proyek software: buat modul terlebih dahulu, lalu turunkan task implementasi di bawah setiap modul.',
             'Pertimbangkan Requirement Intake jika tersedia sebagai konteks kebutuhan tambahan, tetapi jangan mengarang requirement baru.',
             'Pertimbangkan MoM sebagai sumber keputusan, prioritas, batasan, dan catatan workflow proyek.',
             'Gunakan prioritas untuk membedakan scope must-have, should-have, blocker, atau item pendukung bila konteksnya tersedia.',

@@ -1528,7 +1528,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     </span>
                     <div class="min-w-0">
                         <h4 class="text-[12px] font-extrabold tracking-[0.12em] uppercase text-violet-700">Dasar Penyusunan WBS</h4>
-                        <p class="mt-1 text-[12.5px] text-slate-600 leading-relaxed">WBS disusun berdasarkan modul/deliverable proyek software, konteks Requirement Intake, MoM, prioritas, role tim, dan workflow Avatech. Hasil AI tetap berupa draft yang harus direview sebelum disimpan.</p>
+                        <p class="mt-1 text-[12.5px] text-slate-600 leading-relaxed">WBS disusun dengan top-down decomposition berbasis modul/deliverable proyek software, konteks Requirement Intake, MoM, prioritas, role tim, dan workflow Avatech. Hasil AI tetap berupa draft yang harus direview sebelum disimpan.</p>
                     </div>
                 </div>
 
