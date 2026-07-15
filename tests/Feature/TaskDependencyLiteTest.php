@@ -72,17 +72,59 @@ class TaskDependencyLiteTest extends TestCase
             ->get(route('projects.show', $project) . '?tab=timeline')
             ->assertOk()
             ->assertSee('Timeline menampilkan ringkasan jadwal task berdasarkan due date manual, status task, dan dependency. Sistem tidak mengubah jadwal otomatis.')
+            ->assertSee('Timeline Jadwal Opsional')
+            ->assertSee('Timeline jadwal membantu PM melihat rentang tanggal mulai sampai due date jika proyek membutuhkan pemantauan jadwal lebih detail. Tampilan ini berfungsi sebagai Gantt-lite sederhana. Untuk project sederhana, Kanban dan due date saja tetap cukup. Sistem tidak mengubah jadwal otomatis.')
             ->assertSee($a->title);
+    }
+
+    public function test_authorized_user_can_store_task_start_date(): void
+    {
+        [$user, $project] = $this->projectContext();
+
+        $this->actingAs($user)
+            ->post(route('projects.tasks.store', $project), [
+                'title' => 'Task Dengan Start Date',
+                'status' => 'planned',
+                'priority' => 'medium',
+                'start_date' => '2026-07-01',
+                'due_date' => '2026-07-05',
+                'estimate_hours' => 8,
+            ])
+            ->assertRedirect(route('projects.show', $project) . '#workspace');
+
+        $this->assertDatabaseHas('project_tasks', [
+            'project_id' => $project->id,
+            'title' => 'Task Dengan Start Date',
+            'start_date' => '2026-07-01',
+            'due_date' => '2026-07-05',
+        ]);
+    }
+
+    public function test_task_start_date_after_due_date_is_rejected(): void
+    {
+        [$user, $project] = $this->projectContext();
+
+        $this->actingAs($user)
+            ->post(route('projects.tasks.store', $project), [
+                'title' => 'Task Jadwal Tidak Valid',
+                'status' => 'planned',
+                'priority' => 'medium',
+                'start_date' => '2026-07-10',
+                'due_date' => '2026-07-05',
+            ])
+            ->assertSessionHasErrors('start_date');
     }
 
     public function test_ceo_pm_can_view_timeline(): void
     {
-        [$user, $project] = $this->projectContext('ceo_pm');
+        [$user, $project] = $this->projectContextWithTasks(1, 'ceo_pm');
 
         $this->actingAs($user)
             ->get(route('projects.show', $project) . '?tab=timeline')
             ->assertOk()
-            ->assertSee('Timeline');
+            ->assertSee('Timeline')
+            ->assertSee('Timeline Jadwal Opsional')
+            ->assertDontSee('Tambah Task</button>', false);
     }
 
     public function test_blocked_tasks_appear_in_timeline(): void
@@ -93,6 +135,7 @@ class TaskDependencyLiteTest extends TestCase
         $this->actingAs($user)
             ->get(route('projects.show', $project) . '?tab=timeline')
             ->assertOk()
+            ->assertSee('Timeline Jadwal Opsional')
             ->assertSee('Task yang Menunggu Task Pendahulu')
             ->assertSee($b->title)
             ->assertSee($a->title)
@@ -228,6 +271,8 @@ class TaskDependencyLiteTest extends TestCase
             'title' => 'Dependency Test Task ' . $idx . ' ' . uniqid(),
             'status' => 'planned',
             'priority' => 'medium',
+            'start_date' => now()->addDays($idx)->toDateString(),
+            'due_date' => now()->addDays($idx + 2)->toDateString(),
             'estimate_hours' => 4,
             'sort_order' => $idx,
         ]))->all();

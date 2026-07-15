@@ -118,16 +118,16 @@ class DemoWalkthroughSeeder extends Seeder
     private function seedMainTasks(Project $project, array $modules, array $users): array
     {
         $rows = [
-            ['module' => 'CRM Lead & Contact Management', 'assignee' => 'irwan.kurniawan@avatech.test', 'title' => 'Finalisasi skema data lead dan kontak', 'status' => 'done', 'priority' => 'high', 'due_date' => '2026-06-08', 'estimate_hours' => 8, 'sort_order' => 1],
-            ['module' => 'CRM Lead & Contact Management', 'assignee' => 'yuda.prayoga@avatech.test', 'title' => 'Review UI form input lead B2B', 'status' => 'review', 'priority' => 'medium', 'due_date' => '2026-06-10', 'estimate_hours' => 6, 'sort_order' => 2],
-            ['module' => 'CRM Lead & Contact Management', 'assignee' => 'ferry.achmad@avatech.test', 'title' => 'Implementasi pencarian kontak dan filter stage', 'status' => 'in_progress', 'priority' => 'high', 'due_date' => '2026-06-14', 'estimate_hours' => 14, 'sort_order' => 3],
-            ['module' => 'Sales Pipeline & Follow-up Automation', 'assignee' => 'genta@avatech.test', 'title' => 'Bangun board pipeline sales per tahap deal', 'status' => 'in_progress', 'priority' => 'high', 'due_date' => '2026-06-16', 'estimate_hours' => 16, 'sort_order' => 1],
-            ['module' => 'Sales Pipeline & Follow-up Automation', 'assignee' => 'ahmad.arlisyah@avatech.test', 'title' => 'Validasi rule reminder follow-up klien', 'status' => 'planned', 'priority' => 'medium', 'due_date' => '2026-06-18', 'estimate_hours' => 5, 'sort_order' => 2],
-            ['module' => 'Sales Pipeline & Follow-up Automation', 'assignee' => 'irwan.kurniawan@avatech.test', 'title' => 'Integrasi activity timeline dengan update deal', 'status' => 'planned', 'priority' => 'medium', 'due_date' => '2026-06-20', 'estimate_hours' => 10, 'sort_order' => 3],
-            ['module' => 'Reporting, Role Access, and Audit Readiness', 'assignee' => 'yuda.prayoga@avatech.test', 'title' => 'Desain ringkasan dashboard sales manager', 'status' => 'done', 'priority' => 'medium', 'due_date' => '2026-06-09', 'estimate_hours' => 7, 'sort_order' => 1],
-            ['module' => 'Reporting, Role Access, and Audit Readiness', 'assignee' => 'ahmad.arlisyah@avatech.test', 'title' => 'Susun skenario UAT role sales dan manager', 'status' => 'review', 'priority' => 'high', 'due_date' => '2026-06-19', 'estimate_hours' => 8, 'sort_order' => 2],
-            ['module' => 'Reporting, Role Access, and Audit Readiness', 'assignee' => 'ferry.achmad@avatech.test', 'title' => 'Tambahkan audit trail untuk perubahan status deal', 'status' => 'planned', 'priority' => 'high', 'due_date' => '2026-06-23', 'estimate_hours' => 12, 'sort_order' => 3],
-            ['module' => 'Reporting, Role Access, and Audit Readiness', 'assignee' => 'genta@avatech.test', 'title' => 'Optimasi query laporan pipeline mingguan', 'status' => 'planned', 'priority' => 'low', 'due_date' => '2026-06-25', 'estimate_hours' => 6, 'sort_order' => 4],
+            ['module' => 'CRM Lead & Contact Management', 'assignee' => 'irwan.kurniawan@avatech.test', 'title' => 'Finalisasi skema data lead dan kontak', 'status' => 'done', 'priority' => 'high', 'start_date' => '2026-06-04', 'due_date' => '2026-06-08', 'estimate_hours' => 8, 'sort_order' => 1],
+            ['module' => 'CRM Lead & Contact Management', 'assignee' => 'yuda.prayoga@avatech.test', 'title' => 'Review UI form input lead B2B', 'status' => 'review', 'priority' => 'medium', 'start_date' => '2026-06-06', 'due_date' => '2026-06-10', 'estimate_hours' => 6, 'sort_order' => 2],
+            ['module' => 'CRM Lead & Contact Management', 'assignee' => 'ferry.achmad@avatech.test', 'title' => 'Implementasi pencarian kontak dan filter stage', 'status' => 'in_progress', 'priority' => 'high', 'start_date' => '2026-06-10', 'due_date' => '2026-06-14', 'estimate_hours' => 14, 'sort_order' => 3],
+            ['module' => 'Sales Pipeline & Follow-up Automation', 'assignee' => 'genta@avatech.test', 'title' => 'Bangun board pipeline sales per tahap deal', 'status' => 'in_progress', 'priority' => 'high', 'start_date' => '2026-06-11', 'due_date' => '2026-06-16', 'estimate_hours' => 16, 'sort_order' => 1],
+            ['module' => 'Sales Pipeline & Follow-up Automation', 'assignee' => 'ahmad.arlisyah@avatech.test', 'title' => 'Validasi rule reminder follow-up klien', 'status' => 'planned', 'priority' => 'medium', 'start_date' => '2026-06-17', 'due_date' => '2026-06-18', 'estimate_hours' => 5, 'sort_order' => 2],
+            ['module' => 'Sales Pipeline & Follow-up Automation', 'assignee' => 'irwan.kurniawan@avatech.test', 'title' => 'Integrasi activity timeline dengan update deal', 'status' => 'planned', 'priority' => 'medium', 'start_date' => '2026-06-18', 'due_date' => '2026-06-20', 'estimate_hours' => 10, 'sort_order' => 3],
+            ['module' => 'Reporting, Role Access, and Audit Readiness', 'assignee' => 'yuda.prayoga@avatech.test', 'title' => 'Desain ringkasan dashboard sales manager', 'status' => 'done', 'priority' => 'medium', 'start_date' => '2026-06-05', 'due_date' => '2026-06-09', 'estimate_hours' => 7, 'sort_order' => 1],
+            ['module' => 'Reporting, Role Access, and Audit Readiness', 'assignee' => 'ahmad.arlisyah@avatech.test', 'title' => 'Susun skenario UAT role sales dan manager', 'status' => 'review', 'priority' => 'high', 'start_date' => '2026-06-15', 'due_date' => '2026-06-19', 'estimate_hours' => 8, 'sort_order' => 2],
+            ['module' => 'Reporting, Role Access, and Audit Readiness', 'assignee' => 'ferry.achmad@avatech.test', 'title' => 'Tambahkan audit trail untuk perubahan status deal', 'status' => 'planned', 'priority' => 'high', 'start_date' => '2026-06-20', 'due_date' => '2026-06-23', 'estimate_hours' => 12, 'sort_order' => 3],
+            ['module' => 'Reporting, Role Access, and Audit Readiness', 'assignee' => 'genta@avatech.test', 'title' => 'Optimasi query laporan pipeline mingguan', 'status' => 'planned', 'priority' => 'low', 'start_date' => '2026-06-23', 'due_date' => '2026-06-25', 'estimate_hours' => 6, 'sort_order' => 4],
         ];
 
         $tasks = [];
@@ -142,6 +142,7 @@ class DemoWalkthroughSeeder extends Seeder
                     'description' => 'Demo task untuk walkthrough WBS, Kanban, dan workload Alpha CRM.',
                     'status' => $row['status'],
                     'priority' => $row['priority'],
+                    'start_date' => Carbon::parse($row['start_date']),
                     'due_date' => Carbon::parse($row['due_date']),
                     'estimate_hours' => $row['estimate_hours'],
                     'sort_order' => $row['sort_order'],

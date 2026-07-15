@@ -626,6 +626,7 @@ class ProjectController extends Controller
             'assigned_to' => ['nullable', Rule::in($assigneeIds)],
             'status' => ['required', Rule::in(array_keys(self::TASK_STATUS_LABELS))],
             'priority' => ['required', Rule::in(array_keys(self::TASK_PRIORITY_LABELS))],
+            'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'estimate_hours' => ['nullable', 'integer', 'min:0', 'max:999'],
             'description' => ['nullable', 'string', 'max:2000'],
@@ -637,9 +638,14 @@ class ProjectController extends Controller
             'status.in' => 'Status task tidak valid.',
             'priority.required' => 'Prioritas task wajib dipilih.',
             'priority.in' => 'Prioritas task tidak valid.',
+            'start_date.date' => 'Tanggal mulai task tidak valid.',
             'due_date.date' => 'Due date task tidak valid.',
             'estimate_hours.integer' => 'Estimasi jam harus berupa angka.',
         ]);
+
+        if (! empty($validated['start_date']) && ! empty($validated['due_date']) && $validated['start_date'] > $validated['due_date']) {
+            throw ValidationException::withMessages(['start_date' => 'Tanggal mulai tidak boleh setelah due date.']);
+        }
 
         if (in_array($this->phaseKey($project->phase), ['planning', 'design'], true) && $validated['status'] !== 'planned') {
             return redirect()
@@ -655,6 +661,7 @@ class ProjectController extends Controller
             'assigned_to' => $validated['assigned_to'] ?? null,
             'status' => $validated['status'],
             'priority' => $validated['priority'],
+            'start_date' => $validated['start_date'] ?? null,
             'due_date' => $validated['due_date'] ?? null,
             'estimate_hours' => (int) ($validated['estimate_hours'] ?? 0),
             'description' => $validated['description'] ?? null,
@@ -685,6 +692,7 @@ class ProjectController extends Controller
             'assigned_to' => ['nullable', Rule::in($assigneeIds)],
             'status' => ['required', Rule::in(array_keys(self::TASK_STATUS_LABELS))],
             'priority' => ['required', Rule::in(array_keys(self::TASK_PRIORITY_LABELS))],
+            'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'estimate_hours' => ['nullable', 'integer', 'min:0', 'max:999'],
             'description' => ['nullable', 'string', 'max:2000'],
@@ -696,9 +704,14 @@ class ProjectController extends Controller
             'status.in' => 'Status task tidak valid.',
             'priority.required' => 'Prioritas task wajib dipilih.',
             'priority.in' => 'Prioritas task tidak valid.',
+            'start_date.date' => 'Tanggal mulai task tidak valid.',
             'due_date.date' => 'Due date task tidak valid.',
             'estimate_hours.integer' => 'Estimasi jam harus berupa angka.',
         ]);
+
+        if (! empty($validated['start_date']) && ! empty($validated['due_date']) && $validated['start_date'] > $validated['due_date']) {
+            throw ValidationException::withMessages(['start_date' => 'Tanggal mulai tidak boleh setelah due date.']);
+        }
 
         if ($blockMessage = $this->taskStatusTransitionBlockMessage($project, $task, $validated['status'])) {
             return redirect()
@@ -721,6 +734,7 @@ class ProjectController extends Controller
             'assigned_to' => $validated['assigned_to'] ?? null,
             'status' => $validated['status'],
             'priority' => $validated['priority'],
+            'start_date' => $validated['start_date'] ?? null,
             'due_date' => $validated['due_date'] ?? null,
             'estimate_hours' => (int) ($validated['estimate_hours'] ?? 0),
             'description' => $validated['description'] ?? null,
@@ -741,6 +755,7 @@ class ProjectController extends Controller
                 'assigned_to' => $original['assigned_to'] ?? null,
                 'status' => $original['status'] ?? null,
                 'priority' => $original['priority'] ?? null,
+                'start_date' => $original['start_date'] ?? null,
                 'estimate_hours' => $original['estimate_hours'] ?? null,
             ],
             [
@@ -748,6 +763,7 @@ class ProjectController extends Controller
                 'assigned_to' => $task->assigned_to,
                 'status' => $task->status,
                 'priority' => $task->priority,
+                'start_date' => $task->start_date?->format('Y-m-d'),
                 'estimate_hours' => $task->estimate_hours,
             ],
         );
@@ -3042,6 +3058,11 @@ class ProjectController extends Controller
         $today = AppTime::now()->startOfDay();
         $weekEnd = $today->copy()->addDays(7)->endOfDay();
         $taskRows = $project->tasks->map(fn (ProjectTask $task) => $this->projectTimelineTaskRow($task, $today))->values();
+        $ganttRows = $taskRows
+            ->sortBy(fn (array $task) => $task['start_date'] ?? $task['due_date'] ?? '9999-12-31')
+            ->values();
+        $ganttMeta = $this->projectGanttMeta($ganttRows);
+        $ganttRows = $this->projectGanttRows($ganttRows, $ganttMeta);
 
         return [
             'summary' => [
@@ -3067,13 +3088,93 @@ class ProjectController extends Controller
                 ->reject(fn (array $task) => $task['is_done'])
                 ->values()
                 ->all(),
+            'gantt' => $ganttRows->all(),
+            'gantt_meta' => $ganttMeta,
             'has_due_dates' => $taskRows->contains(fn (array $task) => filled($task['due_date'])),
+        ];
+    }
+
+    private function projectGanttRows($tasks, array $meta)
+    {
+        $rangeStart = filled($meta['start'] ?? null) ? Carbon::parse($meta['start'])->startOfDay() : null;
+        $days = max(1, (int) ($meta['days'] ?? 1));
+
+        return $tasks->map(function (array $task) use ($rangeStart, $days) {
+            if (! $rangeStart || ! filled($task['due_date'])) {
+                return $task + ['gantt_left' => 0, 'gantt_width' => 0, 'gantt_marker' => null];
+            }
+
+            $startDate = filled($task['start_date']) ? Carbon::parse($task['start_date'])->startOfDay() : null;
+            $dueDate = Carbon::parse($task['due_date'])->startOfDay();
+            if (! $startDate) {
+                return $task + [
+                    'gantt_left' => min(98, max(0, ($rangeStart->diffInDays($dueDate) / $days) * 100)),
+                    'gantt_width' => 0,
+                    'gantt_marker' => 'missing_start',
+                ];
+            }
+
+            $left = min(98, max(0, ($rangeStart->diffInDays($startDate) / $days) * 100));
+            $right = min(100, max($left + 2, ($rangeStart->diffInDays($dueDate) / $days) * 100));
+
+            return $task + [
+                'gantt_left' => $left,
+                'gantt_width' => max(3, $right - $left),
+                'gantt_marker' => null,
+            ];
+        })->values();
+    }
+
+    private function projectGanttMeta($tasks): array
+    {
+        $scheduled = $tasks->filter(fn (array $task) => filled($task['start_date']) || filled($task['due_date']));
+        if ($scheduled->isEmpty()) {
+            return ['start' => null, 'end' => null, 'days' => 1, 'labels' => []];
+        }
+
+        $startCandidates = $scheduled
+            ->map(fn (array $task) => $task['start_date'] ?: $task['due_date'])
+            ->filter()
+            ->map(fn (string $date) => Carbon::parse($date)->startOfDay());
+        $endCandidates = $scheduled
+            ->pluck('due_date')
+            ->filter()
+            ->map(fn (string $date) => Carbon::parse($date)->startOfDay());
+
+        $start = ($startCandidates->sortBy(fn (Carbon $date) => $date->timestamp)->first()?->copy() ?? AppTime::now()->startOfDay())->subDay();
+        $end = ($endCandidates->isNotEmpty()
+            ? $endCandidates->sortByDesc(fn (Carbon $date) => $date->timestamp)->first()
+            : $start->copy())->copy()->addDay();
+        if ($end->lt($start)) {
+            $end = $start->copy()->addDay();
+        }
+
+        $days = max(1, $start->diffInDays($end));
+        $step = $days <= 14 ? 1 : 7;
+        $labels = [];
+        for ($cursor = $start->copy(), $i = 0; $cursor->lte($end); $cursor->addDays($step), $i++) {
+            if ($i > 12) {
+                break;
+            }
+            $labels[] = [
+                'label' => $cursor->format($step === 1 ? 'd M' : 'd M'),
+                'left' => min(100, max(0, ($start->diffInDays($cursor) / max(1, $days)) * 100)),
+            ];
+        }
+
+        return [
+            'start' => $start->format('Y-m-d'),
+            'end' => $end->format('Y-m-d'),
+            'days' => $days,
+            'labels' => $labels,
         ];
     }
 
     private function projectTimelineTaskRow(ProjectTask $task, Carbon $today): array
     {
+        $start = $task->start_date ? AppTime::cast($task->start_date)->startOfDay() : null;
         $due = $task->due_date ? AppTime::cast($task->due_date)->startOfDay() : null;
+        $durationDays = $start && $due ? max(1, $start->diffInDays($due) + 1) : null;
         $isDone = $this->isDoneStatus($task->status);
         $predecessors = $task->successorDependencies
             ->filter(fn (ProjectTaskDependency $dependency) => $dependency->predecessorTask)
@@ -3093,9 +3194,13 @@ class ProjectController extends Controller
             'assignee' => $task->assignee?->name ?? 'Belum Ditugaskan',
             'priority' => self::TASK_PRIORITY_LABELS[$task->priority] ?? $task->priority,
             'priority_key' => $task->priority,
+            'start_date' => $task->start_date?->format('Y-m-d'),
+            'start_label' => $task->start_date ? $this->formatDateId($task->start_date) : null,
             'due_date' => $task->due_date?->format('Y-m-d'),
             'due_label' => $task->due_date ? $this->formatDateId($task->due_date) : null,
             'hours' => (int) $task->estimate_hours,
+            'duration_days' => $durationDays,
+            'schedule_state' => $start && $due ? 'scheduled' : ($due ? 'missing_start' : 'missing_due'),
             'is_done' => $isDone,
             'is_blocked' => count($unfinishedPredecessors) > 0,
             'unfinished_predecessors' => $unfinishedPredecessors,
@@ -3255,6 +3360,8 @@ class ProjectController extends Controller
                 'assigned_to' => $task->assigned_to,
                 'assignee' => $task->assignee?->name ?? 'Belum Ditugaskan',
                 'status' => $task->status,
+                'start_date' => $task->start_date?->format('Y-m-d'),
+                'start' => $task->start_date ? $this->formatDateId($task->start_date) : null,
                 'due_date' => $task->due_date?->format('Y-m-d'),
                 'due' => $task->due_date ? $this->formatDateId($task->due_date) : null,
                 'hours' => (int) $task->estimate_hours,

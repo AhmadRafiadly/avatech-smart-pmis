@@ -16,6 +16,7 @@ class ProjectTask extends Model
         'description',
         'status',
         'priority',
+        'start_date',
         'due_date',
         'estimate_hours',
         'sort_order',
@@ -27,6 +28,7 @@ class ProjectTask extends Model
     ];
 
     protected $casts = [
+        'start_date' => 'date',
         'due_date' => 'date',
         'estimate_hours' => 'integer',
         'sort_order' => 'integer',
