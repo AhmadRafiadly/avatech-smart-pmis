@@ -104,7 +104,7 @@
     if (! $useReferenceProjectData) {
         $tabs = $dbTabs ?? [
             ['id' => 'overview', 'label' => 'Overview', 'count' => 0],
-            ['id' => 'gathering-planning', 'label' => 'Gathering & Planning', 'count' => count($taskDependencyRows ?? []) + ($workspaceTaskTotal ?? 0)],
+            ['id' => 'gathering-planning', 'label' => 'Gathering & Planning', 'count' => $workspaceTaskTotal ?? 0],
             ['id' => 'development-monitoring', 'label' => 'Development Monitoring', 'count' => $workspaceTaskTotal ?? 0],
             ['id' => 'testing-evidence', 'label' => 'Testing & Evidence', 'count' => 0],
         ];
@@ -250,8 +250,6 @@
         ['id' => 'intake',       'label' => 'Requirement',  'icon' => 'inbox-arrow-down'],
         ['id' => 'mom',          'label' => 'MoM',          'icon' => 'chat-bubble-left-right'],
         ['id' => 'wbs',          'label' => 'WBS',          'icon' => 'squares-plus'],
-        ['id' => 'timeline',     'label' => 'Timeline',     'icon' => 'calendar-days'],
-        ['id' => 'dependencies', 'label' => 'Dependencies', 'icon' => 'link'],
     ];
 
     if (! $hasIntake) {
@@ -269,7 +267,7 @@
     } elseif (! $hasWbsOrTasks) {
         $gpNextAction = ['label' => 'Generate dan simpan WBS', 'section' => 'wbs'];
     } else {
-        $gpNextAction = ['label' => 'Periksa timeline dan dependency', 'section' => 'timeline'];
+        $gpNextAction = ['label' => 'Review WBS dan pantau eksekusi task di Kanban', 'section' => 'wbs'];
     }
 
     $kanbanById = collect($kanban)->keyBy('id');
@@ -893,12 +891,6 @@
                         @error('priority')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Tanggal Mulai (Opsional)</label>
-                        <input name="start_date" type="date" value="{{ old('start_date') }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
-                        <p class="mt-1 text-[11px] text-slate-400">Opsional, untuk Gantt-lite.</p>
-                        @error('start_date')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
-                    </div>
-                    <div>
                         <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Due Date</label>
                         <input name="due_date" type="date" value="{{ old('due_date') }}" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
                         <p class="mt-1 text-[11px] text-slate-400">Target task saat ini, bisa disesuaikan saat scope berubah.</p>
@@ -953,9 +945,6 @@
                                     @endif
                                     @if (! empty($task['due']))
                                         <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">{{ $task['due'] }}</span>
-                                    @endif
-                                    @if (! empty($task['is_blocked_by_dependency']))
-                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-rose-50 text-rose-700">Blocked</span>
                                     @endif
                                     @if (! empty($task['is_design_deliverable']))
                                         <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-pink-50 text-pink-700">Design handover</span>
@@ -1035,11 +1024,6 @@
                                                             <option value="{{ $value }}" @selected(($task['priority_key'] ?? '') === $value)>{{ $label }}</option>
                                                         @endforeach
                                                     </select>
-                                                </div>
-                                                <div>
-                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Mulai (Opsional)</label>
-                                                    <input name="start_date" type="date" value="{{ $task['start_date'] ?? '' }}" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300" />
-                                                    <p class="mt-1 text-[10.5px] text-slate-400 leading-tight">Tanggal mulai manual.</p>
                                                 </div>
                                                 <div>
                                                     <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Due</label>
@@ -1161,7 +1145,7 @@
             <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                 <div class="min-w-0">
                     <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Gathering & Planning</h3>
-                    <p class="mt-1 text-[12.5px] text-slate-500">Mengelola kebutuhan, MoM, WBS, timeline, dan dependency sebelum eksekusi proyek.</p>
+                    <p class="mt-1 text-[12.5px] text-slate-500">Mengelola kebutuhan, MoM, dan WBS sebelum eksekusi proyek.</p>
                 </div>
                 <div class="flex items-center gap-3 rounded-xl border border-violet-100 bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(124,58,237,0.06)] lg:max-w-xs shrink-0">
                     <span class="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 border border-violet-100 flex items-center justify-center flex-shrink-0">
@@ -1969,324 +1953,6 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         </div>
     @endif
 
-    {{-- =============== DEPENDENCIES =============== --}}
-    <div id="dependencies" data-section="dependencies" data-gp-section="dependencies" class="{{ $gpDefaultSection === 'dependencies' ? '' : 'hidden' }} bg-white rounded-2xl pd-stitch-card overflow-hidden">
-        <div class="p-6 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-violet-100/60">
-            <div class="flex items-center gap-3">
-                <span class="pd-section-bar"></span>
-                <div>
-                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Dependencies</h3>
-                    <p class="mt-1 text-[12.5px] text-slate-500">Dependency membantu PM melihat task yang harus menunggu task pendahulu selesai. Sistem tidak mengubah due date otomatis.</p>
-                </div>
-            </div>
-        </div>
-
-        @if (! ($canManageDependencies ?? false))
-            <div class="mx-6 md:mx-7 mt-6 rounded-2xl border border-violet-100 bg-violet-50/50 px-5 py-4 text-[13px] font-medium text-violet-700">
-                Anda memiliki akses lihat saja pada dependency proyek ini.
-            </div>
-        @endif
-
-        <div class="grid grid-cols-1 xl:grid-cols-[0.95fr_1.05fr] gap-6 p-6 md:p-7">
-            <div class="space-y-5">
-                @if (($canManageDependencies ?? false) && ! $useReferenceProjectData)
-                    <div class="rounded-2xl border border-violet-100 bg-violet-50/30 p-5">
-                        <h4 class="text-[14px] font-bold text-[#1E1B4B] mb-4">Tambah Dependency</h4>
-                        <form method="POST" action="{{ route('projects.task-dependencies.store', $project) }}?tab=dependencies" class="space-y-4">
-                            @csrf
-                            <div>
-                                <label class="block text-[12px] font-semibold text-slate-600 mb-1">Task pendahulu</label>
-                                <select name="predecessor_task_id" required data-dependency-predecessor class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                    <option value="">Pilih task</option>
-                                    @foreach (($dependencyTaskOptions ?? []) as $taskOption)
-                                        <option value="{{ $taskOption['id'] }}" @selected(old('predecessor_task_id') == $taskOption['id'])>{{ $taskOption['title'] }}</option>
-                                    @endforeach
-                                </select>
-                                @error('predecessor_task_id')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
-                            </div>
-                            <div>
-                                <label class="block text-[12px] font-semibold text-slate-600 mb-1">Task yang bergantung</label>
-                                <select name="successor_task_id" required data-dependency-successor class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                    <option value="">Pilih task</option>
-                                    @foreach (($dependencyTaskOptions ?? []) as $taskOption)
-                                        <option value="{{ $taskOption['id'] }}" @selected(old('successor_task_id') == $taskOption['id'])>{{ $taskOption['title'] }}</option>
-                                    @endforeach
-                                </select>
-                                @error('successor_task_id')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
-                            </div>
-                            <div>
-                                <label class="block text-[12px] font-semibold text-slate-600 mb-1">Notes</label>
-                                <textarea name="notes" rows="2" maxlength="1000" class="w-full rounded-xl border border-violet-100 bg-white px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y" placeholder="Opsional">{{ old('notes') }}</textarea>
-                                @error('notes')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
-                            </div>
-                            <div class="flex justify-end">
-                                <button type="submit" class="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-violet-600 text-white font-semibold text-[13px] shadow hover:bg-violet-700 transition cursor-pointer">
-                                    <x-heroicon-o-plus class="w-4 h-4" /> Tambah Dependency
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                @endif
-
-                <div class="rounded-2xl border border-amber-100 bg-amber-50/40 p-5">
-                    <h4 class="text-[14px] font-bold text-[#1E1B4B] mb-3">Blocked Tasks</h4>
-                    <div class="space-y-3">
-                        @forelse (($blockedTaskRows ?? []) as $row)
-                            <div class="rounded-xl border border-amber-100 bg-white p-4">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-700">Blocked</span>
-                                    <span class="text-[13px] font-bold text-[#1E1B4B]">{{ $row['task_title'] }}</span>
-                                </div>
-                                <p class="text-[12.5px] text-slate-500">Menunggu task pendahulu selesai: <strong>{{ $row['predecessor_title'] }}</strong>.</p>
-                            </div>
-                        @empty
-                            <p class="text-[12.5px] text-slate-400">Tidak ada task yang blocked oleh dependency.</p>
-                        @endforelse
-                    </div>
-                </div>
-            </div>
-
-            <div class="rounded-2xl border border-violet-100 overflow-hidden">
-                <div class="px-5 py-4 bg-violet-50/50 border-b border-violet-100">
-                    <h4 class="text-[14px] font-bold text-[#1E1B4B]">Daftar Dependency</h4>
-                </div>
-                <div class="divide-y divide-violet-100/60">
-                    @forelse (($taskDependencyRows ?? []) as $dependency)
-                        <div class="p-5 flex items-start justify-between gap-4">
-                            <div class="min-w-0">
-                                <div class="flex items-center gap-2 flex-wrap mb-2">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-violet-50 text-violet-700">Finish-to-Start</span>
-                                    @if (! $dependency['predecessor_done'])
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-700">Blocked</span>
-                                    @endif
-                                </div>
-                                <p class="text-[14px] font-bold text-[#1E1B4B] leading-snug">{{ $dependency['predecessor_title'] }} → {{ $dependency['successor_title'] }}</p>
-                                @if ($dependency['notes'])
-                                    <p class="mt-2 text-[12.5px] text-slate-500 leading-relaxed">{{ $dependency['notes'] }}</p>
-                                @endif
-                                @if ($dependency['timeline_warning'])
-                                    <p class="mt-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-[12px] font-medium text-amber-700">Jadwal task ini dimulai sebelum task pendahulu selesai. Periksa kembali timeline atau dependency.</p>
-                                @endif
-                            </div>
-                            @if (($canManageDependencies ?? false) && ! $useReferenceProjectData)
-                                <form method="POST" action="{{ route('projects.task-dependencies.destroy', [$project, $dependency['id']]) }}?tab=dependencies" onsubmit="return confirm('Hapus dependency ini?')" class="shrink-0">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="inline-flex items-center gap-1 text-[12.5px] font-semibold text-rose-600 hover:text-rose-800 transition cursor-pointer">
-                                        <x-heroicon-o-trash class="w-4 h-4" /> Hapus
-                                    </button>
-                                </form>
-                            @endif
-                        </div>
-                    @empty
-                        <div class="p-8 text-center text-[13px] text-slate-400">Belum ada dependency antar task.</div>
-                    @endforelse
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- =============== TIMELINE =============== --}}
-    @php
-        $timeline = $timelineData ?? ['summary' => ['total' => 0, 'done' => 0, 'overdue' => 0, 'due_soon' => 0, 'blocked' => 0], 'groups' => [], 'ready' => [], 'blocked' => [], 'has_due_dates' => false];
-        $timelineSummary = $timeline['summary'];
-        $timelineCardRows = [
-            ['label' => 'Total Task', 'value' => $timelineSummary['total'], 'tone' => 'text-[#1E1B4B]'],
-            ['label' => 'Selesai', 'value' => $timelineSummary['done'], 'tone' => 'text-emerald-700'],
-            ['label' => 'Overdue', 'value' => $timelineSummary['overdue'], 'tone' => 'text-rose-700'],
-            ['label' => 'Due Soon', 'value' => $timelineSummary['due_soon'], 'tone' => 'text-amber-700'],
-            ['label' => 'Blocked', 'value' => $timelineSummary['blocked'], 'tone' => 'text-violet-700'],
-        ];
-    @endphp
-    <div id="timeline" data-section="timeline" data-gp-section="timeline" class="{{ $gpDefaultSection === 'timeline' ? '' : 'hidden' }} bg-white rounded-2xl pd-stitch-card overflow-hidden">
-        <div class="p-6 md:p-7 border-b border-violet-100/60">
-            <div class="flex items-center gap-3">
-                <span class="pd-section-bar"></span>
-                <div>
-                    <h3 class="text-[16px] font-extrabold uppercase tracking-tight text-[#1E1B4B]">Timeline</h3>
-                    <p class="mt-1 text-[12.5px] text-slate-500">Timeline menampilkan ringkasan jadwal task berdasarkan due date manual, status task, dan dependency. Sistem tidak mengubah jadwal otomatis.</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="p-6 md:p-7 space-y-6">
-            @if (($timelineSummary['total'] ?? 0) === 0)
-                <div class="rounded-2xl border border-violet-100 bg-violet-50/40 p-8 text-center">
-                    <h4 class="text-[15px] font-bold text-[#1E1B4B]">Belum ada task untuk timeline.</h4>
-                    <p class="mt-2 text-[13px] text-slate-500">Tambahkan task atau simpan WBS terlebih dahulu agar timeline dapat ditampilkan.</p>
-                </div>
-            @else
-                <section class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    @foreach ($timelineCardRows as $card)
-                        <article class="rounded-2xl border border-violet-100 bg-white p-5 shadow-[0_2px_8px_rgba(124,58,237,0.06)]">
-                            <div class="text-[11px] font-bold tracking-wider uppercase text-slate-400">{{ $card['label'] }}</div>
-                            <div class="mt-2 text-[26px] font-extrabold {{ $card['tone'] }}">{{ $card['value'] }}</div>
-                        </article>
-                    @endforeach
-                </section>
-
-                @if (! ($timeline['has_due_dates'] ?? false))
-                    <div class="rounded-2xl border border-amber-100 bg-amber-50/50 px-5 py-4 text-[13px] leading-relaxed text-amber-700">
-                        Timeline bergantung pada due date manual. Saat ini belum ada task yang memiliki due date.
-                    </div>
-                @endif
-
-                <section class="rounded-2xl border border-violet-100 bg-violet-50/30 overflow-hidden">
-                    <div class="px-5 py-4 border-b border-violet-100 bg-white/70 flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                        <div>
-                            <h4 class="text-[14px] font-bold text-[#1E1B4B]">Timeline Jadwal Opsional</h4>
-                            <p class="mt-1 text-[12.5px] text-slate-500">Timeline jadwal membantu PM melihat rentang tanggal mulai sampai due date jika proyek membutuhkan pemantauan jadwal lebih detail. Tampilan ini berfungsi sebagai Gantt-lite sederhana. Untuk project sederhana, Kanban dan due date saja tetap cukup. Sistem tidak mengubah jadwal otomatis.</p>
-                        </div>
-                        <p class="md:max-w-md text-[11.5px] text-violet-700 leading-relaxed bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">Task yang tidak memiliki dependency aktif dapat dikerjakan paralel sesuai keputusan PM. Task dengan predecessor yang belum selesai ditandai sebagai Blocked.</p>
-                    </div>
-                    <div class="p-5 space-y-4">
-                        @php
-                            $ganttRows = collect($timeline['gantt'] ?? []);
-                            $axisRows = $ganttRows->filter(fn ($task) => ! empty($task['due_date']))->values();
-                            $unscheduledRows = $ganttRows->filter(fn ($task) => empty($task['due_date']))->values();
-                        @endphp
-                        @if ($axisRows->isNotEmpty())
-                            <div class="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3 items-end text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-                                <div>Task</div>
-                                <div class="relative h-8 rounded-xl bg-white border border-violet-100 overflow-hidden">
-                                    @foreach (($timeline['gantt_meta']['labels'] ?? []) as $label)
-                                        <span class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 whitespace-nowrap" style="left: {{ $label['left'] }}%;">{{ $label['label'] }}</span>
-                                    @endforeach
-                                </div>
-                            </div>
-                            <div class="space-y-2">
-                                @foreach ($axisRows as $task)
-                                    <div class="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3 rounded-xl border border-violet-100 bg-white p-3 shadow-[0_2px_8px_rgba(124,58,237,0.05)]">
-                                        <div class="min-w-0">
-                                            <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">{{ $task['status'] }}</span>
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">{{ $task['priority'] }}</span>
-                                                @if ($task['is_blocked'])
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700">Blocked</span>
-                                                @endif
-                                            </div>
-                                            <h5 class="text-[13px] font-bold text-[#1E1B4B] leading-snug truncate">{{ $task['title'] }}</h5>
-                                            <p class="mt-1 text-[11.5px] text-slate-500 leading-snug">{{ $task['module'] ?? 'Tanpa Modul' }} · {{ $task['assignee'] }}</p>
-                                            <p class="mt-1 text-[11px] text-slate-400">{{ $task['start_label'] ?? 'Belum memakai tanggal mulai' }} → {{ $task['due_label'] ?? 'Due belum diatur' }} · {{ $task['hours'] }}h</p>
-                                        </div>
-                                        <div class="relative min-h-[58px] rounded-xl bg-violet-50/40 border border-violet-100 overflow-hidden">
-                                            <div class="absolute inset-y-0 left-0 right-0 bg-[linear-gradient(to_right,rgba(124,58,237,0.08)_1px,transparent_1px)] bg-[length:12.5%_100%]"></div>
-                                            @if ($task['schedule_state'] === 'scheduled')
-                                                <div class="absolute top-1/2 -translate-y-1/2 h-8 rounded-full {{ $task['is_blocked'] ? 'bg-rose-400' : 'bg-violet-500' }} text-white text-[11px] font-bold px-3 inline-flex items-center justify-center shadow-sm whitespace-nowrap" style="left: {{ $task['gantt_left'] }}%; width: {{ $task['gantt_width'] }}%; min-width: 72px;">
-                                                    {{ $task['duration_days'] }} hari
-                                                </div>
-                                            @else
-                                                <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[11px] font-bold text-violet-700 shadow-sm" style="left: {{ $task['gantt_left'] }}%;">
-                                                    <span class="w-2 h-2 rounded-full bg-violet-500"></span>
-                                                    Belum memakai tanggal mulai
-                                                </div>
-                                            @endif
-                                        </div>
-                                        @if ($task['is_blocked'])
-                                            <p class="lg:col-span-2 text-[12px] text-rose-600">Menunggu: {{ implode(', ', $task['unfinished_predecessors']) }}</p>
-                                        @endif
-                                    </div>
-                                @endforeach
-                            </div>
-                        @endif
-                        @if ($unscheduledRows->isNotEmpty())
-                            <div class="rounded-xl border border-slate-200 bg-white p-4">
-                                <h5 class="text-[13px] font-bold text-[#1E1B4B]">Task tanpa jadwal lengkap</h5>
-                                <div class="mt-3 space-y-2">
-                                    @foreach ($unscheduledRows as $task)
-                                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                                            <div>
-                                                <p class="text-[12.5px] font-bold text-slate-700">{{ $task['title'] }}</p>
-                                                <p class="text-[11.5px] text-slate-500">{{ $task['module'] ?? 'Tanpa Modul' }} · {{ $task['assignee'] }}</p>
-                                            </div>
-                                            <span class="text-[10px] font-bold rounded-full px-2 py-0.5 bg-slate-100 text-slate-500">Belum ada due date</span>
-                                        </div>
-                                    @endforeach
-                                </div>
-                            </div>
-                        @endif
-                    </div>
-                </section>
-
-                <section class="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
-                    <div class="space-y-4">
-                        @foreach (($timeline['groups'] ?? []) as $group)
-                            <div class="rounded-2xl border border-violet-100 overflow-hidden">
-                                <div class="px-5 py-4 bg-violet-50/50 border-b border-violet-100 flex items-center justify-between">
-                                    <h4 class="text-[14px] font-bold text-[#1E1B4B]">{{ $group['label'] }}</h4>
-                                    <span class="text-[11px] font-bold rounded-full px-2 py-0.5 bg-white text-violet-700 border border-violet-100">{{ count($group['tasks']) }}</span>
-                                </div>
-                                <div class="divide-y divide-violet-100/60">
-                                    @forelse ($group['tasks'] as $task)
-                                        <div class="p-5">
-                                            <div class="flex flex-wrap items-center gap-2 mb-2">
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-100 text-slate-600">{{ $task['status'] }}</span>
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-50 text-amber-700">{{ $task['priority'] }}</span>
-                                                @if ($task['is_blocked'])
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-700">Blocked</span>
-                                                @endif
-                                            </div>
-                                            <h5 class="text-[14px] font-bold text-[#1E1B4B] leading-snug">{{ $task['title'] }}</h5>
-                                            <div class="mt-2 flex flex-wrap gap-3 text-[12.5px] text-slate-500">
-                                                <span>Modul: <strong class="text-slate-700">{{ $task['module'] ?? 'Tanpa Modul' }}</strong></span>
-                                                <span>Assignee: <strong class="text-slate-700">{{ $task['assignee'] }}</strong></span>
-                                                <span>Due: <strong class="text-slate-700">{{ $task['due_label'] ?? 'Belum diatur' }}</strong></span>
-                                                <span>Estimasi: <strong class="text-slate-700">{{ $task['hours'] }}h</strong></span>
-                                            </div>
-                                            @if ($task['is_blocked'])
-                                                <p class="mt-2 text-[12.5px] text-rose-600">Menunggu: {{ implode(', ', $task['unfinished_predecessors']) }}</p>
-                                            @endif
-                                        </div>
-                                    @empty
-                                        <div class="p-5 text-[13px] text-slate-400">Tidak ada task pada kelompok ini.</div>
-                                    @endforelse
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-
-                    <div class="space-y-6">
-                        <div class="rounded-2xl border border-emerald-100 bg-emerald-50/40 overflow-hidden">
-                            <div class="px-5 py-4 border-b border-emerald-100 bg-white/70">
-                                <h4 class="text-[14px] font-bold text-[#1E1B4B]">Task yang Dapat Dikerjakan Paralel / Siap Dikerjakan</h4>
-                            </div>
-                            <div class="p-5 space-y-3">
-                                @forelse (($timeline['ready'] ?? []) as $task)
-                                    <div class="rounded-xl border border-emerald-100 bg-white p-4">
-                                        <h5 class="text-[13.5px] font-bold text-[#1E1B4B]">{{ $task['title'] }}</h5>
-                                        <p class="mt-1 text-[12px] text-slate-500">{{ $task['module'] ?? 'Tanpa Modul' }} · {{ $task['assignee'] }} · {{ $task['due_label'] ?? 'Tanpa due date' }}</p>
-                                    </div>
-                                @empty
-                                    <p class="text-[12.5px] text-slate-400">Belum ada task terbuka yang siap dikerjakan.</p>
-                                @endforelse
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl border border-rose-100 bg-rose-50/40 overflow-hidden">
-                            <div class="px-5 py-4 border-b border-rose-100 bg-white/70">
-                                <h4 class="text-[14px] font-bold text-[#1E1B4B]">Task yang Menunggu Task Pendahulu</h4>
-                                <p class="mt-1 text-[12px] text-slate-500">Task berikut belum disarankan untuk dikerjakan karena masih menunggu task pendahulu selesai.</p>
-                            </div>
-                            <div class="p-5 space-y-3">
-                                @forelse (($timeline['blocked'] ?? []) as $task)
-                                    <div class="rounded-xl border border-rose-100 bg-white p-4">
-                                        <div class="flex items-center gap-2 mb-1">
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700">Blocked</span>
-                                            <h5 class="text-[13.5px] font-bold text-[#1E1B4B]">{{ $task['title'] }}</h5>
-                                        </div>
-                                        <p class="text-[12px] text-slate-500">Menunggu: {{ implode(', ', $task['unfinished_predecessors']) }}</p>
-                                    </div>
-                                @empty
-                                    <p class="text-[12.5px] text-slate-400">Tidak ada task yang sedang menunggu dependency.</p>
-                                @endforelse
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            @endif
-        </div>
-    </div>
-
     </div>
 
     {{-- =============== QUALITY CONTROL =============== --}}
@@ -3050,7 +2716,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 const gpDefault  = @json($gpDefaultSection);
 
                 const TAB_IDS = ['overview', 'gathering-planning', 'development-monitoring', 'testing-evidence'];
-                const GP_IDS = ['intake', 'mom', 'wbs', 'timeline', 'dependencies'];
+                const GP_IDS = ['intake', 'mom', 'wbs'];
                 const ALIASES = {
                     'requirement-intake': { tab: 'gathering-planning', section: 'intake' },
                     intake: { tab: 'gathering-planning', section: 'intake' },
@@ -3058,8 +2724,6 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     'ai-planning': { tab: 'gathering-planning', section: 'wbs' },
                     aiplanning: { tab: 'gathering-planning', section: 'wbs' },
                     wbs: { tab: 'gathering-planning', section: 'wbs' },
-                    timeline: { tab: 'gathering-planning', section: 'timeline' },
-                    dependencies: { tab: 'gathering-planning', section: 'dependencies' },
                     kanban: { tab: 'development-monitoring' },
                     workspace: { tab: 'development-monitoring' },
                     'quality-control': { tab: 'testing-evidence' },
@@ -3144,18 +2808,6 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 };
                 hashToTab();
                 window.addEventListener('hashchange', hashToTab);
-
-                const dependencyPredecessor = document.querySelector('[data-dependency-predecessor]');
-                const dependencySuccessor = document.querySelector('[data-dependency-successor]');
-                if (dependencyPredecessor && dependencySuccessor) {
-                    const syncDependencyOptions = () => {
-                        dependencyPredecessor.querySelectorAll('option').forEach(option => option.disabled = option.value !== '' && option.value === dependencySuccessor.value);
-                        dependencySuccessor.querySelectorAll('option').forEach(option => option.disabled = option.value !== '' && option.value === dependencyPredecessor.value);
-                    };
-                    dependencyPredecessor.addEventListener('change', syncDependencyOptions);
-                    dependencySuccessor.addEventListener('change', syncDependencyOptions);
-                    syncDependencyOptions();
-                }
 
                 /* === Kanban Filter Anggota === */
                 const kbnSelect = document.querySelector('[data-kanban-filter]');

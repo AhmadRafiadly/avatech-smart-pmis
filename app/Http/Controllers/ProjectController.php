@@ -20,7 +20,6 @@ use App\Services\SmartInsightService;
 use App\Support\AppTime;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -325,7 +324,6 @@ class ProjectController extends Controller
                 'module',
                 'assignee',
                 'designDeliverables' => fn ($deliverables) => $deliverables->with('creator:id,name')->orderBy('id'),
-                'successorDependencies.predecessorTask:id,title,status,due_date',
             ])->orderBy('sort_order')->orderBy('id'),
             'moms' => fn ($query) => $query->with('creator:id,name')->orderByDesc('meeting_date')->orderByDesc('id'),
             'qcTests' => fn ($query) => $query->with(['module:id,title', 'task:id,title', 'creator:id,name'])
@@ -334,9 +332,6 @@ class ProjectController extends Controller
             'requirementInboxItems' => fn ($query) => $query->with('creator:id,name')
                 ->orderByDesc('created_at')
                 ->orderByDesc('id'),
-            'taskDependencies' => fn ($query) => $query->with(['predecessorTask:id,title,status,due_date', 'successorTask:id,title,status,due_date', 'creator:id,name'])
-                ->orderBy('created_at')
-                ->orderBy('id'),
         ]);
 
         $statusUi = self::STATUS_UI[$project->status] ?? self::STATUS_UI['on-track'];
@@ -391,11 +386,6 @@ class ProjectController extends Controller
             'intakeSourceOptions'   => self::INTAKE_SOURCE_LABELS,
             'intakePriorityOptions' => self::INTAKE_PRIORITY_LABELS,
             'intakeStatusOptions'   => self::INTAKE_STATUS_LABELS,
-            'taskDependencyRows' => $this->projectTaskDependencyRows($project),
-            'blockedTaskRows' => $this->blockedTaskRows($project),
-            'dependencyTaskOptions' => $project->tasks->map(fn (ProjectTask $task) => ['id' => $task->id, 'title' => $task->title])->values(),
-            'canManageDependencies' => $this->canManageDependencies($project),
-            'timelineData' => $this->projectTimelineData($project),
         ]);
     }
 
@@ -2788,12 +2778,10 @@ class ProjectController extends Controller
         $momTotal = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
         $qcTotal = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
         $intakeTotal = $project->relationLoaded('requirementInboxItems') ? $project->requirementInboxItems->count() : $project->requirementInboxItems()->count();
-        $dependencyTotal = $project->relationLoaded('taskDependencies') ? $project->taskDependencies->count() : $project->taskDependencies()->count();
-        $blockedTotal = count($this->blockedTaskRows($project));
 
         return [
             ['id' => 'overview', 'label' => 'Overview', 'count' => $moduleTotal + $taskTotal],
-            ['id' => 'gathering-planning', 'label' => 'Gathering & Planning', 'count' => $intakeTotal + $momTotal + $moduleTotal + $dependencyTotal + $blockedTotal + $taskTotal],
+            ['id' => 'gathering-planning', 'label' => 'Gathering & Planning', 'count' => $intakeTotal + $momTotal + $moduleTotal + $taskTotal],
             ['id' => 'development-monitoring', 'label' => 'Development Monitoring', 'count' => $taskTotal],
             ['id' => 'testing-evidence', 'label' => 'Testing & Evidence', 'count' => $qcTotal],
         ];
@@ -3053,221 +3041,6 @@ class ProjectController extends Controller
         };
     }
 
-    private function projectTimelineData(Project $project): array
-    {
-        $today = AppTime::now()->startOfDay();
-        $weekEnd = $today->copy()->addDays(7)->endOfDay();
-        $taskRows = $project->tasks->map(fn (ProjectTask $task) => $this->projectTimelineTaskRow($task, $today))->values();
-        $ganttRows = $taskRows
-            ->sortBy(fn (array $task) => $task['start_date'] ?? $task['due_date'] ?? '9999-12-31')
-            ->values();
-        $ganttMeta = $this->projectGanttMeta($ganttRows);
-        $ganttRows = $this->projectGanttRows($ganttRows, $ganttMeta);
-
-        return [
-            'summary' => [
-                'total' => $taskRows->count(),
-                'done' => $taskRows->where('is_done', true)->count(),
-                'overdue' => $taskRows->where('bucket', 'overdue')->count(),
-                'due_soon' => $taskRows->where('bucket', 'next_7_days')->count(),
-                'blocked' => $taskRows->where('is_blocked', true)->count(),
-            ],
-            'groups' => [
-                ['key' => 'overdue', 'label' => 'Overdue', 'tasks' => $taskRows->where('bucket', 'overdue')->values()->all()],
-                ['key' => 'today', 'label' => 'Hari ini', 'tasks' => $taskRows->where('bucket', 'today')->values()->all()],
-                ['key' => 'next_7_days', 'label' => '7 hari ke depan', 'tasks' => $taskRows->where('bucket', 'next_7_days')->values()->all()],
-                ['key' => 'after_7_days', 'label' => 'Setelah 7 hari', 'tasks' => $taskRows->where('bucket', 'after_7_days')->values()->all()],
-                ['key' => 'no_due_date', 'label' => 'Tanpa due date', 'tasks' => $taskRows->where('bucket', 'no_due_date')->values()->all()],
-            ],
-            'ready' => $taskRows
-                ->reject(fn (array $task) => $task['is_done'] || $task['is_blocked'])
-                ->values()
-                ->all(),
-            'blocked' => $taskRows
-                ->where('is_blocked', true)
-                ->reject(fn (array $task) => $task['is_done'])
-                ->values()
-                ->all(),
-            'gantt' => $ganttRows->all(),
-            'gantt_meta' => $ganttMeta,
-            'has_due_dates' => $taskRows->contains(fn (array $task) => filled($task['due_date'])),
-        ];
-    }
-
-    private function projectGanttRows($tasks, array $meta)
-    {
-        $rangeStart = filled($meta['start'] ?? null) ? Carbon::parse($meta['start'])->startOfDay() : null;
-        $days = max(1, (int) ($meta['days'] ?? 1));
-
-        return $tasks->map(function (array $task) use ($rangeStart, $days) {
-            if (! $rangeStart || ! filled($task['due_date'])) {
-                return $task + ['gantt_left' => 0, 'gantt_width' => 0, 'gantt_marker' => null];
-            }
-
-            $startDate = filled($task['start_date']) ? Carbon::parse($task['start_date'])->startOfDay() : null;
-            $dueDate = Carbon::parse($task['due_date'])->startOfDay();
-            if (! $startDate) {
-                return $task + [
-                    'gantt_left' => min(98, max(0, ($rangeStart->diffInDays($dueDate) / $days) * 100)),
-                    'gantt_width' => 0,
-                    'gantt_marker' => 'missing_start',
-                ];
-            }
-
-            $left = min(98, max(0, ($rangeStart->diffInDays($startDate) / $days) * 100));
-            $right = min(100, max($left + 2, ($rangeStart->diffInDays($dueDate) / $days) * 100));
-
-            return $task + [
-                'gantt_left' => $left,
-                'gantt_width' => max(3, $right - $left),
-                'gantt_marker' => null,
-            ];
-        })->values();
-    }
-
-    private function projectGanttMeta($tasks): array
-    {
-        $scheduled = $tasks->filter(fn (array $task) => filled($task['start_date']) || filled($task['due_date']));
-        if ($scheduled->isEmpty()) {
-            return ['start' => null, 'end' => null, 'days' => 1, 'labels' => []];
-        }
-
-        $startCandidates = $scheduled
-            ->map(fn (array $task) => $task['start_date'] ?: $task['due_date'])
-            ->filter()
-            ->map(fn (string $date) => Carbon::parse($date)->startOfDay());
-        $endCandidates = $scheduled
-            ->pluck('due_date')
-            ->filter()
-            ->map(fn (string $date) => Carbon::parse($date)->startOfDay());
-
-        $start = ($startCandidates->sortBy(fn (Carbon $date) => $date->timestamp)->first()?->copy() ?? AppTime::now()->startOfDay())->subDay();
-        $end = ($endCandidates->isNotEmpty()
-            ? $endCandidates->sortByDesc(fn (Carbon $date) => $date->timestamp)->first()
-            : $start->copy())->copy()->addDay();
-        if ($end->lt($start)) {
-            $end = $start->copy()->addDay();
-        }
-
-        $days = max(1, $start->diffInDays($end));
-        $step = $days <= 14 ? 1 : 7;
-        $labels = [];
-        for ($cursor = $start->copy(), $i = 0; $cursor->lte($end); $cursor->addDays($step), $i++) {
-            if ($i > 12) {
-                break;
-            }
-            $labels[] = [
-                'label' => $cursor->format($step === 1 ? 'd M' : 'd M'),
-                'left' => min(100, max(0, ($start->diffInDays($cursor) / max(1, $days)) * 100)),
-            ];
-        }
-
-        return [
-            'start' => $start->format('Y-m-d'),
-            'end' => $end->format('Y-m-d'),
-            'days' => $days,
-            'labels' => $labels,
-        ];
-    }
-
-    private function projectTimelineTaskRow(ProjectTask $task, Carbon $today): array
-    {
-        $start = $task->start_date ? AppTime::cast($task->start_date)->startOfDay() : null;
-        $due = $task->due_date ? AppTime::cast($task->due_date)->startOfDay() : null;
-        $durationDays = $start && $due ? max(1, $start->diffInDays($due) + 1) : null;
-        $isDone = $this->isDoneStatus($task->status);
-        $predecessors = $task->successorDependencies
-            ->filter(fn (ProjectTaskDependency $dependency) => $dependency->predecessorTask)
-            ->map(fn (ProjectTaskDependency $dependency) => [
-                'title' => $dependency->predecessorTask->title,
-                'is_done' => $this->isDoneStatus($dependency->predecessorTask->status),
-            ])
-            ->values();
-        $unfinishedPredecessors = $predecessors->where('is_done', false)->pluck('title')->values()->all();
-
-        return [
-            'id' => $task->id,
-            'title' => $task->title,
-            'module' => $task->module?->title,
-            'status' => self::TASK_STATUS_LABELS[$task->status] ?? $task->status,
-            'status_key' => $task->status,
-            'assignee' => $task->assignee?->name ?? 'Belum Ditugaskan',
-            'priority' => self::TASK_PRIORITY_LABELS[$task->priority] ?? $task->priority,
-            'priority_key' => $task->priority,
-            'start_date' => $task->start_date?->format('Y-m-d'),
-            'start_label' => $task->start_date ? $this->formatDateId($task->start_date) : null,
-            'due_date' => $task->due_date?->format('Y-m-d'),
-            'due_label' => $task->due_date ? $this->formatDateId($task->due_date) : null,
-            'hours' => (int) $task->estimate_hours,
-            'duration_days' => $durationDays,
-            'schedule_state' => $start && $due ? 'scheduled' : ($due ? 'missing_start' : 'missing_due'),
-            'is_done' => $isDone,
-            'is_blocked' => count($unfinishedPredecessors) > 0,
-            'unfinished_predecessors' => $unfinishedPredecessors,
-            'predecessors' => $predecessors->pluck('title')->all(),
-            'bucket' => $this->timelineBucket($due, $today, $isDone),
-        ];
-    }
-
-    private function timelineBucket(?Carbon $due, Carbon $today, bool $isDone): string
-    {
-        if (! $due) {
-            return 'no_due_date';
-        }
-
-        if (! $isDone && $due->lt($today)) {
-            return 'overdue';
-        }
-
-        if ($due->isSameDay($today)) {
-            return 'today';
-        }
-
-        if ($due->lte($today->copy()->addDays(7)->endOfDay())) {
-            return 'next_7_days';
-        }
-
-        return 'after_7_days';
-    }
-
-    private function projectTaskDependencyRows(Project $project): array
-    {
-        return $project->taskDependencies->map(function (ProjectTaskDependency $dependency) {
-            $predecessor = $dependency->predecessorTask;
-            $successor = $dependency->successorTask;
-
-            return [
-                'id' => $dependency->id,
-                'predecessor_title' => $predecessor?->title ?? 'Task tidak ditemukan',
-                'successor_title' => $successor?->title ?? 'Task tidak ditemukan',
-                'predecessor_done' => $predecessor ? $this->isDoneStatus($predecessor->status) : false,
-                'successor_due' => $successor?->due_date ? $this->formatDateId($successor->due_date) : null,
-                'predecessor_due' => $predecessor?->due_date ? $this->formatDateId($predecessor->due_date) : null,
-                'timeline_warning' => false,
-                'notes' => $dependency->notes,
-            ];
-        })->values()->all();
-    }
-
-    private function blockedTaskRows(Project $project): array
-    {
-        return $project->taskDependencies
-            ->filter(fn (ProjectTaskDependency $dependency) => $dependency->predecessorTask && $dependency->successorTask && ! $this->isDoneStatus($dependency->predecessorTask->status) && ! $this->isDoneStatus($dependency->successorTask->status))
-            ->map(fn (ProjectTaskDependency $dependency) => [
-                'task_title' => $dependency->successorTask->title,
-                'predecessor_title' => $dependency->predecessorTask->title,
-            ])
-            ->unique(fn (array $row) => $row['task_title'] . '|' . $row['predecessor_title'])
-            ->values()
-            ->all();
-    }
-
-    private function taskBlockedByDependencies(ProjectTask $task): bool
-    {
-        return $task->successorDependencies
-            ->contains(fn (ProjectTaskDependency $dependency) => $dependency->predecessorTask && ! $this->isDoneStatus($dependency->predecessorTask->status));
-    }
-
     private function taskDependencyPayload(int $predecessorId, int $successorId, ?string $notes): array
     {
         return [
@@ -3369,7 +3142,6 @@ class ProjectController extends Controller
                 'can_edit_design_deliverables' => $this->canEditDesignDeliverables($task),
                 'status_locked' => filled($statusLockMessage),
                 'status_lock_message' => $statusLockMessage,
-                'is_blocked_by_dependency' => $this->taskBlockedByDependencies($task),
                 'design_deliverables' => $task->designDeliverables->map(function (ProjectTaskDesignDeliverable $deliverable) use ($task) {
                     $hasPdf = filled($deliverable->pdf_file_path) && Storage::disk('public')->exists($deliverable->pdf_file_path);
 

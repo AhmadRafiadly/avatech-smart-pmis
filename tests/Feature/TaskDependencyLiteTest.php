@@ -26,17 +26,17 @@ class TaskDependencyLiteTest extends TestCase
             ->assertSee('Development Monitoring')
             ->assertSee('Testing &amp; Evidence', false)
             ->assertSee('Requirement Intake')
-            ->assertSee('Dependencies')
-            ->assertSee('Timeline')
             ->assertSee('Kanban Workspace')
             ->assertSee('data-gp-chip="intake"', false)
             ->assertSee('data-gp-chip="mom"', false)
             ->assertSee('data-gp-chip="wbs"', false)
-            ->assertSee('data-gp-chip="timeline"', false)
-            ->assertSee('data-gp-chip="dependencies"', false)
+            ->assertDontSee('data-gp-chip="timeline"', false)
+            ->assertDontSee('data-gp-chip="dependencies"', false)
             ->assertSee('data-gp-section="intake"', false)
             ->assertSee('data-gp-section="mom"', false)
             ->assertSee('data-gp-section="wbs"', false)
+            ->assertDontSee('data-gp-section="timeline"', false)
+            ->assertDontSee('data-gp-section="dependencies"', false)
             ->assertSee('Testing &amp; Evidence', false);
     }
 
@@ -50,31 +50,24 @@ class TaskDependencyLiteTest extends TestCase
             ->assertSee("'requirement-intake': { tab: 'gathering-planning', section: 'intake' }", false)
             ->assertSee("aiplanning: { tab: 'gathering-planning', section: 'wbs' }", false)
             ->assertSee("kanban: { tab: 'development-monitoring' }", false)
-            ->assertSee("'quality-control': { tab: 'testing-evidence' }", false);
+            ->assertSee("'quality-control': { tab: 'testing-evidence' }", false)
+            ->assertDontSee("timeline: { tab: 'gathering-planning', section: 'timeline' }", false)
+            ->assertDontSee("dependencies: { tab: 'gathering-planning', section: 'dependencies' }", false);
     }
 
-    public function test_authenticated_user_can_access_dependency_section(): void
+    public function test_project_detail_does_not_show_timeline_or_dependency_sections(): void
     {
-        [$user, $project] = $this->projectContext();
+        [$user, $project, $a, $b] = $this->projectContextWithTasks(2);
+        $this->createDependency($project, $a, $b, $user);
 
         $this->actingAs($user)
-            ->get(route('projects.show', $project))
+            ->get(route('projects.show', $project) . '?tab=gathering-planning')
             ->assertOk()
-            ->assertSee('Dependencies')
-            ->assertSee('Dependency membantu PM melihat task yang harus menunggu task pendahulu selesai. Sistem tidak mengubah due date otomatis.');
-    }
-
-    public function test_authenticated_allowed_user_can_access_timeline_section(): void
-    {
-        [$user, $project, $a] = $this->projectContextWithTasks(1);
-
-        $this->actingAs($user)
-            ->get(route('projects.show', $project) . '?tab=timeline')
-            ->assertOk()
-            ->assertSee('Timeline menampilkan ringkasan jadwal task berdasarkan due date manual, status task, dan dependency. Sistem tidak mengubah jadwal otomatis.')
-            ->assertSee('Timeline Jadwal Opsional')
-            ->assertSee('Timeline jadwal membantu PM melihat rentang tanggal mulai sampai due date jika proyek membutuhkan pemantauan jadwal lebih detail. Tampilan ini berfungsi sebagai Gantt-lite sederhana. Untuk project sederhana, Kanban dan due date saja tetap cukup. Sistem tidak mengubah jadwal otomatis.')
-            ->assertSee($a->title);
+            ->assertDontSee('Timeline Jadwal Opsional')
+            ->assertDontSee('Gantt-lite')
+            ->assertDontSee('Daftar Dependency')
+            ->assertDontSee('Tambah Dependency')
+            ->assertDontSee('Task yang Menunggu Task Pendahulu');
     }
 
     public function test_authorized_user_can_store_task_start_date(): void
@@ -115,42 +108,20 @@ class TaskDependencyLiteTest extends TestCase
             ->assertSessionHasErrors('start_date');
     }
 
-    public function test_ceo_pm_can_view_timeline(): void
+    public function test_ceo_pm_project_detail_stays_read_only_for_tasks(): void
     {
         [$user, $project] = $this->projectContextWithTasks(1, 'ceo_pm');
 
         $this->actingAs($user)
-            ->get(route('projects.show', $project) . '?tab=timeline')
+            ->get(route('projects.show', $project) . '?tab=development-monitoring')
             ->assertOk()
-            ->assertSee('Timeline')
-            ->assertSee('Timeline Jadwal Opsional')
+            ->assertSee('Kanban Workspace')
             ->assertDontSee('Tambah Task</button>', false);
     }
 
-    public function test_blocked_tasks_appear_in_timeline(): void
-    {
-        [$user, $project, $a, $b] = $this->projectContextWithTasks(2);
-        $this->createDependency($project, $a, $b, $user);
-
-        $this->actingAs($user)
-            ->get(route('projects.show', $project) . '?tab=timeline')
-            ->assertOk()
-            ->assertSee('Timeline Jadwal Opsional')
-            ->assertSee('Task yang Menunggu Task Pendahulu')
-            ->assertSee($b->title)
-            ->assertSee($a->title)
-            ->assertSee('Blocked');
-    }
-
-    public function test_ceo_pm_can_view_but_cannot_manage_dependencies(): void
+    public function test_ceo_pm_cannot_manage_dependency_endpoint(): void
     {
         [$user, $project, $a, $b] = $this->projectContextWithTasks(2, 'ceo_pm');
-
-        $this->actingAs($user)
-            ->get(route('projects.show', $project) . '?tab=dependencies')
-            ->assertOk()
-            ->assertSee('Anda memiliki akses lihat saja pada dependency proyek ini.')
-            ->assertDontSee('Tambah Dependency</button>', false);
 
         $this->actingAs($user)
             ->post(route('projects.task-dependencies.store', $project), [
