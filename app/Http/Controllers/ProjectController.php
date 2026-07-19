@@ -441,57 +441,119 @@ class ProjectController extends Controller
 
         $created = 0;
         $updated = 0;
+        $warning = null;
         $userNames = User::whereIn('id', $selected->pluck('user_id'))->pluck('name', 'id');
 
-        foreach ($selected as $row) {
-            $user = User::with('roles')->find((int) $row['user_id']);
-            $responsibilities = $this->normalizeQuickAssignResponsibilities($row['responsibilities'] ?? [], $user);
-            $defaults = $this->quickAssignDefaultsForResponsibilities($responsibilities, $user);
-            $assignment = TeamAssignment::firstOrNew([
-                'project_id' => $project->id,
-                'user_id' => (int) $row['user_id'],
-            ]);
+        DB::transaction(function () use ($selected, $project, $userNames, &$created, &$updated, &$warning) {
+            foreach ($selected as $row) {
+                $user = User::with('roles')->find((int) $row['user_id']);
+                $responsibilities = $this->normalizeQuickAssignResponsibilities($row['responsibilities'] ?? [], $user);
+                $defaults = $this->quickAssignDefaultsForResponsibilities($responsibilities, $user);
+                $assignment = TeamAssignment::firstOrNew([
+                    'project_id' => $project->id,
+                    'user_id' => (int) $row['user_id'],
+                ]);
 
-            $wasExisting = $assignment->exists;
-            $original = $assignment->getOriginal();
-            $assignment->fill([
-                'title' => $wasExisting ? $assignment->title : $defaults['title'],
-                'type' => $wasExisting ? $assignment->type : 'task',
-                'responsibilities' => $responsibilities,
-                'status' => $wasExisting ? $assignment->status : 'planned',
-                'estimated_hours' => $row['estimated_hours'] ?? null,
-                'due_date' => $wasExisting ? $assignment->due_date : $project->due_at?->toDateString(),
-                'notes' => $row['notes'] ?? null,
-            ]);
-            $assignment->save();
+                $wasExisting = $assignment->exists;
+                $original = $assignment->getOriginal();
+                $assignment->fill([
+                    'title' => $wasExisting ? $assignment->title : $defaults['title'],
+                    'type' => $wasExisting ? $assignment->type : 'task',
+                    'responsibilities' => $responsibilities,
+                    'status' => $wasExisting ? $assignment->status : 'planned',
+                    'estimated_hours' => $row['estimated_hours'] ?? null,
+                    'due_date' => $wasExisting ? $assignment->due_date : $project->due_at?->toDateString(),
+                    'notes' => $row['notes'] ?? null,
+                ]);
+                $assignment->save();
 
-            $person = $userNames[$assignment->user_id] ?? 'anggota tim';
-            if (! $wasExisting) {
-                $created++;
-                AuditLogger::log(
-                    'assignment_created',
-                    'Team Management',
-                    'Quick assign <strong>' . e($person) . '</strong> ke proyek <strong>' . e($project->name) . '</strong>',
-                    $assignment,
-                    null,
-                    ['project_id' => $project->id, 'user_id' => $assignment->user_id, 'title' => $assignment->title, 'responsibilities' => $responsibilities],
-                );
-            } elseif ($assignment->wasChanged()) {
-                $updated++;
-                AuditLogger::log(
-                    'assignment_updated',
-                    'Team Management',
-                    'Quick assign memperbarui penugasan <strong>' . e($person) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
-                    $assignment,
-                    $original,
-                    $assignment->getAttributes(),
-                );
+                $person = $userNames[$assignment->user_id] ?? 'anggota tim';
+                if (! $wasExisting) {
+                    $created++;
+                    AuditLogger::log(
+                        'assignment_created',
+                        'Team Management',
+                        'Quick assign <strong>' . e($person) . '</strong> ke proyek <strong>' . e($project->name) . '</strong>',
+                        $assignment,
+                        null,
+                        ['project_id' => $project->id, 'user_id' => $assignment->user_id, 'title' => $assignment->title, 'responsibilities' => $responsibilities],
+                    );
+                } elseif ($assignment->wasChanged()) {
+                    $updated++;
+                    AuditLogger::log(
+                        'assignment_updated',
+                        'Team Management',
+                        'Quick assign memperbarui penugasan <strong>' . e($person) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
+                        $assignment,
+                        $original,
+                        $assignment->getAttributes(),
+                    );
+                }
             }
-        }
 
-        return redirect()
+            $warning = $this->recalculateQuickAssignProjectLead($project);
+        });
+
+        $redirect = redirect()
             ->to(route('projects.show', $project) . '#overview')
             ->with('status', 'Quick Assign selesai: ' . $created . ' dibuat, ' . $updated . ' diperbarui.');
+
+        return $warning ? $redirect->with('warning', $warning) : $redirect;
+    }
+
+    private function recalculateQuickAssignProjectLead(Project $project): ?string
+    {
+        $eligible = TeamAssignment::query()
+            ->join('users', 'users.id', '=', 'team_assignments.user_id')
+            ->where('team_assignments.project_id', $project->id)
+            ->whereIn('team_assignments.status', ['planned', 'in_progress'])
+            ->whereNull('users.archived_at')
+            ->get(['users.id', 'users.name', 'team_assignments.responsibilities'])
+            ->filter(fn (TeamAssignment $assignment) => collect($assignment->responsibilities)
+                ->intersect(['fullstack_dev', 'wordpress_support'])->isNotEmpty())
+            ->keyBy('id');
+
+        $oldId = $project->lead_user_id;
+        $oldName = $oldId ? User::find($oldId)?->name : null;
+        $reason = null;
+        $warning = null;
+
+        if ($eligible->isEmpty()) {
+            $newId = null;
+            $reason = 'no_eligible_assignment';
+        } elseif ($eligible->count() === 1) {
+            $newId = (int) $eligible->keys()->first();
+            $reason = 'single_eligible_assignment';
+        } elseif ($oldId && $eligible->has($oldId)) {
+            $newId = (int) $oldId;
+        } else {
+            $newId = null;
+            $reason = 'multiple_eligible_assignments';
+            $warning = 'Beberapa kandidat Project Lead tersedia. Pilih Project Lead secara manual.';
+        }
+
+        if ($newId === $oldId) {
+            return $warning;
+        }
+
+        $newName = $newId ? $eligible->get($newId)?->name : null;
+        $project->update(['lead_user_id' => $newId]);
+        $action = $newId
+            ? ($oldId ? 'project_lead_auto_changed' : 'project_lead_auto_assigned')
+            : 'project_lead_auto_cleared';
+        $message = $newId
+            ? 'Quick Assign ' . ($oldId ? 'mengubah' : 'menetapkan') . ' Project Lead proyek <strong>' . e($project->name) . '</strong> menjadi <strong>' . e($newName) . '</strong>'
+            : 'Quick Assign mengosongkan Project Lead proyek <strong>' . e($project->name) . '</strong>';
+        $payload = fn (?int $id, ?string $name) => [
+            'lead_user_id' => $id,
+            'lead_user_name' => $name,
+            'reason' => $reason,
+            'trigger' => 'quick_assign',
+        ];
+
+        AuditLogger::log($action, 'Project Master', $message, $project, $payload($oldId, $oldName), $payload($newId, $newName));
+
+        return $warning;
     }
 
     public function storeModule(Request $request, Project $project)

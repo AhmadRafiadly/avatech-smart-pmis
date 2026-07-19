@@ -23,6 +23,17 @@ class SidangFinalHardeningTest extends TestCase
         $this->get('/')->assertRedirect('/login');
     }
 
+    public function test_visible_views_use_factual_current_wording_without_realtime_claims(): void
+    {
+        $views = collect(new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(resource_path('views'))))
+            ->filter(fn (\SplFileInfo $file): bool => $file->isFile() && str_ends_with($file->getFilename(), '.blade.php'))
+            ->map(fn (\SplFileInfo $file): string => file_get_contents($file->getPathname()))
+            ->implode("\n");
+
+        $this->assertStringContainsString('Ikhtisar terkini kinerja bisnis dan kesehatan proyek perusahaan.', $views);
+        $this->assertDoesNotMatchRegularExpression('/\b(?:realtime|real-time|live sync)\b/i', $views);
+    }
+
     public function test_ceo_pm_can_access_dashboard_and_executive_area_when_routes_exist(): void
     {
         $user = $this->userWithRole('ceo_pm');

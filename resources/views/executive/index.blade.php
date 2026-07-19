@@ -36,7 +36,7 @@
                 <span class="bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#A855F7]">Monitor</span>
             </h1>
             <p class="mt-3 text-[15px] text-slate-500 max-w-2xl">
-                Ikhtisar real-time kinerja bisnis &amp; kesehatan proyek perusahaan. Selamat datang kembali,
+                Ikhtisar terkini kinerja bisnis dan kesehatan proyek perusahaan. Selamat datang kembali,
                 <span class="text-violet-700 font-medium">{{ $user?->name }}</span>.
             </p>
         </section>
@@ -159,7 +159,7 @@
                 <div class="px-7 py-6 flex items-center justify-between border-b border-violet-50">
                     <div>
                         <h2 class="text-[20px] font-bold tracking-tight text-[#1E1B4B]">Project Health</h2>
-                        <p class="text-[13px] text-slate-500 mt-1">Status real-time semua proyek aktif</p>
+                        <p class="text-[13px] text-slate-500 mt-1">Status terkini semua proyek aktif</p>
                     </div>
                     <div class="flex items-center gap-3">
                         <div class="relative" data-ph-filter>
@@ -309,7 +309,7 @@
                 <div class="flex items-center justify-between mb-7">
                     <div>
                         <h2 class="text-[20px] font-bold tracking-tight text-[#1E1B4B]">Team Load Distribution</h2>
-                        <p class="text-[13px] text-slate-500 mt-1">Visualisasi beban kerja real-time tiap anggota tim</p>
+                        <p class="text-[13px] text-slate-500 mt-1">Visualisasi beban kerja terkini tiap anggota tim</p>
                         <p class="text-[12px] text-slate-400 mt-1 max-w-2xl">
                             Team Load menunjukkan estimasi alokasi jam/minggu untuk membantu pembagian beban kerja, bukan batas kerja mutlak.
                         </p>

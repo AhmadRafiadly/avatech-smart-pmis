@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Project;
 use App\Models\ProjectTask;
@@ -128,6 +129,101 @@ class ProjectAccessQuickAssignTaskTest extends TestCase
         $this->assertSame($project->due_at->toDateString(), $assignment->due_date->toDateString());
     }
 
+    public function test_quick_assign_sets_the_only_eligible_project_lead_and_audits_once(): void
+    {
+        $manager = $this->userWithRoles(['ceo_pm']);
+        $member = $this->userWithRoles(['sa_qa']);
+        $project = $this->project();
+
+        $this->quickAssign($manager, $project, $member, ['fullstack_dev']);
+
+        $this->assertSame($member->id, $project->fresh()->lead_user_id);
+        $audit = AuditLog::where('action', 'project_lead_auto_assigned')->sole();
+        $this->assertNull($audit->old_values['lead_user_id']);
+        $this->assertNull($audit->old_values['lead_user_name']);
+        $this->assertSame('single_eligible_assignment', $audit->old_values['reason']);
+        $this->assertSame('quick_assign', $audit->old_values['trigger']);
+        $this->assertSame($member->id, $audit->new_values['lead_user_id']);
+        $this->assertSame($member->name, $audit->new_values['lead_user_name']);
+        $this->assertSame('single_eligible_assignment', $audit->new_values['reason']);
+        $this->assertSame('quick_assign', $audit->new_values['trigger']);
+
+        $this->quickAssign($manager, $project, $member, ['fullstack_dev']);
+        $this->assertSame(1, AuditLog::where('action', 'project_lead_auto_assigned')->count());
+    }
+
+    public function test_quick_assign_clears_lead_when_no_eligible_assignment_remains(): void
+    {
+        $manager = $this->userWithRoles(['ceo_pm']);
+        $member = $this->userWithRoles(['fullstack_dev']);
+        $project = $this->project();
+        $this->assign($member, $project);
+        $project->update(['lead_user_id' => $member->id]);
+
+        $this->quickAssign($manager, $project, $member, ['copywriting_support']);
+
+        $this->assertNull($project->fresh()->lead_user_id);
+        $audit = AuditLog::where('action', 'project_lead_auto_cleared')->sole();
+        $this->assertSame($member->id, $audit->old_values['lead_user_id']);
+        $this->assertSame($member->name, $audit->old_values['lead_user_name']);
+        $this->assertNull($audit->new_values['lead_user_id']);
+        $this->assertSame('no_eligible_assignment', $audit->new_values['reason']);
+        $this->assertSame('quick_assign', $audit->new_values['trigger']);
+    }
+
+    public function test_quick_assign_retains_manual_eligible_lead_among_multiple_candidates(): void
+    {
+        $manager = $this->userWithRoles(['ceo_pm']);
+        $manualLead = $this->userWithRoles(['sa_qa']);
+        $other = $this->userWithRoles(['fullstack_dev']);
+        $project = $this->project();
+        $this->assign($manualLead, $project);
+        $project->update(['lead_user_id' => $manualLead->id]);
+
+        $response = $this->quickAssign($manager, $project, $other, ['wordpress_support']);
+
+        $response->assertSessionMissing('warning');
+        $this->assertSame($manualLead->id, $project->fresh()->lead_user_id);
+        $this->assertSame(0, AuditLog::whereIn('action', ['project_lead_auto_assigned', 'project_lead_auto_cleared'])->count());
+    }
+
+    public function test_quick_assign_clears_ineligible_lead_among_multiple_candidates_and_warns(): void
+    {
+        $manager = $this->userWithRoles(['ceo_pm']);
+        $currentLead = $this->userWithRoles(['sa_qa']);
+        $first = $this->userWithRoles(['sa_qa']);
+        $second = $this->userWithRoles(['fullstack_dev']);
+        $project = $this->project();
+        $this->assign($currentLead, $project)->update(['responsibilities' => ['saqa_mom_qc']]);
+        $this->assign($first, $project);
+        $project->update(['lead_user_id' => $currentLead->id]);
+
+        $response = $this->quickAssign($manager, $project, $second, ['wordpress_support']);
+
+        $response->assertSessionHas('warning', 'Beberapa kandidat Project Lead tersedia. Pilih Project Lead secara manual.');
+        $this->assertNull($project->fresh()->lead_user_id);
+        $audit = AuditLog::where('action', 'project_lead_auto_cleared')->sole();
+        $this->assertSame('multiple_eligible_assignments', $audit->new_values['reason']);
+    }
+
+    public function test_quick_assign_ignores_global_role_archived_user_and_inactive_assignment_for_lead(): void
+    {
+        $manager = $this->userWithRoles(['ceo_pm']);
+        $globalDeveloper = $this->userWithRoles(['fullstack_dev']);
+        $archived = $this->userWithRoles(['fullstack_dev']);
+        $inactive = $this->userWithRoles(['fullstack_dev']);
+        $eligible = $this->userWithRoles(['sa_qa']);
+        $project = $this->project();
+        $archived->forceFill(['archived_at' => now()])->save();
+        $this->assign($archived, $project);
+        $this->assign($inactive, $project)->update(['status' => 'done']);
+        $this->assign($eligible, $project)->update(['responsibilities' => ['wordpress_support'], 'status' => 'in_progress']);
+
+        $this->quickAssign($manager, $project, $globalDeveloper, ['copywriting_support']);
+
+        $this->assertSame($eligible->id, $project->fresh()->lead_user_id);
+    }
+
     public function test_task_assignee_is_optional_accepts_project_member_and_rejects_non_member(): void
     {
         $operator = $this->userWithRoles(['sa_qa']);
@@ -220,6 +316,13 @@ class ProjectAccessQuickAssignTaskTest extends TestCase
             'estimated_hours' => $hours,
             'notes' => 'Focused test',
         ];
+    }
+
+    private function quickAssign(User $manager, Project $project, User $member, array $responsibilities)
+    {
+        return $this->actingAs($manager)->post(route('projects.quick-assign', $project), [
+            'assignments' => [$this->assignmentPayload($member, $responsibilities)],
+        ])->assertRedirect(route('projects.show', $project) . '#overview');
     }
 
     private function taskPayload(string $title = 'Focused Task', ?int $assignee = null): array

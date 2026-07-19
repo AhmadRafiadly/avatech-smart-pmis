@@ -10,6 +10,7 @@ use App\Models\ProjectTask;
 use App\Models\TeamAssignment;
 use App\Models\User;
 use App\Support\AppTime;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
 class SmartInsightService
@@ -56,21 +57,25 @@ class SmartInsightService
     {
         $badges = [];
         $moduleCount = $project->relationLoaded('modules') ? $project->modules->count() : $project->modules()->count();
-        $taskCount = $project->relationLoaded('tasks') ? $project->tasks->count() : $project->tasks()->count();
-        $unassignedTasks = $project->relationLoaded('tasks')
-            ? $project->tasks->whereNull('assigned_to')->count()
-            : $project->tasks()->whereNull('assigned_to')->count();
-        $qcCount = $project->relationLoaded('qcTests') ? $project->qcTests->count() : $project->qcTests()->count();
+        $qcTests = $project->relationLoaded('qcTests') ? $project->qcTests : $project->qcTests()->get();
+        $qcCount = $qcTests->count();
         $momCount = $project->relationLoaded('moms') ? $project->moms->count() : $project->moms()->count();
+        $phase = strtolower((string) $project->phase);
+        $hasFailedQc = $qcTests->whereIn('status', ['failed', 'retest'])->isNotEmpty();
+        $hasPendingQc = $qcTests->where('status', 'pending')->isNotEmpty();
 
-        if ($momCount > 0 && $moduleCount === 0) {
+        if ($hasFailedQc) {
+            $badges[] = ['label' => 'QC Gagal / Perlu Retest', 'tone' => 'rose', 'icon' => 'beaker'];
+        } elseif ($phase === 'qc' && $hasPendingQc) {
+            $badges[] = ['label' => 'Perlu QC', 'tone' => 'amber', 'icon' => 'beaker'];
+        } elseif ($phase === 'development' && $moduleCount > 0 && $qcCount === 0) {
+            $badges[] = ['label' => 'Perlu QC', 'tone' => 'amber', 'icon' => 'beaker'];
+        } elseif ($momCount > 0 && $moduleCount === 0) {
             $badges[] = ['label' => 'AI WBS Ready', 'tone' => 'violet', 'icon' => 'sparkles'];
-        } elseif ($moduleCount > 0 && $qcCount === 0) {
-            $badges[] = ['label' => 'Needs QC', 'tone' => 'amber', 'icon' => 'beaker'];
         }
 
-        if ($taskCount > 0 && $unassignedTasks > 0) {
-            $badges[] = ['label' => 'Needs Assignment', 'tone' => 'rose', 'icon' => 'user-plus'];
+        if ($this->activeTeamAssignments($project)->doesntExist()) {
+            $badges[] = ['label' => 'Belum Ada Tim', 'tone' => 'rose', 'icon' => 'user-plus'];
         } elseif ($project->due_at && $project->due_at->isBetween(AppTime::now(), AppTime::now()->addDays(7)) && (int) $project->progress < 100) {
             $badges[] = ['label' => 'Due Soon', 'tone' => 'amber', 'icon' => 'clock'];
         } elseif ($project->status === 'on-track') {
@@ -85,10 +90,8 @@ class SmartInsightService
      */
     public function projectAvatars(Project $project, int $visible = 3): array
     {
-        return TeamAssignment::query()
+        return $this->activeTeamAssignments($project)
             ->with('user:id,name,avatar_color')
-            ->where('project_id', $project->id)
-            ->whereHas('user', fn ($query) => $query->whereNull('archived_at'))
             ->orderBy('id')
             ->get()
             ->pluck('user')
@@ -106,9 +109,7 @@ class SmartInsightService
 
     public function projectAssignmentCount(Project $project): int
     {
-        return TeamAssignment::query()
-            ->where('project_id', $project->id)
-            ->whereHas('user', fn ($query) => $query->whereNull('archived_at'))
+        return $this->activeTeamAssignments($project)
             ->distinct('user_id')
             ->count('user_id');
     }
@@ -121,10 +122,8 @@ class SmartInsightService
      */
     public function projectHiddenMemberNames(Project $project, int $skip = 3): array
     {
-        return TeamAssignment::query()
+        return $this->activeTeamAssignments($project)
             ->with('user:id,name')
-            ->where('project_id', $project->id)
-            ->whereHas('user', fn ($query) => $query->whereNull('archived_at'))
             ->orderBy('id')
             ->get()
             ->pluck('user')
@@ -135,6 +134,14 @@ class SmartInsightService
             ->filter()
             ->values()
             ->all();
+    }
+
+    private function activeTeamAssignments(Project $project): Builder
+    {
+        return TeamAssignment::query()
+            ->where('project_id', $project->id)
+            ->whereIn('status', ['planned', 'in_progress'])
+            ->whereHas('user', fn ($query) => $query->whereNull('archived_at'));
     }
 
     /**
@@ -178,7 +185,7 @@ class SmartInsightService
                 'severity' => 'critical',
                 'category' => 'Project Risk',
                 'title' => 'Ada proyek butuh perhatian',
-                'description' => 'Salah satu proyek aktif klien sedang berstatus Needs Attention atau Critical.',
+                'description' => 'Salah satu proyek aktif klien sedang berstatus Butuh Perhatian atau Critical.',
             ];
         }
 
