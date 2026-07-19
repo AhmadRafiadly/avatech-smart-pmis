@@ -285,6 +285,7 @@
         if ($isOperationalViewer) {
             $assignedProjectIds = \App\Models\TeamAssignment::query()
                 ->where('user_id', $user->id)
+                ->whereIn('status', ['planned', 'in_progress'])
                 ->pluck('project_id')
                 ->unique();
 
@@ -298,7 +299,7 @@
                 ];
             }
 
-            foreach (\App\Models\ProjectTask::with('project:id,name,code')->where('assigned_to', $user->id)->orderByDesc('updated_at')->limit(60)->get() as $t) {
+            foreach (\App\Models\ProjectTask::with('project:id,name,code')->where('assigned_to', $user->id)->whereIn('project_id', $assignedProjectIds)->whereHas('project', fn ($query) => $query->whereNull('archived_at'))->orderByDesc('updated_at')->limit(60)->get() as $t) {
                 $searchIndex[] = [
                     'type'     => 'task',
                     'label'    => $t->title,

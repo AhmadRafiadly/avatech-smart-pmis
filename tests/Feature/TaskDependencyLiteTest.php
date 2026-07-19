@@ -119,16 +119,21 @@ class TaskDependencyLiteTest extends TestCase
             ->assertDontSee('Tambah Task</button>', false);
     }
 
-    public function test_ceo_pm_cannot_manage_dependency_endpoint(): void
+    public function test_dependency_create_and_delete_routes_are_disabled(): void
     {
-        [$user, $project, $a, $b] = $this->projectContextWithTasks(2, 'ceo_pm');
+        [$user, $project, $a, $b] = $this->projectContextWithTasks(2);
+        $dependency = $this->createDependency($project, $a, $b, $user);
 
         $this->actingAs($user)
-            ->post(route('projects.task-dependencies.store', $project), [
+            ->post("/projects/{$project->id}/task-dependencies", [
                 'predecessor_task_id' => $a->id,
                 'successor_task_id' => $b->id,
             ])
-            ->assertForbidden();
+            ->assertNotFound();
+
+        $this->actingAs($user)
+            ->delete("/projects/{$project->id}/task-dependencies/{$dependency->id}")
+            ->assertNotFound();
     }
 
     public function test_ceo_pm_cannot_manage_requirement_intake_from_project_detail(): void
@@ -145,80 +150,6 @@ class TaskDependencyLiteTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_cannot_create_self_dependency(): void
-    {
-        [$user, $project, $task] = $this->projectContextWithTasks(1);
-
-        $this->actingAs($user)
-            ->from(route('projects.show', $project) . '#dependencies')
-            ->post(route('projects.task-dependencies.store', $project), [
-                'predecessor_task_id' => $task->id,
-                'successor_task_id' => $task->id,
-            ])
-            ->assertSessionHasErrors('successor_task_id');
-    }
-
-    public function test_cannot_create_duplicate_dependency(): void
-    {
-        [$user, $project, $a, $b] = $this->projectContextWithTasks(2);
-
-        $this->createDependency($project, $a, $b, $user);
-
-        $this->actingAs($user)
-            ->post(route('projects.task-dependencies.store', $project), [
-                'predecessor_task_id' => $a->id,
-                'successor_task_id' => $b->id,
-            ])
-            ->assertSessionHasErrors('successor_task_id');
-    }
-
-    public function test_cannot_create_transitive_circular_dependency(): void
-    {
-        [$user, $project, $a, $b, $c] = $this->projectContextWithTasks(3);
-
-        $this->createDependency($project, $a, $b, $user);
-        $this->createDependency($project, $b, $c, $user);
-
-        $this->actingAs($user)
-            ->post(route('projects.task-dependencies.store', $project), [
-                'predecessor_task_id' => $c->id,
-                'successor_task_id' => $a->id,
-            ])
-            ->assertSessionHasErrors('successor_task_id');
-    }
-
-    public function test_can_create_valid_dependency(): void
-    {
-        [$user, $project, $a, $b] = $this->projectContextWithTasks(2);
-
-        $this->actingAs($user)
-            ->post(route('projects.task-dependencies.store', $project), [
-                'predecessor_task_id' => $a->id,
-                'successor_task_id' => $b->id,
-                'notes' => 'Frontend menunggu UI selesai.',
-            ])
-            ->assertRedirect(route('projects.show', $project) . '?tab=dependencies#dependencies');
-
-        $this->assertDatabaseHas('project_task_dependencies', [
-            'project_id' => $project->id,
-            'predecessor_task_id' => $a->id,
-            'successor_task_id' => $b->id,
-            'dependency_type' => 'finish_to_start',
-        ]);
-    }
-
-    public function test_can_delete_dependency_if_authorized(): void
-    {
-        [$user, $project, $a, $b] = $this->projectContextWithTasks(2);
-        $dependency = $this->createDependency($project, $a, $b, $user);
-
-        $this->actingAs($user)
-            ->delete(route('projects.task-dependencies.destroy', [$project, $dependency]))
-            ->assertRedirect(route('projects.show', $project) . '?tab=dependencies#dependencies');
-
-        $this->assertDatabaseMissing('project_task_dependencies', ['id' => $dependency->id]);
-    }
-
     private function createDependency(Project $project, ProjectTask $predecessor, ProjectTask $successor, User $user): ProjectTaskDependency
     {
         return ProjectTaskDependency::create([
@@ -227,10 +158,6 @@ class TaskDependencyLiteTest extends TestCase
             'successor_task_id' => $successor->id,
             'dependency_type' => 'finish_to_start',
             'created_by' => $user->id,
-            'task_id' => $successor->id,
-            'depends_on_task_id' => $predecessor->id,
-            'type' => 'finish_to_start',
-            'created_by_user_id' => $user->id,
         ]);
     }
 

@@ -29,7 +29,7 @@
         ['code' => 'MOD',  'value' => '6',    'label' => 'Modul Terdefinisi',  'color' => '#3B82F6', 'progress' => 100, 'sub' => '6 modul aktif/terdefinisi'],
         ['code' => 'TASK', 'value' => '0/14', 'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => 0,   'sub' => '0 Selesai / 14 Proses'],
         ['code' => 'MOM',  'value' => '1/1',  'label' => 'MoM AI Rapi',        'color' => '#10B981', 'progress' => 100, 'sub' => 'Semua disetujui'],
-        ['code' => 'QC',   'value' => '0%',   'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0,   'sub' => '0 lulus - 0 gagal - 0 pending'],
+        ['code' => 'QC',   'value' => '0%',   'label' => 'Konsistensi QC', 'color' => '#F59E0B', 'progress' => 0,   'sub' => '0 lulus - 0 gagal - 0 pending'],
     ];
 
     $statusCards = [
@@ -137,7 +137,7 @@
             ['code' => 'MOD',  'value' => '0',   'label' => 'Modul Terdefinisi',  'color' => '#3B82F6', 'progress' => 0, 'sub' => 'Belum ada modul'],
             ['code' => 'TASK', 'value' => '0/0', 'label' => 'Task Selesai',       'color' => '#7C3AED', 'progress' => 0, 'sub' => 'Belum ada task'],
             ['code' => 'MOM',  'value' => '0/0', 'label' => 'MoM AI Rapi',        'color' => '#10B981', 'progress' => 0, 'sub' => 'Belum ada MoM'],
-            ['code' => 'QC',   'value' => '0%',  'label' => 'Tingkat Lulus Test', 'color' => '#F59E0B', 'progress' => 0, 'sub' => 'Belum ada test case'],
+            ['code' => 'QC',   'value' => '0%',  'label' => 'Konsistensi QC', 'color' => '#F59E0B', 'progress' => 0, 'sub' => 'Belum ada test case'],
         ];
 
         $statusCards = $dbStatusCards ?? [
@@ -862,7 +862,7 @@
                         @error('project_module_id')<p class="mt-1 text-[11.5px] text-rose-600">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">Assignee</label>
+                        <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-500 mb-2">PIC Task (Opsional)</label>
                         <select name="assigned_to" class="w-full h-10 rounded-xl border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
                             <option value="">Belum Ditugaskan</option>
                             @foreach ($assigneeOptions as $member)
@@ -992,7 +992,7 @@
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">Assignee</label>
+                                                    <label class="block text-[10px] font-bold tracking-wider uppercase text-slate-400 mb-1">PIC Task (Opsional)</label>
                                                     <select name="assigned_to" class="w-full h-9 rounded-lg border border-violet-100 bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
                                                         <option value="">Belum Ditugaskan</option>
                                                         @foreach ($assigneeOptions as $member)
@@ -1409,6 +1409,17 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                         @endif
                                     </div>
                                     @if ($canEdit && ! $useReferenceProjectData && $momIsDb && ! empty($mom['id']))
+                                        @if ($momSummary && in_array($momStatusKey, ['ai_fixed', 'manual_updated'], true) && $intakeCanContribute)
+                                            <button
+                                                type="button"
+                                                data-mom-requirement-prefill
+                                                data-title="Requirement dari MoM {{ $momDateText }}"
+                                                data-summary="{{ $momSummary }}"
+                                                class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-violet-600 text-white text-[12px] font-semibold hover:bg-violet-700 transition cursor-pointer"
+                                            >
+                                                <x-heroicon-o-plus class="w-4 h-4" /> Buat Requirement dari MoM
+                                            </button>
+                                        @endif
                                         <form method="POST" action="{{ route('projects.moms.summary', [$project, $mom['id']]) }}" class="space-y-2">
                                             @csrf
                                             @method('PATCH')
@@ -1798,7 +1809,10 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                         <div class="flex flex-wrap items-center gap-3 text-[12px]">
                             @if ($ri['file_url'])
                                 <a href="{{ $ri['file_url'] }}" target="_blank" class="inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 font-medium">
-                                    <x-heroicon-o-paper-clip class="w-3.5 h-3.5" /> File
+                                    <x-heroicon-o-paper-clip class="w-3.5 h-3.5" /> Preview
+                                </a>
+                                <a href="{{ $ri['file_download_url'] }}" class="inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 font-medium">
+                                    <x-heroicon-o-arrow-down-tray class="w-3.5 h-3.5" /> Download
                                 </a>
                             @endif
                             @if ($ri['external_url'])
@@ -1841,7 +1855,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         @if ($intakeCanAdd && ! $useReferenceProjectData)
             <div class="border-t border-violet-100/60 p-6 md:px-7">
                 <h4 class="text-[14px] font-bold text-[#1E1B4B] mb-4">Tambah Requirement</h4>
-                <form method="POST" action="{{ route('projects.requirement-intake.store', $project) }}" enctype="multipart/form-data" class="space-y-4">
+                <form id="requirement-intake-create-form" method="POST" action="{{ route('projects.requirement-intake.store', $project) }}" enctype="multipart/form-data" class="space-y-4">
                     @csrf
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
@@ -2253,7 +2267,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         @endif
 
         <div class="px-7 py-5 border-t border-violet-100/60 bg-violet-50/30 flex items-center justify-between flex-wrap gap-3">
-            <p class="text-[11.5px] text-slate-400 italic">Retest menandai test case untuk siklus verifikasi berikutnya dan mempertahankan bukti sebelumnya.</p>
+            <p class="text-[11.5px] text-slate-400 italic">Retest mengubah status menjadi Retest; hasil aktual terakhir tetap ditampilkan sebagai bukti siklus sebelumnya.</p>
             @if ($canEdit && ! $useReferenceProjectData)
                 @php
                     $qcAiSourceReady = count($modules) > 0 || ($workspaceTaskTotal ?? 0) > 0;
@@ -2484,10 +2498,11 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                                     </label>
                                                 @endforeach
                                             </div>
-                                            <p class="mt-1.5 text-[10.5px] text-slate-400 leading-tight">Kontribusi dapat berbeda pada setiap proyek dan tidak mengubah role akses akun.</p>
+                                             <p class="mt-1.5 text-[10.5px] text-slate-400 leading-tight">Kosongkan jika kontribusi belum ditentukan. Kontribusi dapat berbeda pada setiap proyek dan tidak mengubah role akses akun.</p>
+
                                         </div>
                                         <div class="lg:col-span-3">
-                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Estimasi Jam (Opsional)</label>
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Alokasi Estimasi Jam (Opsional)</label>
                                             <input type="number" min="0" max="200" name="assignments[{{ $idx }}][estimated_hours]" data-qa-field="estimated_hours" value="{{ $member['estimated_hours'] }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
                                         </div>
                                         <div class="lg:col-span-9">
@@ -2627,6 +2642,26 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
 
                         momNotesInput.value = momTemplate;
                         momNotesInput.focus();
+                    });
+                }
+
+                const requirementIntakeForm = document.getElementById('requirement-intake-create-form');
+                if (requirementIntakeForm) {
+                    const existingRequirementTitles = @json(collect($intakeItems ?? [])->pluck('title')->map(fn ($title) => mb_strtolower(trim($title)))->values());
+                    document.querySelectorAll('[data-mom-requirement-prefill]').forEach(button => {
+                        button.addEventListener('click', () => {
+                            const title = button.dataset.title || '';
+                            requirementIntakeForm.querySelector('[name="title"]').value = title;
+                            requirementIntakeForm.querySelector('[name="source_type"]').value = 'meeting_note';
+                            requirementIntakeForm.querySelector('[name="summary"]').value = button.dataset.summary || '';
+                            requirementIntakeForm.querySelector('[name="priority"]').value = 'should';
+                            if (existingRequirementTitles.includes(title.trim().toLowerCase())) {
+                                window.alert('Peringatan: requirement dengan judul yang sama sudah ada. Periksa dan edit sebelum menyimpan.');
+                            }
+                            document.querySelector('[data-gp-chip="intake"]')?.click();
+                            requirementIntakeForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            requirementIntakeForm.querySelector('[name="title"]').focus();
+                        });
                     });
                 }
 

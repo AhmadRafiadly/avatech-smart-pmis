@@ -22,6 +22,7 @@ class AiMonitorController extends Controller
 
     public function index()
     {
+        $this->ensureDiagnosticsAccess();
         $todayStart = AppTime::now()->startOfDay();
         $monthStart = AppTime::now()->startOfMonth();
 
@@ -139,8 +140,8 @@ class AiMonitorController extends Controller
 
     private function ensureDiagnosticsAccess(): void
     {
-        $role = auth()->user()?->roles?->first()?->name;
-        abort_unless(in_array($role, ['ceo_pm', 'admin', 'super_admin', 'developer'], true), 403);
+        $user = auth()->user();
+        abort_unless($user && ! $user->archived_at && $user->hasAnyRole(['ceo_pm', 'admin', 'super_admin', 'developer']), 403);
     }
 
     private function featureUsage(Collection $logs): array

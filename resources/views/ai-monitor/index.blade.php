@@ -87,12 +87,12 @@
                     @if ($provider['configured'])
                         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10.5px] font-bold tracking-wider uppercase">
                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                            Siap
+                            Terkonfigurasi
                         </span>
                     @else
                         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-[10.5px] font-bold tracking-wider uppercase">
                             <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                            Belum Siap
+                            Belum Terkonfigurasi
                         </span>
                     @endif
                 </div>
@@ -104,12 +104,12 @@
 
     <section class="grid grid-cols-2 xl:grid-cols-6 gap-5 mb-8">
         @foreach ([
-            ['label' => 'Penggunaan Hari Ini', 'value' => $summary['today_calls'], 'icon' => 'bolt'],
-            ['label' => 'Penggunaan Bulan Ini', 'value' => $summary['month_calls'], 'icon' => 'calendar-days'],
-            ['label' => 'Rasio Sukses', 'value' => $summary['success_rate'] . '%', 'icon' => 'check-circle'],
-            ['label' => 'Request Gagal Final', 'value' => $summary['failed_requests'], 'icon' => 'exclamation-triangle'],
-            ['label' => 'Latensi Rata-rata', 'value' => $summary['average_latency'] ? number_format($summary['average_latency']) . ' ms' : '-', 'icon' => 'clock'],
-            ['label' => 'Fallback Terjadi', 'value' => $summary['fallback_events'], 'icon' => 'arrow-path'],
+            ['label' => 'Log AI Hari Ini', 'value' => $summary['today_calls'], 'icon' => 'bolt'],
+            ['label' => 'Log AI Bulan Ini', 'value' => $summary['month_calls'], 'icon' => 'calendar-days'],
+            ['label' => 'Rasio Log Sukses Bulan Ini', 'value' => $summary['success_rate'] . '%', 'icon' => 'check-circle'],
+            ['label' => 'Log Gagal Final Bulan Ini', 'value' => $summary['failed_requests'], 'icon' => 'exclamation-triangle'],
+            ['label' => 'Rata-rata Latensi Log Bulan Ini', 'value' => $summary['average_latency'] ? number_format($summary['average_latency']) . ' ms' : '-', 'icon' => 'clock'],
+            ['label' => 'Log Fallback Bulan Ini', 'value' => $summary['fallback_events'], 'icon' => 'arrow-path'],
         ] as $metric)
             <article class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] p-5">
                 <div class="w-10 h-10 rounded-xl bg-violet-50 text-violet-700 flex items-center justify-center mb-4">

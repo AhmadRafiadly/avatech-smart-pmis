@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Project;
+use App\Models\ProjectMom;
 use App\Models\ProjectQcTest;
+use App\Models\ProjectRequirementInboxItem;
 use App\Models\ProjectTask;
 use App\Models\TeamAssignment;
 use App\Models\User;
@@ -42,6 +44,63 @@ class DesignAndQcFlowTest extends TestCase
         ]);
     }
 
+    public function test_design_auto_assignment_prefers_exactly_one_contributor_and_excludes_archived_users(): void
+    {
+        [$user, $project] = $this->context(true);
+        $globalDesigner = User::factory()->create();
+        $globalDesigner->assignRole(Role::findOrCreate('uiux_designer', 'web'));
+        $contributor = User::factory()->create();
+        $contributor->assignRole(Role::findOrCreate('fullstack_dev', 'web'));
+        TeamAssignment::create([
+            'user_id' => $contributor->id,
+            'project_id' => $project->id,
+            'title' => 'Design contributor',
+            'type' => 'task',
+            'responsibilities' => ['uiux_design'],
+            'status' => 'planned',
+        ]);
+        $archivedContributor = User::factory()->create(['archived_at' => now()]);
+        $archivedContributor->assignRole(Role::findOrCreate('fullstack_dev', 'web'));
+        TeamAssignment::create([
+            'user_id' => $archivedContributor->id,
+            'project_id' => $project->id,
+            'title' => 'Archived design contributor',
+            'type' => 'task',
+            'responsibilities' => ['uiux_design'],
+            'status' => 'planned',
+        ]);
+
+        $this->actingAs($user)->post(route('projects.ai-wbs.apply', $project), $this->wbsPayload());
+
+        $this->assertDatabaseHas('project_tasks', [
+            'project_id' => $project->id,
+            'is_design_deliverable' => true,
+            'assigned_to' => $contributor->id,
+        ]);
+    }
+
+    public function test_design_auto_assignment_stays_unassigned_when_a_level_has_multiple_eligible_users(): void
+    {
+        [$user, $project] = $this->context(true);
+        foreach (range(1, 2) as $index) {
+            $designer = User::factory()->create();
+            $designer->assignRole(Role::findOrCreate('uiux_designer', 'web'));
+            TeamAssignment::create([
+                'user_id' => $designer->id,
+                'project_id' => $project->id,
+                'title' => 'Designer '.$index,
+                'type' => 'task',
+                'responsibilities' => ['uiux_design'],
+                'status' => 'planned',
+            ]);
+        }
+
+        $this->actingAs($user)->post(route('projects.ai-wbs.apply', $project), $this->wbsPayload());
+
+        $task = ProjectTask::where('project_id', $project->id)->where('is_design_deliverable', true)->firstOrFail();
+        $this->assertNull($task->assigned_to);
+    }
+
     public function test_non_uiux_global_role_with_uiux_design_responsibility_can_submit_deliverable(): void
     {
         [$user, $project] = $this->context(true, 'fullstack_dev', ['uiux_design']);
@@ -58,6 +117,26 @@ class DesignAndQcFlowTest extends TestCase
             'title' => 'Final Mockup',
             'created_by' => $user->id,
         ]);
+    }
+
+    public function test_reviewed_ai_polished_mom_offers_editable_requirement_prefill_without_saving(): void
+    {
+        [$user, $project] = $this->context(false);
+        ProjectMom::create([
+            'project_id' => $project->id,
+            'created_by' => $user->id,
+            'meeting_date' => now()->toDateString(),
+            'notes' => 'Raw meeting notes.',
+            'summary' => 'Klien membutuhkan approval berjenjang.',
+            'status' => 'ai_fixed',
+        ]);
+
+        $this->actingAs($user)->get(route('projects.show', $project))
+            ->assertOk()
+            ->assertSee('Buat Requirement dari MoM')
+            ->assertSee('Klien membutuhkan approval berjenjang.');
+
+        $this->assertSame(0, ProjectRequirementInboxItem::where('project_id', $project->id)->count());
     }
 
     public function test_design_deliverable_is_required_before_done(): void

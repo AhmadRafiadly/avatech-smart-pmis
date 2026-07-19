@@ -10,6 +10,9 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withCommands([
+        \App\Console\Commands\CleanupTestArtifacts::class,
+    ])
     ->withMiddleware(function (Middleware $middleware) {
         // Authenticated Smart-PMIS pages and the login form must never be
         // served from browser cache (otherwise Back-after-logout still shows

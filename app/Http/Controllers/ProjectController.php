@@ -117,11 +117,11 @@ class ProjectController extends Controller
     private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
     private const QUICK_ASSIGN_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
     private const QUICK_ASSIGN_RESPONSIBILITIES = [
-        'saqa_mom_qc' => 'Analisis, MoM & QA/QC',
-        'uiux_design' => 'UI/UX Design',
-        'fullstack_dev' => 'Fullstack Development',
-        'wordpress_support' => 'WordPress Development',
-        'copywriting_support' => 'Copywriting',
+        'saqa_mom_qc' => 'Kontribusi: Analisis, MoM & QC',
+        'uiux_design' => 'Kontribusi: UI/UX Design',
+        'fullstack_dev' => 'Kontribusi: Fullstack Development',
+        'wordpress_support' => 'Kontribusi: WordPress Development',
+        'copywriting_support' => 'Kontribusi: Copywriting',
     ];
 
     public function __construct(private readonly SmartInsightService $insights)
@@ -158,6 +158,16 @@ class ProjectController extends Controller
             'title'    => 'Project Master',
             'projects' => $projects,
             'clients'  => Client::orderBy('name')->get(['id', 'name']),
+            'leadCandidates' => User::query()
+                ->whereNull('archived_at')
+                ->whereHas('teamAssignments', fn ($query) => $query
+                    ->whereIn('project_id', collect($projects)->pluck('id'))
+                    ->whereIn('status', ['planned', 'in_progress']))
+                ->with(['teamAssignments' => fn ($query) => $query
+                    ->whereIn('project_id', collect($projects)->pluck('id'))
+                    ->whereIn('status', ['planned', 'in_progress'])])
+                ->orderBy('name')
+                ->get(['id', 'name']),
             'archiveScope' => $archiveScope,
         ]);
     }
@@ -279,6 +289,7 @@ class ProjectController extends Controller
             'description' => $validated['description'] ?? null,
             'due_at'      => $validated['due_at'] ?? null,
             'requires_design' => $request->boolean('requires_design'),
+            'lead_user_id' => $validated['lead_user_id'] ?? null,
         ]);
 
         AuditLogger::logUpdated($project, 'Project Master', 'Memperbarui proyek <strong>' . e($project->name) . '</strong>', $original);
@@ -925,7 +936,7 @@ class ProjectController extends Controller
         }
 
         $filePath = $request->hasFile('pdf_file')
-            ? $request->file('pdf_file')->store('project-design-deliverables', 'public')
+            ? $request->file('pdf_file')->store('project-design-deliverables', 'local')
             : null;
 
         $deliverable = $task->designDeliverables()->create([
@@ -959,10 +970,7 @@ class ProjectController extends Controller
         $filePath = $deliverable->pdf_file_path;
 
         if ($request->hasFile('pdf_file')) {
-            if ($filePath) {
-                Storage::disk('public')->delete($filePath);
-            }
-            $filePath = $request->file('pdf_file')->store('project-design-deliverables', 'public');
+            $filePath = $request->file('pdf_file')->store('project-design-deliverables', 'local');
         }
 
         if (! filled($validated['figma_url'] ?? null) && ! filled($filePath)) {
@@ -1005,10 +1013,6 @@ class ProjectController extends Controller
             'has_pdf' => filled($deliverable->pdf_file_path),
             'has_url' => filled($deliverable->figma_url),
         ];
-
-        if ($deliverable->pdf_file_path) {
-            Storage::disk('public')->delete($deliverable->pdf_file_path);
-        }
 
         $deliverable->delete();
 
@@ -1088,16 +1092,21 @@ class ProjectController extends Controller
 
     private function designDeliverablePdfPath(ProjectTaskDesignDeliverable $deliverable): string
     {
-        $storagePath = str_replace('\\', '/', ltrim((string) $deliverable->pdf_file_path, '/'));
+        [$disk, $path] = $this->storedUpload($deliverable->pdf_file_path, 'project-design-deliverables/');
 
-        abort_unless(
-            filled($storagePath)
-            && str_starts_with($storagePath, 'project-design-deliverables/')
-            && Storage::disk('public')->exists($storagePath),
-            404,
-        );
+        return Storage::disk($disk)->path($path);
+    }
 
-        return Storage::disk('public')->path($storagePath);
+    private function storedUpload(?string $path, string $prefix): array
+    {
+        $path = str_replace('\\', '/', ltrim((string) $path, '/'));
+        abort_unless(filled($path) && str_starts_with($path, $prefix), 404);
+        foreach (['local', 'public'] as $disk) {
+            if (Storage::disk($disk)->exists($path)) {
+                return [$disk, $path];
+            }
+        }
+        abort(404);
     }
 
     public function updateDesignDeliverable(Request $request, Project $project, ProjectTask $task)
@@ -1116,10 +1125,7 @@ class ProjectController extends Controller
         $original = $task->getOriginal();
         $filePath = $task->deliverable_file_path;
         if ($request->hasFile('deliverable_file')) {
-            if ($filePath) {
-                Storage::disk('public')->delete($filePath);
-            }
-            $filePath = $request->file('deliverable_file')->store('project-design-deliverables', 'public');
+            $filePath = $request->file('deliverable_file')->store('project-design-deliverables', 'local');
         }
 
         $hasDeliverable = filled($validated['deliverable_url'] ?? null) || filled($filePath);
@@ -2020,7 +2026,7 @@ class ProjectController extends Controller
 
         $filePath = null;
         if ($request->hasFile('file')) {
-            $filePath = $request->file('file')->store('project-requirements/' . $project->id, 'public');
+            $filePath = $request->file('file')->store('project-requirements/' . $project->id, 'local');
         }
 
         $item = $project->requirementInboxItems()->create([
@@ -2061,10 +2067,7 @@ class ProjectController extends Controller
         $old = ['status' => $intake->status, 'priority' => $intake->priority, 'source_type' => $intake->source_type];
 
         if ($request->hasFile('file')) {
-            if ($intake->file_path) {
-                Storage::disk('public')->delete($intake->file_path);
-            }
-            $intake->file_path = $request->file('file')->store('project-requirements/' . $project->id, 'public');
+            $intake->file_path = $request->file('file')->store('project-requirements/' . $project->id, 'local');
         }
 
         $intake->fill([
@@ -2091,6 +2094,30 @@ class ProjectController extends Controller
             ->with('status', 'Requirement "' . $intake->title . '" berhasil diperbarui.');
     }
 
+    public function previewRequirementIntake(Project $project, ProjectRequirementInboxItem $intake)
+    {
+        return $this->requirementIntakeFileResponse($project, $intake, 'inline');
+    }
+
+    public function downloadRequirementIntake(Project $project, ProjectRequirementInboxItem $intake)
+    {
+        return $this->requirementIntakeFileResponse($project, $intake, 'attachment');
+    }
+
+    private function requirementIntakeFileResponse(Project $project, ProjectRequirementInboxItem $intake, string $disposition)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $intake->project_id === (int) $project->id, 404);
+        [$disk, $path] = $this->storedUpload($intake->file_path, 'project-requirements/' . $project->id . '/');
+
+        return response()->file(Storage::disk($disk)->path($path), [
+            'Content-Disposition' => $disposition . '; filename="' . str_replace('"', '', basename($path)) . '"',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function destroyRequirementIntake(Request $request, Project $project, ProjectRequirementInboxItem $intake)
     {
         if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
@@ -2100,10 +2127,6 @@ class ProjectController extends Controller
         abort_unless($this->intakeCanContribute($project), 403);
 
         $title = $intake->title;
-
-        if ($intake->file_path) {
-            Storage::disk('public')->delete($intake->file_path);
-        }
 
         AuditLogger::log(
             'requirement_intake_deleted',
@@ -2274,6 +2297,13 @@ class ProjectController extends Controller
             'client_id'   => ['required', Rule::exists('clients', 'id')],
             'description' => ['nullable', 'string', 'max:2000'],
             'due_at'      => ['nullable', 'date'],
+            'lead_user_id' => [
+                'nullable',
+                Rule::exists('users', 'id')->whereNull('archived_at'),
+                Rule::exists('team_assignments', 'user_id')
+                    ->where('project_id', $project?->id)
+                    ->whereIn('status', ['planned', 'in_progress']),
+            ],
             'requires_design' => [
                 'nullable',
                 'boolean',
@@ -2293,6 +2323,7 @@ class ProjectController extends Controller
             'client_id.required' => 'Klien wajib dipilih.',
             'client_id.exists'   => 'Klien tidak valid.',
             'due_at.date'        => 'Due date tidak valid.',
+            'lead_user_id.exists' => 'Project Lead harus anggota aktif pada proyek yang sama.',
         ]);
     }
 
@@ -2316,19 +2347,18 @@ class ProjectController extends Controller
         $this->ensureDesignDeliverableBelongsToTask($project, $task, $deliverable);
 
         $user = auth()->user();
-        $role = $user?->roles?->first()?->name;
 
-        abort_unless($user && $this->canEditDesignDeliverables($task, $role, $user->id), 403);
+        abort_unless($user && ! $user->archived_at && ! $project->archived_at && $this->canEditDesignDeliverables($task, userId: $user->id), 403);
     }
 
     private function canEditDesignDeliverables(ProjectTask $task, ?string $role = null, ?int $userId = null): bool
     {
         $user = auth()->user();
-        $role ??= $user?->roles?->first()?->name;
         $userId ??= $user?->id;
         $membership = TeamAssignment::query()
             ->where('project_id', $task->project_id)
             ->where('user_id', $userId)
+            ->whereIn('status', ['planned', 'in_progress'])
             ->exists();
         $designContributor = TeamAssignment::query()
             ->where('project_id', $task->project_id)
@@ -2340,7 +2370,7 @@ class ProjectController extends Controller
         return (bool) $task->is_design_deliverable
             && $membership
             && ($designContributor
-                || in_array($role, ['uiux_designer', 'ui_ux'], true)
+                || ($user && $user->hasAnyRole(['uiux_designer', 'ui_ux']))
                 || (int) $task->assigned_to === (int) $userId);
     }
 
@@ -2659,7 +2689,8 @@ class ProjectController extends Controller
 
     private function ensureCanEditProjectDetail(): void
     {
-        abort_unless(auth()->user()?->hasAnyRole(self::OPERATIONAL_ROLES), 403);
+        $user = auth()->user();
+        abort_unless($user && ! $user->archived_at && $user->hasAnyRole(self::OPERATIONAL_ROLES), 403);
     }
 
     /**
@@ -2832,14 +2863,15 @@ class ProjectController extends Controller
 
     private function intakeCanContribute(Project $project): bool
     {
-        $role = auth()->user()?->roles?->first()?->name;
-        if (! in_array($role, self::OPERATIONAL_ROLES, true)) {
+        $user = auth()->user();
+        if (! $user || $user->archived_at || ! $user->hasAnyRole(self::OPERATIONAL_ROLES) || $project->archived_at) {
             return false;
         }
 
         return TeamAssignment::query()
-            ->where('user_id', auth()->id())
+            ->where('user_id', $user->id)
             ->where('project_id', $project->id)
+            ->whereIn('status', ['planned', 'in_progress'])
             ->exists();
     }
 
@@ -2869,7 +2901,7 @@ class ProjectController extends Controller
             ? $project->requirementInboxItems
             : $project->requirementInboxItems()->with('creator:id,name')->orderByDesc('created_at')->get();
 
-        return $col->map(function (ProjectRequirementInboxItem $item) {
+        return $col->map(function (ProjectRequirementInboxItem $item) use ($project) {
             return [
                 'id'            => $item->id,
                 'title'         => $item->title,
@@ -2881,7 +2913,8 @@ class ProjectController extends Controller
                 'status_label'  => self::INTAKE_STATUS_LABELS[$item->status] ?? $item->status,
                 'summary'       => $item->summary,
                 'file_path'     => $item->file_path,
-                'file_url'      => $item->file_path ? Storage::disk('public')->url($item->file_path) : null,
+                'file_url'      => $item->file_path ? route('projects.requirement-intake.preview', [$project, $item]) : null,
+                'file_download_url' => $item->file_path ? route('projects.requirement-intake.download', [$project, $item]) : null,
                 'external_url'  => $item->external_url,
                 'created_by'    => $item->creator?->name,
                 'created_at'    => AppTime::diff($item->created_at),
@@ -3170,7 +3203,7 @@ class ProjectController extends Controller
                 'status_locked' => filled($statusLockMessage),
                 'status_lock_message' => $statusLockMessage,
                 'design_deliverables' => $task->designDeliverables->map(function (ProjectTaskDesignDeliverable $deliverable) use ($task) {
-                    $hasPdf = filled($deliverable->pdf_file_path) && Storage::disk('public')->exists($deliverable->pdf_file_path);
+                    $hasPdf = filled($deliverable->pdf_file_path) && (Storage::disk('local')->exists($deliverable->pdf_file_path) || Storage::disk('public')->exists($deliverable->pdf_file_path));
 
                     return [
                         'id' => $deliverable->id,
@@ -3213,25 +3246,30 @@ class ProjectController extends Controller
     {
         $activeAssignments = TeamAssignment::query()
             ->where('project_id', $project->id)
-            ->whereIn('status', ['planned', 'in_progress']);
-        $responsibleUserId = (clone $activeAssignments)
-            ->whereJsonContains('responsibilities', 'uiux_design')
-            ->whereHas('user', fn ($query) => $query->whereNull('archived_at'))
-            ->orderBy('id')
-            ->value('user_id');
+            ->whereIn('status', ['planned', 'in_progress'])
+            ->whereHas('user', fn ($query) => $query->whereNull('archived_at'));
 
-        if ($responsibleUserId) {
-            return (int) $responsibleUserId;
+        $levels = [
+            (clone $activeAssignments)->whereJsonContains('responsibilities', 'uiux_design')->pluck('user_id'),
+            User::query()
+                ->whereIn('id', (clone $activeAssignments)->pluck('user_id'))
+                ->whereNull('archived_at')
+                ->whereHas('roles', fn ($query) => $query->whereIn('name', ['uiux_designer', 'ui_ux']))
+                ->pluck('id'),
+            User::query()
+                ->whereNull('archived_at')
+                ->whereHas('roles', fn ($query) => $query->whereIn('name', ['uiux_designer', 'ui_ux']))
+                ->pluck('id'),
+        ];
+
+        foreach ($levels as $eligibleIds) {
+            $eligibleIds = $eligibleIds->unique()->values();
+            if ($eligibleIds->isNotEmpty()) {
+                return $eligibleIds->count() === 1 ? (int) $eligibleIds->first() : null;
+            }
         }
 
-        $ids = $activeAssignments->pluck('user_id')->unique()->values();
-
-        return User::query()
-            ->whereIn('id', $ids)
-            ->whereNull('archived_at')
-            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['uiux_designer', 'ui_ux']))
-            ->orderBy('name')
-            ->value('id');
+        return null;
     }
 
     private function operationalUsers()
@@ -3280,7 +3318,9 @@ class ProjectController extends Controller
             ->map(function (User $user) use ($existing, $project) {
                 $assignment = $existing->get($user->id);
                 $defaults = $this->quickAssignDefaultsForUser($user);
-                $responsibilities = $this->normalizeQuickAssignResponsibilities($assignment?->responsibilities ?? [], $user, $assignment);
+                $responsibilities = $assignment
+                    ? $this->normalizeQuickAssignResponsibilities($assignment->responsibilities ?? [], $user, $assignment)
+                    : [];
 
                 return [
                     'id' => $user->id,
@@ -3288,7 +3328,7 @@ class ProjectController extends Controller
                     'email' => $user->email,
                     'initials' => $this->initials($user->name),
                     'role' => $this->quickAssignRoleLabel($user),
-                    'checked' => (bool) $assignment,
+                    'checked' => false,
                     'title' => $assignment?->title ?: $defaults['title'],
                     'type' => $assignment?->type ?: $defaults['type'],
                     'status' => $assignment?->status ?: $defaults['status'],
@@ -3515,6 +3555,13 @@ class ProjectController extends Controller
             'name'         => $project->name,
             'client'       => $project->client?->name ?? '—',
             'client_id'    => $project->client_id,
+            'lead_user_id' => $project->lead_user_id,
+            'lead_valid'   => ! $project->lead_user_id || TeamAssignment::query()
+                ->where('project_id', $project->id)
+                ->where('user_id', $project->lead_user_id)
+                ->whereIn('status', ['planned', 'in_progress'])
+                ->whereHas('user', fn ($query) => $query->whereNull('archived_at'))
+                ->exists(),
             'desc'         => $project->description ?: (self::DESC_MAP[$project->code] ?? 'Belum ada deskripsi untuk proyek ini.'),
             'phase'        => $project->phase,
             'phase_key'    => $this->phaseKey($project->phase),

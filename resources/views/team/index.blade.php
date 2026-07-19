@@ -194,7 +194,7 @@
     $editAction = $editMemberId ? route('team.members.update', $editMemberId) : '#';
 
     $stats = [
-        ['label' => 'Total Anggota', 'value' => count($deliveryMembers),                                              'suffix' => '',      'color' => '#7C3AED'],
+        ['label' => 'Total Anggota (' . $archiveFilters[$archiveScope] . ')', 'value' => count($deliveryMembers), 'suffix' => '', 'color' => '#7C3AED'],
         ['label' => 'Kapasitas',     'value' => $col->sum('capacity_hours'),                                          'suffix' => 'h/mgg', 'color' => '#3B82F6'],
         ['label' => 'Avg Load',      'value' => $col->count() ? (int) round($col->avg('load')) : 0,                  'suffix' => '%',     'color' => '#10B981'],
         ['label' => 'Proyek Aktif',  'value' => $totalActiveProjects,                                                  'suffix' => '',      'color' => '#A855F7'],

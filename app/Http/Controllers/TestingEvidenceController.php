@@ -8,6 +8,8 @@ use App\Support\AppTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class TestingEvidenceController extends Controller
 {
@@ -18,33 +20,34 @@ class TestingEvidenceController extends Controller
         'TestSprite' => 'TestSprite',
     ];
 
-    public function index()
+    private const ACCESS_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer', 'sa_qa'];
+    private const MANAGE_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer', 'sa_qa'];
+
+    public function index(Request $request)
     {
+        $this->authorizeAccess($request);
         $evidences = TestingEvidence::orderByDesc('tested_at')
             ->orderByDesc('id')
             ->get()
-            // Show only one canonical row per category (the latest) so stale
-            // duplicate rows never surface in the list, even before a re-seed.
             ->groupBy('category')
             ->map(fn ($group) => $group->first())
             ->sortBy(fn ($ev) => array_search($ev->category, array_keys(self::CATEGORIES), true))
             ->values()
-            ->map(function ($ev) {
-                return [
-                    'id' => $ev->id,
-                    'category' => $ev->category,
-                    'title' => $ev->title,
-                    'total_scenarios' => $ev->total_scenarios,
-                    'passed_scenarios' => $ev->passed_scenarios,
-                    'failed_scenarios' => $ev->failed_scenarios,
-                    'result_status' => $ev->result_status,
-                    'tested_at' => $ev->tested_at?->format('Y-m-d'),
-                    'tested_at_label' => $ev->tested_at ? AppTime::cast($ev->tested_at)?->format('d M Y') : '—',
-                    'notes' => $ev->notes,
-                    'evidence_url' => $ev->evidence_url,
-                    'evidence_file_url' => $ev->evidence_file_path ? Storage::disk('public')->url($ev->evidence_file_path) : null,
-                ];
-            });
+            ->map(fn ($ev) => [
+                'id' => $ev->id,
+                'category' => $ev->category,
+                'title' => $ev->title,
+                'total_scenarios' => $ev->total_scenarios,
+                'passed_scenarios' => $ev->passed_scenarios,
+                'failed_scenarios' => $ev->failed_scenarios,
+                'result_status' => $ev->result_status,
+                'tested_at' => $ev->tested_at?->format('Y-m-d'),
+                'tested_at_label' => $ev->tested_at ? AppTime::cast($ev->tested_at)?->format('d M Y') : '—',
+                'notes' => $ev->notes,
+                'evidence_url' => $ev->evidence_url,
+                'evidence_file_url' => $ev->evidence_file_path ? route('testing-evidence.preview', $ev) : null,
+                'evidence_download_url' => $ev->evidence_file_path ? route('testing-evidence.download', $ev) : null,
+            ]);
 
         $statusLabels = [
             'Black-Box Testing' => 'Lulus',
@@ -52,39 +55,31 @@ class TestingEvidenceController extends Controller
             'Validasi Keluaran LLM' => 'Valid',
             'TestSprite' => 'Lulus',
         ];
+        $groupedEvidence = TestingEvidence::orderByDesc('tested_at')->orderByDesc('id')->get()->groupBy('category');
+        $summaries = collect(self::CATEGORIES)->keys()->map(function ($category) use ($groupedEvidence, $statusLabels) {
+            $latest = $groupedEvidence->get($category, collect())->first();
 
-        $groupedEvidence = TestingEvidence::orderByDesc('tested_at')
-            ->orderByDesc('id')
-            ->get(['id', 'category', 'total_scenarios', 'passed_scenarios', 'failed_scenarios', 'tested_at'])
-            ->groupBy('category');
-
-        $summaries = collect(self::CATEGORIES)
-            ->keys()
-            ->map(function ($category) use ($groupedEvidence, $statusLabels) {
-                // Use the latest/final canonical evidence per category instead of
-                // summing every row — that keeps the summary correct (e.g. 12/12)
-                // even if older or duplicate rows still linger in the table.
-                $latest = $groupedEvidence->get($category, collect())->first();
-
-                return [
-                    'category' => $category,
-                    'total' => (int) ($latest->total_scenarios ?? 0),
-                    'passed' => (int) ($latest->passed_scenarios ?? 0),
-                    'failed' => (int) ($latest->failed_scenarios ?? 0),
-                    'status' => $statusLabels[$category] ?? 'Tervalidasi',
-                ];
-            });
+            return [
+                'category' => $category,
+                'total' => (int) ($latest->total_scenarios ?? 0),
+                'passed' => (int) ($latest->passed_scenarios ?? 0),
+                'failed' => (int) ($latest->failed_scenarios ?? 0),
+                'status' => $statusLabels[$category] ?? 'Tervalidasi',
+            ];
+        });
 
         return view('testing-evidence.index', [
             'title' => 'QA Evidence',
             'evidences' => $evidences,
             'summaries' => $summaries,
             'categories' => self::CATEGORIES,
+            'canManage' => $request->user()->hasAnyRole(self::MANAGE_ROLES),
         ]);
     }
 
     public function store(Request $request)
     {
+        $this->authorizeManage($request);
         $validated = $request->validate([
             'category' => ['required', Rule::in(array_keys(self::CATEGORIES))],
             'title' => ['required', 'string', 'max:255'],
@@ -96,18 +91,12 @@ class TestingEvidenceController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
             'evidence_url' => ['nullable', 'url', 'max:1000'],
             'file' => ['nullable', 'file', 'max:10240'],
-        ], [
-            'title.required' => 'Judul wajib diisi.',
-            'category.in' => 'Kategori tidak valid.',
-            'evidence_url.url' => 'URL bukti harus valid.',
-            'file.max' => 'File maksimal 10MB.',
         ]);
-
-        $filePath = null;
-        if ($request->hasFile('file')) {
-            $filePath = $request->file('file')->store('testing-evidence', 'public');
+        if ((int) $validated['passed_scenarios'] + (int) $validated['failed_scenarios'] !== (int) $validated['total_scenarios']) {
+            throw ValidationException::withMessages(['total_scenarios' => 'Total skenario harus sama dengan jumlah lulus dan gagal.']);
         }
 
+        $filePath = $request->hasFile('file') ? $request->file('file')->store('testing-evidence', 'local') : null;
         $evidence = TestingEvidence::create([
             'category' => $validated['category'],
             'title' => $validated['title'],
@@ -120,50 +109,74 @@ class TestingEvidenceController extends Controller
             'evidence_url' => $validated['evidence_url'] ?? null,
             'evidence_file_path' => $filePath,
         ]);
+        AuditLogger::log('testing_evidence_created', 'Testing Evidence', 'Menambah Testing Evidence: <strong>'.e($evidence->title).'</strong> ('.e($evidence->category).')', $evidence, null, [
+            'id' => $evidence->id,
+            'category' => $evidence->category,
+            'passed' => $evidence->passed_scenarios,
+            'failed' => $evidence->failed_scenarios,
+            'total' => $evidence->total_scenarios,
+            'has_file' => filled($filePath),
+        ]);
 
-        AuditLogger::log(
-            'testing_evidence_created',
-            'Testing Evidence',
-            'Menambah Testing Evidence: <strong>' . e($evidence->title) . '</strong> (' . e($evidence->category) . ')',
-            $evidence,
-            null,
-            [
-                'id' => $evidence->id,
-                'category' => $evidence->category,
-                'passed' => $evidence->passed_scenarios,
-                'total' => $evidence->total_scenarios,
-            ]
-        );
-
-        return redirect()->route('testing-evidence.index')
-            ->with('status', 'Testing Evidence "' . $evidence->title . '" berhasil ditambahkan.');
+        return redirect()->route('testing-evidence.index')->with('status', 'Testing Evidence "'.$evidence->title.'" berhasil ditambahkan.');
     }
 
-    public function destroy(TestingEvidence $evidence)
+    public function preview(Request $request, TestingEvidence $evidence): BinaryFileResponse
     {
-        $title = $evidence->title;
-        $category = $evidence->category;
+        $this->authorizeAccess($request);
 
-        if ($evidence->evidence_file_path) {
-            Storage::disk('public')->delete($evidence->evidence_file_path);
-        }
+        return $this->fileResponse($evidence, 'inline');
+    }
 
-        AuditLogger::log(
-            'testing_evidence_deleted',
-            'Testing Evidence',
-            'Menghapus Testing Evidence: <strong>' . e($title) . '</strong> (' . e($category) . ')',
-            null,
-            [
-                'id' => $evidence->id,
-                'title' => $title,
-                'category' => $category,
-            ],
-            null
-        );
+    public function download(Request $request, TestingEvidence $evidence): BinaryFileResponse
+    {
+        $this->authorizeAccess($request);
 
+        return $this->fileResponse($evidence, 'attachment');
+    }
+
+    public function destroy(Request $request, TestingEvidence $evidence)
+    {
+        $this->authorizeManage($request);
+        $old = ['id' => $evidence->id, 'title' => $evidence->title, 'category' => $evidence->category, 'has_file' => filled($evidence->evidence_file_path)];
         $evidence->delete();
+        AuditLogger::log('testing_evidence_deleted', 'Testing Evidence', 'Menghapus Testing Evidence: <strong>'.e($old['title']).'</strong> ('.e($old['category']).')', null, $old, null);
 
-        return redirect()->route('testing-evidence.index')
-            ->with('status', 'Testing Evidence "' . $title . '" berhasil dihapus.');
+        return redirect()->route('testing-evidence.index')->with('status', 'Testing Evidence "'.$old['title'].'" berhasil dihapus.');
+    }
+
+    private function authorizeAccess(Request $request): void
+    {
+        $user = $request->user();
+        abort_unless($user && ! $user->archived_at && $user->hasAnyRole(self::ACCESS_ROLES), 403);
+    }
+
+    private function authorizeManage(Request $request): void
+    {
+        $this->authorizeAccess($request);
+        abort_unless($request->user()->hasAnyRole(self::MANAGE_ROLES), 403);
+    }
+
+    private function fileResponse(TestingEvidence $evidence, string $disposition): BinaryFileResponse
+    {
+        [$disk, $path] = $this->storedFile($evidence->evidence_file_path, 'testing-evidence/');
+        $name = basename($path);
+
+        return response()->file(Storage::disk($disk)->path($path), [
+            'Content-Disposition' => $disposition.'; filename="'.str_replace('"', '', $name).'"',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    private function storedFile(?string $path, string $prefix): array
+    {
+        $path = str_replace('\\', '/', ltrim((string) $path, '/'));
+        abort_unless(filled($path) && str_starts_with($path, $prefix), 404);
+        foreach (['local', 'public'] as $disk) {
+            if (Storage::disk($disk)->exists($path)) {
+                return [$disk, $path];
+            }
+        }
+        abort(404);
     }
 }

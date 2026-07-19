@@ -35,7 +35,7 @@
     $attentionInsight = $attentionClient['smart_insights'][0] ?? null;
 
     $stats = [
-        ['label' => 'Total Klien',  'value' => count($clients),                            'note' => $archiveScope === 'active' ? 'aktif ditampilkan' : 'sesuai filter', 'color' => '#7C3AED'],
+        ['label' => 'Total Klien (' . $archiveFilters[$archiveScope] . ')', 'value' => count($clients), 'note' => 'sesuai scope arsip', 'color' => '#7C3AED'],
         ['label' => 'Strategic',    'value' => $col->where('tier', 'Strategic')->count(), 'note' => 'tier strategic',          'color' => '#A855F7'],
         ['label' => 'Proyek Aktif', 'value' => $col->sum('active_projects'),              'note' => 'relasi project',          'color' => '#3B82F6'],
         ['label' => 'Avg Health',   'value' => round($col->avg('health') ?: 0) . '%',      'note' => 'rata-rata',              'color' => '#10B981'],

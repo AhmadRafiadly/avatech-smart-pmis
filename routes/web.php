@@ -83,8 +83,6 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects/{project}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
     Route::put('/projects/{project}/tasks/{task}', [ProjectController::class, 'updateTask'])->name('projects.tasks.update');
     Route::delete('/projects/{project}/tasks/{task}', [ProjectController::class, 'destroyTask'])->name('projects.tasks.destroy');
-    Route::post('/projects/{project}/task-dependencies', [ProjectController::class, 'storeTaskDependency'])->name('projects.task-dependencies.store');
-    Route::delete('/projects/{project}/task-dependencies/{dependency}', [ProjectController::class, 'destroyTaskDependency'])->name('projects.task-dependencies.destroy');
     Route::patch('/projects/{project}/tasks/{task}/status', [ProjectController::class, 'updateTaskStatus'])->name('projects.tasks.status');
     Route::patch('/projects/{project}/tasks/{task}/design-deliverable', [ProjectController::class, 'updateDesignDeliverable'])->name('projects.tasks.design-deliverable');
     Route::post('/projects/{project}/tasks/{task}/design-deliverables', [ProjectController::class, 'storeDesignDeliverable'])->name('projects.tasks.design-deliverables.store');
@@ -92,6 +90,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/projects/{project}/tasks/{task}/design-deliverables/{deliverable}', [ProjectController::class, 'destroyDesignDeliverable'])->name('projects.tasks.design-deliverables.destroy');
     Route::get('/projects/{project}/tasks/{task}/design-deliverables/{deliverable}/preview', [ProjectController::class, 'previewDesignDeliverable'])->name('projects.tasks.design-deliverables.preview');
     Route::get('/projects/{project}/tasks/{task}/design-deliverables/{deliverable}/download', [ProjectController::class, 'downloadDesignDeliverable'])->name('projects.tasks.design-deliverables.download');
+    Route::get('/projects/{project}/requirement-intake/{intake}/preview', [ProjectController::class, 'previewRequirementIntake'])->name('projects.requirement-intake.preview');
+    Route::get('/projects/{project}/requirement-intake/{intake}/download', [ProjectController::class, 'downloadRequirementIntake'])->name('projects.requirement-intake.download');
     Route::post('/projects/{project}/moms', [ProjectController::class, 'storeMom'])->name('projects.moms.store');
     Route::patch('/projects/{project}/moms/{mom}/summary', [ProjectController::class, 'updateMomSummary'])->name('projects.moms.summary');
     Route::post('/projects/{project}/ai-mom/fix', [ProjectController::class, 'fixLatestMom'])->name('projects.ai-mom.fix');
@@ -111,6 +111,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects/{project}/export/test-cases.pdf',[ProjectController::class, 'exportTestCasesPdf'])->name('projects.export.test-cases');
     Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
     Route::get('/testing-evidence', [TestingEvidenceController::class, 'index'])->name('testing-evidence.index');
+    Route::post('/testing-evidence', [TestingEvidenceController::class, 'store'])->name('testing-evidence.store');
+    Route::get('/testing-evidence/{evidence}/preview', [TestingEvidenceController::class, 'preview'])->name('testing-evidence.preview');
+    Route::get('/testing-evidence/{evidence}/download', [TestingEvidenceController::class, 'download'])->name('testing-evidence.download');
+    Route::delete('/testing-evidence/{evidence}', [TestingEvidenceController::class, 'destroy'])->name('testing-evidence.destroy');
     Route::view('/metric-reference', 'metric-reference.index', ['title' => 'Metric Reference'])->name('metric-reference.index');
     Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
     Route::get('/audit/export.csv', [AuditController::class, 'exportCsv'])->name('audit.export');

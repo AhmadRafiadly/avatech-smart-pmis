@@ -24,8 +24,14 @@
         'done'     => $col->where('phase_key', 'done')->count(),
     ];
 
+    $archiveFilters = [
+        'active'   => 'Active',
+        'archived' => 'Archived',
+        'all'      => 'All',
+    ];
+
     $stats = [
-        ['label' => 'Total',     'value' => count($projects),                              'color' => '#7C3AED'],
+        ['label' => 'Total (' . $archiveFilters[$archiveScope] . ')', 'value' => count($projects), 'color' => '#7C3AED'],
         ['label' => 'On Track',  'value' => $col->where('status', 'on-track')->count(),    'color' => '#10B981'],
         ['label' => 'Attention', 'value' => $col->where('status', 'attention')->count(),   'color' => '#F59E0B'],
         ['label' => 'Critical',  'value' => $col->where('status', 'critical')->count(),    'color' => '#EF4444'],
@@ -45,11 +51,6 @@
         'done'      => 'bg-slate-400',
     ];
 
-    $archiveFilters = [
-        'active'   => 'Active',
-        'archived' => 'Archived',
-        'all'      => 'All',
-    ];
     $editProjectId = old('_form') === 'edit' ? old('_project_id') : null;
     $editAction = $editProjectId ? route('projects.update', $editProjectId) : '#';
 
@@ -235,6 +236,8 @@
                             data-code="{{ $p['code'] }}"
                             data-name="{{ $p['name'] }}"
                             data-client-id="{{ $p['client_id'] }}"
+                            data-lead-user-id="{{ $p['lead_user_id'] }}"
+                            data-lead-valid="{{ $p['lead_valid'] ? '1' : '0' }}"
                             data-description="{{ $p['desc'] }}"
                             data-due-at="{{ $p['due_at'] }}"
                             data-requires-design="{{ $p['requires_design'] ? '1' : '0' }}"
@@ -558,6 +561,19 @@
                     @endif
                 </div>
                 <div>
+                    <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Project Lead</label>
+                    <select name="lead_user_id" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
+                        <option value="">Belum ditentukan</option>
+                        @foreach ($leadCandidates as $candidate)
+                            <option value="{{ $candidate->id }}" data-projects="{{ $candidate->teamAssignments->pluck('project_id')->implode(',') }}" @selected(old('_form') === 'edit' && (string) old('lead_user_id') === (string) $candidate->id)>{{ $candidate->name }}</option>
+                        @endforeach
+                    </select>
+                    <p data-invalid-lead-warning class="hidden mt-1.5 text-[12px] font-semibold text-amber-600">Project Lead saat ini tidak lagi menjadi anggota aktif proyek. Pilih lead baru atau kosongkan.</p>
+                    @if (old('_form') === 'edit')
+                        @error('lead_user_id') <p class="mt-1.5 text-[12px] font-semibold text-rose-600">{{ $message }}</p> @enderror
+                    @endif
+                </div>
+                <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Template Proyek</label>
                     <select data-project-template class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 cursor-pointer">
                         <option value="custom">Custom</option>
@@ -750,6 +766,10 @@
                         editForm.querySelector('[name="code"]').value = btn.dataset.code || '';
                         editForm.querySelector('[name="name"]').value = btn.dataset.name || '';
                         editForm.querySelector('[name="client_id"]').value = btn.dataset.clientId || '';
+                        const leadSelect = editForm.querySelector('[name="lead_user_id"]');
+                        leadSelect.querySelectorAll('option[data-projects]').forEach(option => option.hidden = ! option.dataset.projects.split(',').includes(btn.dataset.projectId));
+                        leadSelect.value = btn.dataset.leadValid === '1' ? btn.dataset.leadUserId || '' : '';
+                        editForm.querySelector('[data-invalid-lead-warning]').classList.toggle('hidden', btn.dataset.leadValid === '1');
                         editForm.querySelector('[name="description"]').value = btn.dataset.description || '';
                         editForm.querySelector('[name="due_at"]').value = btn.dataset.dueAt || '';
                         const requiresDesign = editForm.querySelector('[data-requires-design-checkbox]');

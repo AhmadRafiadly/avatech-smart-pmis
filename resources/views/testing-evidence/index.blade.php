@@ -45,11 +45,33 @@
         @endforeach
     </section>
 
+    @if ($canManage)
+        <section class="bg-white rounded-2xl border border-violet-100 p-6 mb-8">
+            <h2 class="text-[18px] font-bold text-[#1E1B4B] mb-4">Tambah QA Evidence</h2>
+            <form method="POST" action="{{ route('testing-evidence.store') }}" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                @csrf
+                <select name="category" required class="h-10 rounded-xl border border-violet-100 px-3 text-[13px]">
+                    @foreach ($categories as $category)<option value="{{ $category }}">{{ $category }}</option>@endforeach
+                </select>
+                <input name="title" required maxlength="255" placeholder="Judul bukti" class="h-10 rounded-xl border border-violet-100 px-3 text-[13px]">
+                <input name="result_status" required maxlength="50" placeholder="Status hasil" class="h-10 rounded-xl border border-violet-100 px-3 text-[13px]">
+                <input type="date" name="tested_at" required class="h-10 rounded-xl border border-violet-100 px-3 text-[13px]">
+                <input type="number" name="total_scenarios" min="0" required placeholder="Total skenario" class="h-10 rounded-xl border border-violet-100 px-3 text-[13px]">
+                <input type="number" name="passed_scenarios" min="0" required placeholder="Lulus" class="h-10 rounded-xl border border-violet-100 px-3 text-[13px]">
+                <input type="number" name="failed_scenarios" min="0" required placeholder="Gagal" class="h-10 rounded-xl border border-violet-100 px-3 text-[13px]">
+                <input type="file" name="file" class="h-10 rounded-xl border border-violet-100 px-3 py-2 text-[12px]">
+                <input type="url" name="evidence_url" maxlength="1000" placeholder="URL bukti (opsional)" class="h-10 rounded-xl border border-violet-100 px-3 text-[13px] xl:col-span-2">
+                <textarea name="notes" maxlength="5000" placeholder="Catatan (opsional)" class="rounded-xl border border-violet-100 px-3 py-2 text-[13px] xl:col-span-2"></textarea>
+                <button class="h-10 px-4 rounded-xl bg-violet-600 text-white text-[13px] font-semibold">Simpan Evidence</button>
+            </form>
+        </section>
+    @endif
+
     <section class="grid grid-cols-1 gap-6 mb-8">
         <article class="bg-white rounded-2xl border border-violet-100 shadow-[0_2px_8px_rgba(124,58,237,0.08)] overflow-hidden">
             <div class="px-6 py-5 border-b border-violet-100/70 bg-violet-50/40">
                 <h2 class="text-[18px] font-bold text-[#1E1B4B]">Ringkasan QA Evidence</h2>
-                <p class="mt-1 text-[12.5px] text-slate-500">Utilitas support read-only untuk membaca status pengujian tanpa menggantikan dokumen pengujian utama.</p>
+                <p class="mt-1 text-[12.5px] text-slate-500">Bukti pengujian dikelola oleh peran managerial dan QA.</p>
             </div>
             <div class="divide-y divide-violet-100/60">
                 @forelse ($evidences as $ev)
@@ -72,19 +94,28 @@
                                     <p class="mt-3 text-[12.5px] leading-relaxed text-slate-600">{{ $ev['notes'] }}</p>
                                 @endif
                                 <div class="mt-3 flex flex-wrap items-center gap-3">
-                                    @if ($ev['evidence_file_url'])
-                                        <a href="{{ $ev['evidence_file_url'] }}" target="_blank" class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-violet-700 hover:text-violet-900 transition">
-                                            <x-heroicon-o-paper-clip class="w-4 h-4" /> File Bukti
-                                        </a>
-                                    @endif
+                                     @if ($ev['evidence_file_url'])
+                                         <a href="{{ $ev['evidence_file_url'] }}" target="_blank" class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-violet-700 hover:text-violet-900 transition">
+                                             <x-heroicon-o-paper-clip class="w-4 h-4" /> Preview
+                                         </a>
+                                         <a href="{{ $ev['evidence_download_url'] }}" class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-violet-700 hover:text-violet-900 transition">
+                                             <x-heroicon-o-arrow-down-tray class="w-4 h-4" /> Download
+                                         </a>
+                                     @endif
                                     @if ($ev['evidence_url'])
                                         <a href="{{ $ev['evidence_url'] }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-violet-700 hover:text-violet-900 transition">
                                             <x-heroicon-o-link class="w-4 h-4" /> Link Bukti
                                         </a>
                                     @endif
-                                    <span class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-400">
-                                        <x-heroicon-o-lock-closed class="w-4 h-4" /> Read-only
-                                    </span>
+                                     @if ($canManage)
+                                         <form method="POST" action="{{ route('testing-evidence.destroy', $ev['id']) }}">
+                                             @csrf
+                                             @method('DELETE')
+                                             <button class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-rose-600 hover:text-rose-800 transition" onclick="return confirm('Hapus bukti ini?')">
+                                                 <x-heroicon-o-trash class="w-4 h-4" /> Hapus
+                                             </button>
+                                         </form>
+                                     @endif
                                 </div>
                             </div>
                         </div>

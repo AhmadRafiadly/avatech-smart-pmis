@@ -55,6 +55,7 @@ class AuditController extends Controller
 
     public function index(Request $request)
     {
+        $this->ensureAuditAccess();
         $logs = $this->buildQuery($request, applyChip: false)->limit(500)->get();
 
         $events = $logs->map(fn (AuditLog $log) => $this->mapEntry($log))->all();
@@ -86,11 +87,17 @@ class AuditController extends Controller
      */
     private const FULL_AUDIT_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
 
+    private function ensureAuditAccess(): void
+    {
+        $user = auth()->user();
+        abort_unless($user && ! $user->archived_at && $user->roles()->exists(), 403);
+    }
+
     private function isOperationalViewer(): bool
     {
-        $role = auth()->user()?->roles()->first()?->name;
+        $user = auth()->user();
 
-        return $role && ! in_array($role, self::FULL_AUDIT_ROLES, true);
+        return ! $user->hasAnyRole(self::FULL_AUDIT_ROLES);
     }
 
     private function actorOptions(): array
@@ -113,6 +120,7 @@ class AuditController extends Controller
 
     public function exportCsv(Request $request): StreamedResponse
     {
+        $this->ensureAuditAccess();
         $logs = $this->buildQuery($request)->limit(5000)->get();
 
         $filename = 'audit-' . AppTime::now()->format('Y-m-d-His') . '.csv';

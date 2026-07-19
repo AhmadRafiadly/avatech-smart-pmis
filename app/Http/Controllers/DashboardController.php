@@ -31,15 +31,17 @@ class DashboardController extends Controller
         /** @var User $user */
         $user = $request->user();
         $user->load('roles');
+        abort_unless(! $user->archived_at && $user->roles->isNotEmpty(), 403);
 
         $role = $user->roles->first()?->name;
 
-        if ($role === 'ceo_pm') {
+        if ($user->hasAnyRole(['ceo_pm', 'admin', 'super_admin', 'developer'])) {
             return redirect()->route('executive.index');
         }
 
         $assignedProjectIds = TeamAssignment::query()
             ->where('user_id', $user->id)
+            ->whereIn('status', ['planned', 'in_progress'])
             ->pluck('project_id')
             ->unique()
             ->values();
@@ -58,6 +60,8 @@ class DashboardController extends Controller
 
         $assignedTasks = ProjectTask::query()
             ->where('assigned_to', $user->id)
+            ->whereIn('project_id', $assignedProjectIds)
+            ->whereHas('project', fn ($query) => $query->whereNull('archived_at'))
             ->with('project:id,code,color,name')
             ->orderByRaw("FIELD(status, 'in_progress', 'review', 'planned', 'done')")
             ->orderByDesc('updated_at')
