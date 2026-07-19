@@ -2052,7 +2052,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
 
         <div class="overflow-x-auto">
             <p class="px-7 pt-5 pb-2 text-[12px] text-slate-400 leading-relaxed">
-                QC membantu memvalidasi revisi; jika ada bug atau perubahan scope, update status test case atau buat retest.
+                Jika gagal, catat hasil aktual. Perbaikan dilakukan pada task terkait di Kanban, kemudian lakukan Retest.
             </p>
             <table class="w-full text-left border-collapse">
                 <thead>
@@ -2127,7 +2127,6 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                         $qcDeleteAction = route('projects.qc.destroy', [$project, $tc['id']]);
                                     @endphp
                                     <div class="flex flex-col items-end gap-2">
-                                        {{-- Status actions (Lulus/Gagal/Retest) — dipertahankan --}}
                                         @if (! $canExecuteQc)
                                             <p class="max-w-[220px] rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-left text-[11px] font-medium text-amber-700 leading-relaxed">
                                                 Eksekusi QC baru dapat dilakukan setelah project masuk fase QC.
@@ -2143,18 +2142,22 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                                 </button>
                                             </form>
                                         @else
-                                            <div class="inline-flex gap-2">
-                                                <form method="POST" action="{{ $qcAction }}" class="inline">
-                                                    @csrf
-                                                    @method('PATCH')
-                                                    <input type="hidden" name="status" value="passed">
-                                                    <button type="submit" class="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-bold transition cursor-pointer">Lulus</button>
-                                                </form>
-                                                <form method="POST" action="{{ $qcAction }}" class="inline">
+                                            <div class="w-full max-w-[260px] space-y-2 text-left">
+                                                <form method="POST" action="{{ $qcAction }}" class="space-y-2">
                                                     @csrf
                                                     @method('PATCH')
                                                     <input type="hidden" name="status" value="failed">
-                                                    <button type="submit" class="h-8 px-3 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[12px] font-bold transition cursor-pointer">Gagal</button>
+                                                    <textarea name="actual_result" required rows="2" placeholder="Hasil Aktual (wajib jika gagal)" class="w-full rounded-lg border border-rose-200 px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-rose-300 resize-y"></textarea>
+                                                    <textarea name="notes" rows="2" placeholder="Catatan (opsional)" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y"></textarea>
+                                                    <button type="submit" class="w-full h-8 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[12px] font-bold transition cursor-pointer">Simpan sebagai Gagal</button>
+                                                </form>
+                                                <form method="POST" action="{{ $qcAction }}" class="space-y-2">
+                                                    @csrf
+                                                    @method('PATCH')
+                                                    <input type="hidden" name="status" value="passed">
+                                                    <input type="text" name="actual_result" placeholder="Hasil Aktual (opsional jika lulus)" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    <input type="text" name="notes" placeholder="Catatan (opsional)" class="w-full h-9 rounded-lg border border-violet-100 px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-300">
+                                                    <button type="submit" class="w-full h-8 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-bold transition cursor-pointer">Simpan sebagai Lulus</button>
                                                 </form>
                                             </div>
                                         @endif
@@ -2250,7 +2253,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
         @endif
 
         <div class="px-7 py-5 border-t border-violet-100/60 bg-violet-50/30 flex items-center justify-between flex-wrap gap-3">
-            <p class="text-[11.5px] text-slate-400 italic">Status pass/fail dapat dikembalikan ke pending lewat tombol Retest.</p>
+            <p class="text-[11.5px] text-slate-400 italic">Retest menandai test case untuk siklus verifikasi berikutnya dan mempertahankan bukti sebelumnya.</p>
             @if ($canEdit && ! $useReferenceProjectData)
                 @php
                     $qcAiSourceReady = count($modules) > 0 || ($workspaceTaskTotal ?? 0) > 0;
@@ -2431,7 +2434,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 <div class="px-6 py-4 border-b border-violet-100 bg-violet-50/40 flex items-center justify-between gap-4">
                     <div class="min-w-0">
                         <h3 id="quick-assign-title" class="text-[17px] font-extrabold text-[#1E1B4B] leading-tight">Quick Assign Team</h3>
-                        <p class="text-[12.5px] text-slate-500 mt-1">Pilih anggota operasional dan sesuaikan ringkasan bila perlu. Jika sudah ada, penugasan akan diperbarui.</p>
+                        <p class="text-[12.5px] text-slate-500 mt-1">Pilih anggota tim dan tentukan kontribusinya pada project ini. Jika sudah ada, penugasan akan diperbarui.</p>
                     </div>
                     <button type="button" data-quick-assign-close class="w-9 h-9 rounded-full hover:bg-white flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer flex-shrink-0" aria-label="Tutup">
                         <x-heroicon-o-x-mark class="w-5 h-5" />
@@ -2452,7 +2455,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                             <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#C084FC] text-white font-bold text-[12px] flex items-center justify-center flex-shrink-0">{{ $member['initials'] }}</div>
                                             <div class="min-w-0">
                                                 <div class="text-[14px] font-bold text-[#1E1B4B] truncate">{{ $member['name'] }}</div>
-                                                <div class="text-[12px] text-slate-500">{{ $member['role'] }}</div>
+                                                <div class="text-[12px] text-slate-500"><span class="font-semibold text-slate-600">Role Akses Sistem:</span> {{ $member['role'] }}</div>
                                             </div>
                                         </div>
                                         <div data-qa-selected-chips class="flex items-center justify-end gap-1.5 flex-wrap">
@@ -2464,7 +2467,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
 
                                     <div class="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-3">
                                         <div class="lg:col-span-12">
-                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-2">Responsibilities</label>
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-2">Kontribusi pada Proyek</label>
                                             <div class="flex flex-wrap gap-2">
                                                 @foreach (($member['responsibility_options'] ?? []) as $key => $label)
                                                     <label class="inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50/50 px-3 py-1.5 text-[11.5px] font-semibold text-violet-700 cursor-pointer hover:bg-violet-100/70 transition">
@@ -2481,38 +2484,14 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                                     </label>
                                                 @endforeach
                                             </div>
-                                            <p class="mt-1.5 text-[10.5px] text-slate-400 leading-tight">Multi-responsibility hanya untuk pembagian tugas project, bukan penambahan hak akses sensitif.</p>
+                                            <p class="mt-1.5 text-[10.5px] text-slate-400 leading-tight">Kontribusi dapat berbeda pada setiap proyek dan tidak mengubah role akses akun.</p>
                                         </div>
-                                        <div class="lg:col-span-5">
-                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Ringkasan</label>
-                                            <input name="assignments[{{ $idx }}][title]" data-qa-field="title" value="{{ $member['title'] }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                        </div>
-                                        <div class="lg:col-span-2">
-                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Tipe</label>
-                                            <select name="assignments[{{ $idx }}][type]" data-qa-field="type" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                                <option value="task" @selected($member['type'] === 'task')>Task</option>
-                                                <option value="review" @selected($member['type'] === 'review')>Review</option>
-                                                <option value="support" @selected($member['type'] === 'support')>Support</option>
-                                            </select>
-                                        </div>
-                                        <div class="lg:col-span-2">
-                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Status</label>
-                                            <select name="assignments[{{ $idx }}][status]" data-qa-field="status" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                                <option value="planned" @selected($member['status'] === 'planned')>Planned</option>
-                                                <option value="in_progress" @selected($member['status'] === 'in_progress')>In Progress</option>
-                                                <option value="done" @selected($member['status'] === 'done')>Done</option>
-                                            </select>
-                                        </div>
-                                        <div class="lg:col-span-1">
-                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Jam</label>
+                                        <div class="lg:col-span-3">
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Estimasi Jam (Opsional)</label>
                                             <input type="number" min="0" max="200" name="assignments[{{ $idx }}][estimated_hours]" data-qa-field="estimated_hours" value="{{ $member['estimated_hours'] }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
                                         </div>
-                                        <div class="lg:col-span-2">
-                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Due</label>
-                                            <input type="date" name="assignments[{{ $idx }}][due_date]" value="{{ $member['due_date'] }}" class="w-full h-10 rounded-lg border border-violet-100 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300">
-                                        </div>
-                                        <div class="lg:col-span-12">
-                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan</label>
+                                        <div class="lg:col-span-9">
+                                            <label class="block text-[10.5px] font-bold tracking-wider uppercase text-slate-400 mb-1">Catatan (Opsional)</label>
                                             <textarea name="assignments[{{ $idx }}][notes]" data-qa-field="notes" rows="2" class="w-full rounded-lg border border-violet-100 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y">{{ $member['notes'] }}</textarea>
                                         </div>
                                     </div>
@@ -2685,10 +2664,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                             if (input && value !== undefined) input.value = value;
                         };
 
-                        setField('type', keys.includes('saqa_mom_qc') ? 'review' : firstPreset.type);
-                        setField('status', firstPreset.status);
                         setField('estimated_hours', firstPreset.estimated_hours);
-                        setField('title', labels.length > 1 ? labels.join(', ') : firstPreset.title);
                         setField('notes', keys.map(key => presets[key]?.notes).filter(Boolean).join(' '));
                     };
 

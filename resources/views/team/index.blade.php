@@ -1319,7 +1319,7 @@
                         + '    <span class="w-8 h-8 rounded-lg text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0" style="background:' + esc(a.color || '#7C3AED') + ';">' + esc(a.code || '··') + '</span>'
                         + '    <div class="min-w-0">'
                         + '      <div class="text-[13px] font-semibold text-[#1E1B4B] truncate">' + esc(a.name || '—') + '</div>'
-                        + '      <div class="text-[11.5px] text-slate-500">' + esc(a.role || '—') + ' · ' + esc(a.hours || 0) + 'h/minggu</div>'
+                        + '      <div class="text-[11.5px] text-slate-500">' + esc((a.responsibility_labels || []).join(' · ') || a.role || '—') + ' · ' + esc(a.hours || 0) + 'h/minggu</div>'
                         +        renderResponsibilityChips(a)
                         + '    </div>'
                         + '  </div>'

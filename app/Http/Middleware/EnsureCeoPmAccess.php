@@ -12,9 +12,7 @@ class EnsureCeoPmAccess
 
     public function handle(Request $request, Closure $next): Response
     {
-        $role = $request->user()?->roles()->first()?->name;
-
-        if (! in_array($role, self::ALLOWED_ROLES, true)) {
+        if (! $request->user()?->hasAnyRole(self::ALLOWED_ROLES)) {
             return redirect()->route('dashboard.index');
         }
 

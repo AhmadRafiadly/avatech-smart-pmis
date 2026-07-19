@@ -79,7 +79,7 @@
             class="inline-flex items-center gap-2 h-12 px-5 rounded-xl bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] text-white font-semibold text-[14px] shadow-[0_4px_14px_rgba(124,58,237,0.35)] hover:shadow-[0_6px_20px_rgba(124,58,237,0.45)] hover:-translate-y-0.5 transition-all cursor-pointer"
         >
             <x-heroicon-o-plus class="w-5 h-5" />
-            New Project
+            Buat Proyek Baru
         </button>
     </section>
 
@@ -610,7 +610,7 @@
             @csrf
             <input type="hidden" name="_form" value="create">
             <div class="px-6 py-4 border-b border-violet-100 flex items-center justify-between">
-                <h3 class="text-[16px] font-bold text-[#1E1B4B]">Proyek Baru</h3>
+                <h3 class="text-[16px] font-bold text-[#1E1B4B]">Buat Proyek Baru</h3>
                 <button type="button" data-create-close aria-label="Tutup" class="w-9 h-9 rounded-full hover:bg-violet-50 flex items-center justify-center text-slate-500 hover:text-rose-500 transition cursor-pointer">
                     <x-heroicon-o-x-mark class="w-5 h-5" />
                 </button>
@@ -618,7 +618,7 @@
             <div class="px-6 py-5 space-y-3 overflow-y-auto">
                 <div class="flex items-start gap-2.5 p-3 rounded-lg bg-violet-50/70 border border-violet-100 text-[12px] text-slate-600">
                     <x-heroicon-o-sparkles class="w-4 h-4 text-violet-600 flex-shrink-0 mt-0.5" />
-                    <span>Project baru otomatis dimulai dari <strong class="text-[#1E1B4B]">Planning</strong> dengan status <strong class="text-[#1E1B4B]">On Track</strong>.</span>
+                    <span>Project baru dimulai dari <strong class="text-[#1E1B4B]">Gathering & Planning</strong> dengan status <strong class="text-[#1E1B4B]">On Track</strong>.</span>
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold tracking-wider uppercase text-slate-500 mb-1.5">Kode</label>

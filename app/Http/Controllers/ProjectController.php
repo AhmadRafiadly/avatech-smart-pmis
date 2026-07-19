@@ -117,11 +117,11 @@ class ProjectController extends Controller
     private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
     private const QUICK_ASSIGN_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
     private const QUICK_ASSIGN_RESPONSIBILITIES = [
-        'saqa_mom_qc' => 'SA/QA & MoM/QC',
-        'uiux_design' => 'UI/UX Designer',
-        'fullstack_dev' => 'Fullstack Dev',
-        'wordpress_support' => 'WordPress Support',
-        'copywriting_support' => 'Copywriting Support',
+        'saqa_mom_qc' => 'Analisis, MoM & QA/QC',
+        'uiux_design' => 'UI/UX Design',
+        'fullstack_dev' => 'Fullstack Development',
+        'wordpress_support' => 'WordPress Development',
+        'copywriting_support' => 'Copywriting',
     ];
 
     public function __construct(private readonly SmartInsightService $insights)
@@ -131,10 +131,12 @@ class ProjectController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $role = $user?->roles()->first()?->name;
+        abort_unless($user && ! $user->archived_at, 403);
 
-        // Operational users see the role-aware Projects page (assigned-only).
-        if (in_array($role, self::OPERATIONAL_ROLES, true)) {
+        if (! $user->hasAnyRole(self::QUICK_ASSIGN_ROLES)) {
+            $role = $user->roles->pluck('name')->first(fn ($role) => in_array($role, self::OPERATIONAL_ROLES, true));
+            abort_unless($role, 403);
+
             return $this->operationalIndex($user, $role);
         }
 
@@ -393,7 +395,8 @@ class ProjectController extends Controller
     {
         abort_unless($this->canQuickAssignTeam(), 403);
 
-        $eligibleUserIds = User::whereHas('roles', fn ($query) => $query->whereIn('name', self::OPERATIONAL_ROLES))
+        $eligibleUserIds = User::whereNull('archived_at')
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', self::OPERATIONAL_ROLES))
             ->pluck('id')
             ->all();
 
@@ -403,11 +406,7 @@ class ProjectController extends Controller
             'assignments.*.user_id' => ['required', Rule::in($eligibleUserIds)],
             'assignments.*.responsibilities' => ['nullable', 'array'],
             'assignments.*.responsibilities.*' => ['string', Rule::in(array_keys(self::QUICK_ASSIGN_RESPONSIBILITIES))],
-            'assignments.*.title' => ['nullable', 'string', 'max:160'],
-            'assignments.*.type' => ['required', Rule::in(['task', 'review', 'support'])],
-            'assignments.*.status' => ['required', Rule::in(['planned', 'in_progress', 'done'])],
             'assignments.*.estimated_hours' => ['nullable', 'integer', 'min:0', 'max:200'],
-            'assignments.*.due_date' => ['nullable', 'date'],
             'assignments.*.notes' => ['nullable', 'string', 'max:1000'],
         ], [
             'assignments.required' => 'Pilih minimal satu anggota tim.',
@@ -445,13 +444,13 @@ class ProjectController extends Controller
             $wasExisting = $assignment->exists;
             $original = $assignment->getOriginal();
             $assignment->fill([
-                'title' => trim((string) ($row['title'] ?? '')) ?: $defaults['title'],
-                'type' => $row['type'],
+                'title' => $wasExisting ? $assignment->title : $defaults['title'],
+                'type' => $wasExisting ? $assignment->type : 'task',
                 'responsibilities' => $responsibilities,
-                'status' => $row['status'],
-                'estimated_hours' => (int) ($row['estimated_hours'] ?? $defaults['estimated_hours']),
-                'due_date' => $row['due_date'] ?? $project->due_at?->toDateString(),
-                'notes' => trim((string) ($row['notes'] ?? '')) ?: $defaults['notes'],
+                'status' => $wasExisting ? $assignment->status : 'planned',
+                'estimated_hours' => $row['estimated_hours'] ?? null,
+                'due_date' => $wasExisting ? $assignment->due_date : $project->due_at?->toDateString(),
+                'notes' => $row['notes'] ?? null,
             ]);
             $assignment->save();
 
@@ -1886,11 +1885,12 @@ class ProjectController extends Controller
 
         $validated = $request->validate([
             'status'        => ['required', Rule::in(array_keys(self::QC_STATUS_LABELS))],
-            'actual_result' => ['nullable', 'string', 'max:4000'],
+            'actual_result' => ['nullable', 'required_if:status,failed', 'string', 'max:4000'],
             'notes'         => ['nullable', 'string', 'max:4000'],
         ], [
-            'status.required' => 'Status QC wajib dipilih.',
-            'status.in'       => 'Status QC tidak valid.',
+            'status.required'                 => 'Status QC wajib dipilih.',
+            'status.in'                       => 'Status QC tidak valid.',
+            'actual_result.required_if'       => 'Hasil Aktual wajib diisi saat status Gagal.',
         ]);
 
         $original = $qc->getOriginal();
@@ -2274,7 +2274,17 @@ class ProjectController extends Controller
             'client_id'   => ['required', Rule::exists('clients', 'id')],
             'description' => ['nullable', 'string', 'max:2000'],
             'due_at'      => ['nullable', 'date'],
-            'requires_design' => ['nullable', 'boolean'],
+            'requires_design' => [
+                'nullable',
+                'boolean',
+                function (string $attribute, mixed $value, \Closure $fail) use ($project) {
+                    if ($project
+                        && (bool) $value !== (bool) $project->requires_design
+                        && ($project->ai_wbs_generated || $this->phaseKey($project->phase) !== 'planning')) {
+                        $fail('Kebutuhan desain tidak dapat diubah setelah WBS AI diterapkan atau proyek keluar dari fase Planning.');
+                    }
+                },
+            ],
         ], [
             'code.required'      => 'Kode proyek wajib diisi.',
             'code.regex'         => 'Kode hanya boleh huruf dan angka.',
@@ -2316,10 +2326,22 @@ class ProjectController extends Controller
         $user = auth()->user();
         $role ??= $user?->roles?->first()?->name;
         $userId ??= $user?->id;
+        $membership = TeamAssignment::query()
+            ->where('project_id', $task->project_id)
+            ->where('user_id', $userId)
+            ->exists();
+        $designContributor = TeamAssignment::query()
+            ->where('project_id', $task->project_id)
+            ->where('user_id', $userId)
+            ->whereIn('status', ['planned', 'in_progress'])
+            ->whereJsonContains('responsibilities', 'uiux_design')
+            ->exists();
 
         return (bool) $task->is_design_deliverable
-            && in_array($role, ['uiux_designer', 'ui_ux'], true)
-            && (int) $task->assigned_to === (int) $userId;
+            && $membership
+            && ($designContributor
+                || in_array($role, ['uiux_designer', 'ui_ux'], true)
+                || (int) $task->assigned_to === (int) $userId);
     }
 
     private function ensureDesignDeliverableBelongsToTask(Project $project, ProjectTask $task, ?ProjectTaskDesignDeliverable $deliverable = null): void
@@ -2637,7 +2659,7 @@ class ProjectController extends Controller
 
     private function ensureCanEditProjectDetail(): void
     {
-        abort_unless(in_array(auth()->user()?->roles?->first()?->name, self::OPERATIONAL_ROLES, true), 403);
+        abort_unless(auth()->user()?->hasAnyRole(self::OPERATIONAL_ROLES), 403);
     }
 
     /**
@@ -2653,10 +2675,15 @@ class ProjectController extends Controller
             return redirect()->route('login');
         }
 
-        $role = $user->roles()->first()?->name;
-        if (! in_array($role, self::OPERATIONAL_ROLES, true)) {
-            return null; // CEO/PM + admin tier pass through.
+        if ($user->archived_at) {
+            abort(403);
         }
+
+        if ($user->hasAnyRole(self::QUICK_ASSIGN_ROLES)) {
+            return null;
+        }
+
+        abort_unless($user->hasAnyRole(self::OPERATIONAL_ROLES), 403);
 
         $assigned = \App\Models\TeamAssignment::query()
             ->where('user_id', $user->id)
@@ -3184,15 +3211,20 @@ class ProjectController extends Controller
 
     private function projectDesignAssigneeId(Project $project): ?int
     {
-        $ids = TeamAssignment::query()
+        $activeAssignments = TeamAssignment::query()
             ->where('project_id', $project->id)
-            ->pluck('user_id')
-            ->unique()
-            ->values();
+            ->whereIn('status', ['planned', 'in_progress']);
+        $responsibleUserId = (clone $activeAssignments)
+            ->whereJsonContains('responsibilities', 'uiux_design')
+            ->whereHas('user', fn ($query) => $query->whereNull('archived_at'))
+            ->orderBy('id')
+            ->value('user_id');
 
-        if ($ids->isEmpty()) {
-            return null;
+        if ($responsibleUserId) {
+            return (int) $responsibleUserId;
         }
+
+        $ids = $activeAssignments->pluck('user_id')->unique()->values();
 
         return User::query()
             ->whereIn('id', $ids)
@@ -3215,9 +3247,9 @@ class ProjectController extends Controller
 
     private function canQuickAssignTeam(): bool
     {
-        $role = auth()->user()?->roles?->first()?->name;
+        $user = auth()->user();
 
-        return in_array($role, self::QUICK_ASSIGN_ROLES, true);
+        return (bool) $user && ! $user->archived_at && $user->hasAnyRole(self::QUICK_ASSIGN_ROLES);
     }
 
     private function quickAssignUserRows(Project $project): array
