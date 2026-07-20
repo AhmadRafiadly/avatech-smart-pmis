@@ -21,7 +21,6 @@ use App\Services\SmartInsightService;
 use App\Support\AppTime;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rules\File;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -115,6 +114,8 @@ class ProjectController extends Controller
     ];
 
     private const INTAKE_MANAGER_ROLES = ['sa_qa'];
+    private const DESIGN_GATE_TITLE = 'Siapkan Mockup UI/UX';
+    private const DESIGN_GATE_DESCRIPTION = 'Menyiapkan link Figma, PDF mockup, atau deliverable desain lain sebagai acuan sebelum Development dimulai.';
 
     private const OPERATIONAL_ROLES = ['sa_qa', 'uiux_designer', 'ui_ux', 'fullstack_dev'];
     private const QUICK_ASSIGN_ROLES = ['ceo_pm', 'admin', 'super_admin', 'developer'];
@@ -395,6 +396,7 @@ class ProjectController extends Controller
             'taskPriorityOptions' => self::TASK_PRIORITY_LABELS,
             'assigneeOptions' => $this->projectAssignedUsers($project),
             'quickAssignUsers' => $this->canQuickAssignTeam() ? $this->quickAssignUserRows($project) : [],
+            'designGateRequiresHandover' => $this->designGateRequiresHandover($project),
             'dbIntakeItems'       => $this->projectIntakeRows($project),
             'dbIntakeSummary'     => $this->projectIntakeSummary($project),
             'intakeCanContribute' => $this->intakeCanContribute($project),
@@ -715,7 +717,7 @@ class ProjectController extends Controller
             return redirect()
                 ->to(route('projects.show', $project) . '#workspace')
                 ->with('status', $this->phaseKey($project->phase) === 'design'
-                    ? 'Task development aktif setelah handover desain selesai.'
+                    ? 'Task development aktif setelah mockup/desain siap.'
                     : 'Task execution aktif setelah project keluar dari fase Planning.');
         }
 
@@ -730,7 +732,7 @@ class ProjectController extends Controller
             'estimate_hours' => (int) ($validated['estimate_hours'] ?? 0),
             'description' => $validated['description'] ?? null,
             'sort_order' => ((int) $project->tasks()->max('sort_order')) + 1,
-            'is_design_deliverable' => $project->requires_design && $this->isDesignDeliverableDraft('', $validated['title'], $validated['description'] ?? null),
+            'is_design_deliverable' => $project->requires_design && $this->isDesignDeliverableDraft($validated['title']),
         ]);
 
         AuditLogger::log('task_created', 'Project Master', 'Menambah task <strong>' . e($task->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>', $task);
@@ -787,7 +789,7 @@ class ProjectController extends Controller
             && (bool) $task->is_design_deliverable
             && ! $this->taskHasValidDesignDeliverable($task)) {
             throw ValidationException::withMessages([
-                'status' => 'Tambahkan minimal satu Design Deliverable berisi link Figma/mockup atau PDF sebelum handover desain diselesaikan.',
+                'status' => 'Tambahkan minimal satu Design Deliverable berupa link Figma/mockup atau PDF sebelum task desain diselesaikan.',
             ]);
         }
 
@@ -802,7 +804,7 @@ class ProjectController extends Controller
             'due_date' => $validated['due_date'] ?? null,
             'estimate_hours' => (int) ($validated['estimate_hours'] ?? 0),
             'description' => $validated['description'] ?? null,
-            'is_design_deliverable' => $task->is_design_deliverable || ($project->requires_design && $this->isDesignDeliverableDraft($task->module?->title ?? '', $validated['title'], $validated['description'] ?? null)),
+            'is_design_deliverable' => $task->is_design_deliverable || ($project->requires_design && $this->isDesignDeliverableDraft($validated['title'])),
         ]);
 
         $action = ((int) ($original['assigned_to'] ?? 0)) !== ((int) ($task->assigned_to ?? 0))
@@ -971,7 +973,7 @@ class ProjectController extends Controller
             && (bool) $task->is_design_deliverable
             && ! $this->taskHasValidDesignDeliverable($task)) {
             throw ValidationException::withMessages([
-                'status' => 'Tambahkan minimal satu Design Deliverable berisi link Figma/mockup atau PDF sebelum handover desain diselesaikan.',
+                'status' => 'Tambahkan minimal satu Design Deliverable berupa link Figma/mockup atau PDF sebelum task desain diselesaikan.',
             ]);
         }
 
@@ -1105,24 +1107,30 @@ class ProjectController extends Controller
         $filename = $this->designDeliverablePdfFilename($deliverable);
         $path = $this->designDeliverablePdfPath($deliverable);
         $maxPreviewBytes = 10 * 1024 * 1024;
-        $pdfDataUri = null;
+        $pdfBase64 = null;
         $previewMessage = null;
+        $nonce = base64_encode(random_bytes(18));
 
         if ((filesize($path) ?: 0) <= $maxPreviewBytes) {
-            $pdfDataUri = 'data:application/pdf;base64,' . base64_encode(file_get_contents($path));
+            $pdfBase64 = base64_encode(file_get_contents($path));
         } else {
             $previewMessage = 'File PDF terlalu besar untuk preview internal. Gunakan Download PDF untuk membuka file secara manual.';
         }
 
-        return view('projects.design-deliverables.preview', [
+        return response()->view('projects.design-deliverables.preview', [
             'title' => 'Preview PDF Mockup',
             'project' => $project,
             'task' => $task,
             'deliverable' => $deliverable,
             'filename' => $filename . '.pdf',
-            'pdfDataUri' => $pdfDataUri,
+            'pdfBase64' => $pdfBase64,
             'previewMessage' => $previewMessage,
             'downloadUrl' => route('projects.tasks.design-deliverables.download', [$project, $task, $deliverable]),
+            'nonce' => $nonce,
+        ])->withHeaders([
+            'Content-Security-Policy' => "default-src 'none'; script-src 'nonce-{$nonce}'; style-src 'unsafe-inline'; frame-src blob:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'self'",
+            'Content-Type' => 'text/html; charset=UTF-8',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
@@ -1548,6 +1556,15 @@ class ProjectController extends Controller
         $draftModules = $project->requires_design
             ? $this->ensureDesignWbsDraft($validated['modules'])
             : $validated['modules'];
+        if ($project->tasks()->where('is_design_deliverable', true)->exists()) {
+            foreach ($draftModules as &$module) {
+                $module['tasks'] = array_values(array_filter(
+                    $module['tasks'] ?? [],
+                    fn (array $task) => ! $this->isDesignDeliverableDraft((string) ($task['title'] ?? '')),
+                ));
+            }
+            unset($module);
+        }
         $designAssigneeId = $project->requires_design ? $this->projectDesignAssigneeId($project) : null;
 
         try {
@@ -1603,7 +1620,7 @@ class ProjectController extends Controller
                             continue;
                         }
                         $maxTaskSort++;
-                        $isDesignDeliverable = $this->isDesignDeliverableDraft($module->title, $tTitle, $taskDraft['description'] ?? null);
+                        $isDesignDeliverable = $this->isDesignDeliverableDraft($tTitle);
                         $project->tasks()->create([
                             'project_module_id' => $module->id,
                             'assigned_to'       => $isDesignDeliverable ? $designAssigneeId : null,
@@ -2093,7 +2110,8 @@ class ProjectController extends Controller
 
         try {
             if ($request->hasFile('file')) {
-                $newPath = $request->file('file')->store('project-requirements/' . $project->id, 'local');
+                $extension = strtolower($request->file('file')->getClientOriginalExtension());
+                $newPath = $request->file('file')->storeAs('project-requirements/' . $project->id, hash('sha256', random_bytes(32)) . '.' . $extension, 'local');
                 if ($newPath === false) {
                     throw new \RuntimeException('Gagal menyimpan dokumen requirement.');
                 }
@@ -2141,7 +2159,8 @@ class ProjectController extends Controller
 
         try {
             if ($request->hasFile('file')) {
-                $newPath = $request->file('file')->store('project-requirements/' . $project->id, 'local');
+                $extension = strtolower($request->file('file')->getClientOriginalExtension());
+                $newPath = $request->file('file')->storeAs('project-requirements/' . $project->id, hash('sha256', random_bytes(32)) . '.' . $extension, 'local');
                 if ($newPath === false) {
                     throw new \RuntimeException('Gagal menyimpan dokumen requirement.');
                 }
@@ -2173,38 +2192,92 @@ class ProjectController extends Controller
         return redirect()->to(route('projects.show', $project) . '#intake')->with('status', 'Requirement "' . $intake->title . '" berhasil diperbarui.');
     }
 
-    public function previewRequirementIntake(Project $project, ProjectRequirementInboxItem $intake)
-    {
-        return $this->requirementIntakeFileResponse($project, $intake, 'inline');
-    }
-
-    public function downloadRequirementIntake(Project $project, ProjectRequirementInboxItem $intake)
-    {
-        return $this->requirementIntakeFileResponse($project, $intake, 'attachment');
-    }
-
-    private function requirementIntakeFileResponse(Project $project, ProjectRequirementInboxItem $intake, string $disposition)
+    public function previewRequirementIntake(Project $project, ProjectRequirementInboxItem $intake, RequirementDocumentTextExtractor $extractor)
     {
         if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
             return $redirect;
         }
         abort_unless((int) $intake->project_id === (int) $project->id, 404);
         [$disk, $path] = $this->storedUpload($intake->file_path, 'project-requirements/' . $project->id . '/');
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        abort_unless(in_array($extension, ['pdf', 'txt', 'docx'], true), 415);
+        $filename = $this->requirementFilename($intake, $path);
 
-        $legacyMime = ['pdf' => 'application/pdf', 'txt' => 'text/plain'][strtolower(pathinfo($path, PATHINFO_EXTENSION))] ?? null;
-        $mime = in_array($intake->mime_type, ['application/pdf', 'text/plain'], true) ? $intake->mime_type : $legacyMime;
-        abort_unless($mime, 415);
-        $filename = preg_replace('/[^A-Za-z0-9._ -]/', '_', str_replace(["\r", "\n"], '', basename((string) ($intake->original_filename ?: $path)))) ?: 'requirement-document';
-        $headers = [
-            'Content-Type' => $mime,
-            'Content-Disposition' => $disposition . '; filename="' . $filename . '"',
-            'X-Content-Type-Options' => 'nosniff',
-        ];
-        if ($disposition === 'inline' && $mime === 'application/pdf') {
-            $headers['Content-Security-Policy'] = 'sandbox';
+        if ($extension === 'pdf') {
+            abort_unless(strtolower(trim(explode(';', (string) $intake->mime_type)[0])) === 'application/pdf', 415);
+            $size = Storage::disk($disk)->size($path);
+            $pdfBase64 = null;
+            $previewMessage = null;
+            $nonce = base64_encode(random_bytes(18));
+
+            if ($size > 10 * 1024 * 1024) {
+                $previewMessage = 'File PDF terlalu besar untuk preview internal. Gunakan Download Original untuk membuka file secara manual.';
+            } else {
+                $contents = Storage::disk($disk)->get($path);
+                if (str_starts_with($contents, '%PDF-')) {
+                    $pdfBase64 = base64_encode($contents);
+                } else {
+                    $previewMessage = 'Preview PDF tidak dapat dibuat. Gunakan Download Original untuk membuka file secara manual.';
+                }
+            }
+
+            return response()->view('projects.requirement-intake.pdf-preview', [
+                'title' => 'Preview Requirement Intake',
+                'project' => $project,
+                'intake' => $intake,
+                'filename' => $filename,
+                'type' => 'application/pdf',
+                'size' => $size,
+                'pdfBase64' => $pdfBase64,
+                'previewMessage' => $previewMessage,
+                'downloadUrl' => route('projects.requirement-intake.download', [$project, $intake]),
+                'nonce' => $nonce,
+            ])->withHeaders([
+                'Content-Security-Policy' => "default-src 'none'; script-src 'nonce-{$nonce}'; style-src 'unsafe-inline'; frame-src blob:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'self'",
+                'Content-Type' => 'text/html; charset=UTF-8',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
         }
 
-        return response()->file(Storage::disk($disk)->path($path), $headers);
+        $text = $intake->extracted_text;
+        if ($extension === 'txt' && trim((string) $text) === '') {
+            $text = $extractor->extract(Storage::disk($disk)->path($path), 'txt')['text'] ?? null;
+        }
+
+        return response()->view('projects.requirement-intake.document-preview', [
+            'title' => $intake->title,
+            'filename' => $filename,
+            'type' => $extension === 'docx' ? RequirementDocumentTextExtractor::DOCX_MIME : 'text/plain',
+            'size' => $intake->file_size ?? Storage::disk($disk)->size($path),
+            'body' => $text,
+            'summary' => $intake->summary,
+        ])->withHeaders([
+            'Content-Security-Policy' => "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+            'Content-Type' => 'text/html; charset=UTF-8',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    public function downloadRequirementIntake(Project $project, ProjectRequirementInboxItem $intake)
+    {
+        if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
+            return $redirect;
+        }
+        abort_unless((int) $intake->project_id === (int) $project->id, 404);
+        [$disk, $path] = $this->storedUpload($intake->file_path, 'project-requirements/' . $project->id . '/');
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = ['pdf' => 'application/pdf', 'txt' => 'text/plain', 'docx' => RequirementDocumentTextExtractor::DOCX_MIME][$extension] ?? null;
+        abort_unless($mime, 415);
+
+        return response()->download(Storage::disk($disk)->path($path), $this->requirementFilename($intake, $path), [
+            'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    private function requirementFilename(ProjectRequirementInboxItem $intake, string $path): string
+    {
+        return preg_replace('/[^A-Za-z0-9._ -]/', '_', str_replace(["\r", "\n"], '', basename((string) ($intake->original_filename ?: $path)))) ?: 'requirement-document';
     }
 
     public function destroyRequirementIntake(Request $request, Project $project, ProjectRequirementInboxItem $intake)
@@ -2512,11 +2585,11 @@ class ProjectController extends Controller
             if ((bool) $task->is_design_deliverable) {
                 return $this->canEditDesignDeliverables($task)
                     ? null
-                    : 'Handover desain hanya dapat diperbarui oleh UI/UX assignee.';
+                    : 'Task desain hanya dapat diperbarui oleh assignee desain.';
             }
 
             if ($newStatus !== 'planned') {
-                return 'Task development aktif setelah handover desain selesai.';
+                return 'Task development aktif setelah mockup/desain siap.';
             }
         }
 
@@ -2529,7 +2602,7 @@ class ProjectController extends Controller
             'planning' => 'Task execution aktif setelah project keluar dari fase Planning.',
             'design' => (bool) $task->is_design_deliverable
                 ? ($this->canEditDesignDeliverables($task) ? null : 'Handover desain hanya dapat diperbarui oleh UI/UX assignee.')
-                : 'Task development aktif setelah handover desain selesai.',
+                : 'Task development aktif setelah mockup/desain siap.',
             default => null,
         };
     }
@@ -2538,75 +2611,49 @@ class ProjectController extends Controller
     {
         $designModuleIndex = null;
 
-        foreach ($modules as $idx => $module) {
-            $moduleTitle = (string) ($module['title'] ?? '');
-            $moduleDescription = (string) ($module['description'] ?? '');
-            if ($this->looksLikeDesignText($moduleTitle . ' ' . $moduleDescription)) {
+        foreach ($modules as $idx => &$module) {
+            $module['tasks'] = array_values(array_filter(
+                $module['tasks'] ?? [],
+                fn (array $task) => ! $this->isDesignDeliverableDraft((string) ($task['title'] ?? '')),
+            ));
+            if ($designModuleIndex === null && mb_strtolower(trim((string) ($module['title'] ?? ''))) === 'ui/ux design') {
                 $designModuleIndex = $idx;
-                $modules[$idx]['include'] = '1';
-                $modules[$idx]['title'] = 'UI/UX Design';
-                $modules[$idx]['tasks'] = $this->designHandoverTaskDraft();
-                break;
             }
         }
+        unset($module);
 
-        if ($designModuleIndex !== null) {
-            return array_values(array_filter(
-                $modules,
-                fn (array $module, int $idx) => $idx === $designModuleIndex
-                    || ! $this->looksLikeDesignText((string) ($module['title'] ?? '') . ' ' . (string) ($module['description'] ?? '')),
-                ARRAY_FILTER_USE_BOTH,
-            ));
+        if ($designModuleIndex === null) {
+            array_unshift($modules, [
+                'include' => '1',
+                'title' => 'UI/UX Design',
+                'description' => 'Modul desain untuk menyiapkan final mockup UI/UX sebelum development dimulai.',
+                'status' => 'pending_design',
+                'estimate_hours' => 12,
+                'tasks' => [],
+            ]);
+            $designModuleIndex = 0;
         }
 
-        array_unshift($modules, [
-            'include' => '1',
-            'title' => 'UI/UX Design',
-            'description' => 'Modul desain untuk menyiapkan final mockup UI/UX sebelum development dimulai.',
-            'status' => 'pending_design',
-            'estimate_hours' => 12,
-            'tasks' => $this->designHandoverTaskDraft(),
-        ]);
+        $modules[$designModuleIndex]['include'] = '1';
+        $modules[$designModuleIndex]['tasks'][] = $this->designGateTaskDraft();
 
-        return $modules;
+        return array_values($modules);
     }
 
-    private function designHandoverTaskDraft(): array
+    private function designGateTaskDraft(): array
     {
-        return [[
+        return [
             'include' => '1',
-            'title' => 'Siapkan Mockup UI/UX & Handover Desain',
-            'description' => 'Menyiapkan satu atau beberapa deliverable desain seperti link Figma dan PDF mockup sebagai acuan implementasi development.',
+            'title' => self::DESIGN_GATE_TITLE,
+            'description' => self::DESIGN_GATE_DESCRIPTION,
             'priority' => 'high',
             'estimate_hours' => 12,
-        ]];
+        ];
     }
 
-    private function isDesignDeliverableDraft(string $moduleTitle, string $taskTitle, ?string $description = null): bool
+    private function isDesignDeliverableDraft(string $taskTitle): bool
     {
-        $text = mb_strtolower($moduleTitle . ' ' . $taskTitle . ' ' . (string) $description);
-
-        if ((str_contains($text, 'review') || str_contains($text, 'revisi')) && ! str_contains($text, 'handover')) {
-            return false;
-        }
-
-        return str_contains($text, 'handover')
-            || str_contains($text, 'mockup')
-            || str_contains($text, 'figma');
-    }
-
-    private function looksLikeDesignText(string $value): bool
-    {
-        $text = mb_strtolower($value);
-
-        return str_contains($text, 'ui/ux')
-            || str_contains($text, 'ui ux')
-            || str_contains($text, 'ui_ux')
-            || str_contains($text, 'mockup')
-            || str_contains($text, 'figma')
-            || str_contains($text, 'handover desain')
-            || str_contains($text, 'design')
-            || str_contains($text, 'desain');
+        return mb_strtolower(trim($taskTitle)) === mb_strtolower(self::DESIGN_GATE_TITLE);
     }
 
     private function transitionProjectPhaseAfterWbs(Project $project): void
@@ -2628,7 +2675,7 @@ class ProjectController extends Controller
             return;
         }
 
-        $this->transitionProjectPhase($project, 'Development', 'Handover desain selesai');
+        $this->transitionProjectPhase($project, 'Development', 'Mockup/desain siap');
     }
 
     private function transitionProjectPhaseAfterDevelopmentDone(Project $project): void
@@ -2983,13 +3030,13 @@ class ProjectController extends Controller
             'status' => ['nullable', Rule::in(ProjectRequirementInboxItem::STATUSES)],
             'summary' => ['nullable', 'string', 'max:10000'],
             'external_url' => ['nullable', 'url', 'max:1000'],
-            'file' => ['nullable', File::types(['pdf', 'txt'])->max(10 * 1024)],
+            'file' => ['nullable', 'file', 'max:10240'],
         ], [
             'title.required' => 'Judul requirement wajib diisi.',
             'source_type.in' => 'Tipe sumber tidak valid.',
             'priority.in' => 'Prioritas tidak valid.',
             'external_url.url' => 'URL harus valid.',
-            'file.mimes' => 'File harus berupa PDF atau TXT yang valid.',
+            'file.file' => 'Unggahan harus berupa file yang valid.',
             'file.max' => 'File maksimal 10MB.',
         ]);
     }
@@ -3002,17 +3049,20 @@ class ProjectController extends Controller
 
         $file = $request->file('file');
         $extension = strtolower($file->getClientOriginalExtension());
-        $expectedMime = ['pdf' => 'application/pdf', 'txt' => 'text/plain'][$extension] ?? null;
+        $expectedMime = ['pdf' => 'application/pdf', 'txt' => 'text/plain', 'docx' => RequirementDocumentTextExtractor::DOCX_MIME][$extension] ?? null;
         $mime = $file->getMimeType();
         $path = $file->getRealPath();
         $prefix = file_get_contents($path, false, null, 0, 5);
-        $invalidPdf = $extension === 'pdf' && $prefix !== '%PDF-';
-        $invalidText = $extension === 'txt' && ($prefix === '%PDF-' || str_contains((string) file_get_contents($path), "\0"));
-        if (! $expectedMime || $mime !== $expectedMime || $invalidPdf || $invalidText) {
-            throw ValidationException::withMessages(['file' => 'Ekstensi dan tipe isi file tidak sesuai. Unggah PDF atau TXT yang valid.']);
+        $invalidPdf = $extension === 'pdf' && ($mime !== 'application/pdf' || $prefix !== '%PDF-');
+        $invalidText = $extension === 'txt' && ($mime !== 'text/plain' || $prefix === '%PDF-' || str_contains((string) file_get_contents($path), "\0"));
+        if (! $expectedMime || $invalidPdf || $invalidText) {
+            throw ValidationException::withMessages(['file' => 'Ekstensi dan tipe isi file tidak sesuai. Unggah PDF, TXT, atau DOCX yang valid.']);
         }
 
         $extraction = $extractor->extract($path, $extension);
+        if ($extraction['status'] === 'invalid') {
+            throw ValidationException::withMessages(['file' => 'Struktur DOCX tidak valid atau ukuran isi dokumen terlalu besar.']);
+        }
 
         return [
             'original_filename' => mb_substr(basename($file->getClientOriginalName()), 0, 255),
@@ -3035,7 +3085,7 @@ class ProjectController extends Controller
             return;
         }
 
-        throw ValidationException::withMessages(['summary' => 'Isi ringkasan atau unggah dokumen PDF/TXT dengan teks yang berhasil diekstrak dan tidak kosong.']);
+        throw ValidationException::withMessages(['summary' => 'Isi ringkasan atau unggah dokumen PDF, TXT, atau DOCX dengan teks yang berhasil diekstrak dan tidak kosong.']);
     }
 
     private function deleteRequirementUpload(string $path, int $projectId): void
@@ -3388,6 +3438,26 @@ class ProjectController extends Controller
             ->whereHas('roles', fn ($query) => $query->whereIn('name', self::OPERATIONAL_ROLES))
             ->orderBy('name')
             ->get(['id', 'name']);
+    }
+
+    private function designGateRequiresHandover(Project $project): bool
+    {
+        $assignments = TeamAssignment::query()
+            ->where('project_id', $project->id)
+            ->whereIn('status', ['planned', 'in_progress'])
+            ->whereHas('user', fn ($query) => $query->whereNull('archived_at'))
+            ->get(['user_id', 'responsibilities']);
+        $designIds = $assignments
+            ->filter(fn (TeamAssignment $assignment) => in_array('uiux_design', $assignment->responsibilities ?? [], true))
+            ->pluck('user_id')
+            ->unique();
+        $developmentIds = $assignments
+            ->filter(fn (TeamAssignment $assignment) => collect($assignment->responsibilities ?? [])->intersect(['fullstack_dev', 'wordpress_support'])->isNotEmpty())
+            ->pluck('user_id')
+            ->unique();
+
+        return $designIds->isNotEmpty()
+            && $developmentIds->contains(fn ($userId) => ! $designIds->contains($userId));
     }
 
     private function projectDesignAssigneeId(Project $project): ?int

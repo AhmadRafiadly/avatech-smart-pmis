@@ -927,8 +927,34 @@
                     </div>
                     <div class="space-y-3 min-h-[100px] max-h-[640px] overflow-y-auto pr-1">
                         @forelse ($col['tasks'] as $task)
-                            @php $accent = $task['priority'] === 'High' ? '#EF4444' : '#F59E0B'; @endphp
-                            <div data-kanban-task data-assignee="{{ $task['assignee'] }}" class="bg-white rounded-lg border border-violet-50 shadow-sm hover:shadow-[0_2px_8px_rgba(124,58,237,0.08)] transition p-3" style="border-left: 4px solid {{ $accent }};">
+                            @php
+                                $isDesignGate = ! empty($task['is_design_deliverable']);
+                                $designDeliverableCount = count($task['design_deliverables'] ?? []);
+                                $accent = $isDesignGate ? '#EC4899' : ($task['priority'] === 'High' ? '#EF4444' : '#F59E0B');
+                            @endphp
+                            <div data-kanban-task @if ($isDesignGate) data-design-gate-card @endif data-assignee="{{ $task['assignee'] }}" @class([
+                                'rounded-lg border shadow-sm hover:shadow-[0_2px_8px_rgba(124,58,237,0.08)] transition p-3',
+                                'border-pink-200 bg-gradient-to-br from-pink-50/80 via-white to-violet-50/60 ring-1 ring-pink-100' => $isDesignGate,
+                                'border-violet-50 bg-white' => ! $isDesignGate,
+                            ]) style="border-left: 4px solid {{ $accent }};">
+                                @if ($isDesignGate)
+                                    <div class="mb-2 rounded-lg border border-pink-100 bg-white/80 px-2.5 py-2">
+                                        <div class="flex min-w-0 items-center gap-1.5 text-pink-700">
+                                            <x-heroicon-o-paint-brush class="h-4 w-4 shrink-0" />
+                                            <span class="min-w-0 text-[10.5px] font-extrabold tracking-[0.08em]">UI/UX DESIGN GATE</span>
+                                        </div>
+                                        @if ($designGateRequiresHandover)
+                                            <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                                                <span class="inline-flex items-center gap-1 rounded-full border border-pink-100 bg-pink-50 px-2 py-0.5 text-[9.5px] font-bold text-pink-700">
+                                                    <x-heroicon-o-arrow-right-circle class="h-3.5 w-3.5 shrink-0" /> Handover diperlukan
+                                                </span>
+                                            </div>
+                                            <p class="mt-1 text-[10.5px] leading-relaxed text-slate-600">Mockup perlu diserahkan kepada tim Development sebelum implementasi dimulai.</p>
+                                        @else
+                                            <p class="mt-1 text-[10.5px] leading-relaxed text-slate-600">Mockup desain wajib tersedia sebelum Development dimulai.</p>
+                                        @endif
+                                    </div>
+                                @endif
                                 <div class="flex items-start justify-between gap-2 mb-2">
                                     <span class="text-[9.5px] font-bold tracking-wider uppercase text-slate-400 truncate">{{ $task['module'] }}</span>
                                     <span @class([
@@ -947,8 +973,19 @@
                                         <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">{{ $task['due'] }}</span>
                                     @endif
                                     @if (! empty($task['is_design_deliverable']))
-                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-pink-50 text-pink-700">Design handover</span>
-                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-white border border-pink-100 text-pink-700">{{ count($task['design_deliverables'] ?? []) }} deliverable</span>
+                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-pink-50 text-pink-700">Design gate</span>
+                                        <span class="inline-flex items-center text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-white border border-pink-100 text-pink-700">{{ $designDeliverableCount }} deliverable</span>
+                                        <span @class([
+                                            'inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-full px-2 py-0.5 border',
+                                            'border-emerald-100 bg-emerald-50 text-emerald-700' => $designDeliverableCount > 0,
+                                            'border-amber-100 bg-amber-50 text-amber-700' => $designDeliverableCount === 0,
+                                        ])>
+                                            @if ($designDeliverableCount > 0)
+                                                <x-heroicon-o-check-circle class="h-3.5 w-3.5 shrink-0" /> Siap development
+                                            @else
+                                                <x-heroicon-o-exclamation-circle class="h-3.5 w-3.5 shrink-0" /> Belum lengkap
+                                            @endif
+                                        </span>
                                     @endif
                                 </div>
                                 @if ($canEdit && ! $useReferenceProjectData && ! empty($task['id']))
@@ -1047,18 +1084,23 @@
                                     </details>
                                 @endif
                                 @if (! empty($task['is_design_deliverable']))
-                                    <div class="mt-3 rounded-lg border border-pink-100 bg-pink-50/40 p-3 space-y-2">
-                                        <div class="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p class="text-[12px] font-bold text-[#1E1B4B]">Design Deliverables</p>
-                                                <p class="mt-0.5 text-[11px] text-slate-500 leading-relaxed">Tambahkan satu atau beberapa link Figma/PDF sesuai kebutuhan desain. Untuk project kecil, cukup gunakan satu Master Figma.</p>
+                                    <details data-design-handover-details class="group mt-3 rounded-lg border border-pink-100 bg-pink-50/40">
+                                        <summary class="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-[11.5px] font-bold text-[#1E1B4B] marker:content-none">
+                                            <span class="min-w-0 truncate">Design Deliverables</span>
+                                            <span class="flex shrink-0 items-center gap-1.5">
+                                                <span class="rounded-full border border-pink-100 bg-white px-2 py-0.5 text-[10px] font-semibold text-pink-700">{{ $designDeliverableCount }} item</span>
+                                                <x-heroicon-o-chevron-down class="h-4 w-4 text-pink-600 transition group-open:rotate-180" />
+                                            </span>
+                                        </summary>
+                                        <div class="space-y-2 border-t border-pink-100 p-3">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <p class="text-[11px] text-slate-500 leading-relaxed">Tambahkan satu atau beberapa link Figma/PDF sesuai kebutuhan desain. Untuk project kecil, cukup gunakan satu Master Figma.</p>
+                                                @if (empty($task['can_edit_design_deliverables']))
+                                                    <span class="shrink-0 text-[10px] font-semibold rounded-full bg-white border border-pink-100 text-slate-500 px-2 py-0.5">View only</span>
+                                                @endif
                                             </div>
-                                            @if (empty($task['can_edit_design_deliverables']))
-                                                <span class="shrink-0 text-[10px] font-semibold rounded-full bg-white border border-pink-100 text-slate-500 px-2 py-0.5">View only</span>
-                                            @endif
-                                        </div>
 
-                                        @forelse (($task['design_deliverables'] ?? []) as $deliverable)
+                                            @forelse (($task['design_deliverables'] ?? []) as $deliverable)
                                             <div class="rounded-lg border border-pink-100 bg-white p-2.5">
                                                 <div class="flex items-start justify-between gap-2">
                                                     <div class="min-w-0">
@@ -1108,7 +1150,7 @@
                                                 @endif
                                             </div>
                                         @empty
-                                            <div class="rounded-lg border border-dashed border-pink-200 bg-white/70 px-3 py-3 text-[11.5px] text-slate-500 leading-relaxed">Belum ada deliverable. Handover desain belum bisa ditandai Done sampai minimal satu link Figma/mockup atau PDF ditambahkan.</div>
+                                            <div class="rounded-lg border border-dashed border-pink-200 bg-white/70 px-3 py-3 text-[11.5px] text-slate-500 leading-relaxed">Belum ada deliverable. Task desain belum bisa ditandai Done sampai minimal satu link Figma/mockup atau PDF ditambahkan.</div>
                                         @endforelse
 
                                         @if (! empty($task['can_edit_design_deliverables']))
@@ -1125,8 +1167,9 @@
                                                     </div>
                                                 </form>
                                             </details>
-                                        @endif
-                                    </div>
+                                            @endif
+                                        </div>
+                                    </details>
                                 @endif
                             </div>
                         @empty
@@ -1816,9 +1859,26 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                         @endif
                         <div class="flex flex-wrap items-center gap-3 text-[12px]">
                             @if ($ri['file_url'])
-                                <a href="{{ $ri['file_url'] }}" target="_blank" class="inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 font-medium">
+                                @php
+                                    $previewExtension = strtolower(pathinfo((string) $ri['original_filename'], PATHINFO_EXTENSION));
+                                    $previewMime = strtolower(trim(explode(';', (string) $ri['mime_type'])[0]));
+                                    $previewKind = ($previewMime === 'application/pdf' || $previewExtension === 'pdf') ? 'pdf' : ($previewExtension === 'docx' ? 'docx' : 'txt');
+                                @endphp
+                                <button
+                                    type="button"
+                                    data-requirement-preview-trigger
+                                    data-preview-url="{{ $ri['file_url'] }}"
+                                    data-preview-title="{{ $ri['title'] }}"
+                                    data-preview-filename="{{ $ri['original_filename'] }}"
+                                    data-preview-extension="{{ $previewExtension }}"
+                                    data-preview-type="{{ $previewMime }}"
+                                    data-preview-kind="{{ $previewKind }}"
+                                    data-preview-size="{{ number_format(($ri['file_size'] ?? 0) / 1024, 1) }} KB"
+                                    data-preview-download-url="{{ $ri['file_download_url'] }}"
+                                    class="inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 font-medium cursor-pointer"
+                                >
                                     <x-heroicon-o-paper-clip class="w-3.5 h-3.5" /> Preview
-                                </a>
+                                </button>
                                 <a href="{{ $ri['file_download_url'] }}" class="inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 font-medium">
                                     <x-heroicon-o-arrow-down-tray class="w-3.5 h-3.5" /> Download
                                 </a>
@@ -1894,7 +1954,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[12px] font-semibold text-slate-600 mb-1">File (opsional, maks 10MB)</label>
-                            <input type="file" name="file" accept=".pdf,.txt,application/pdf,text/plain" class="w-full text-[13px] file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-2 file:text-[12px] file:font-semibold file:text-violet-700 hover:file:bg-violet-100 transition">
+                            <input type="file" name="file" accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="w-full text-[13px] file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-2 file:text-[12px] file:font-semibold file:text-violet-700 hover:file:bg-violet-100 transition">
                         </div>
                         <div>
                             <label class="block text-[12px] font-semibold text-slate-600 mb-1">External URL (opsional)</label>
@@ -1909,6 +1969,26 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                 </form>
             </div>
         @endif
+
+    </div>
+
+    <div id="requirement-preview-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="requirement-preview-title">
+        <div data-requirement-preview-backdrop class="absolute inset-0 bg-slate-900/60"></div>
+        <div class="relative flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-3">
+                <div class="min-w-0">
+                    <h3 id="requirement-preview-title" data-requirement-preview-title class="truncate text-[15px] font-bold text-slate-800"></h3>
+                    <p data-requirement-preview-label class="text-[12px] font-semibold text-violet-700"></p>
+                    <p class="truncate text-[11.5px] text-slate-500"><span data-requirement-preview-filename></span> · <span data-requirement-preview-type></span> · <span data-requirement-preview-size></span></p>
+                    <p data-requirement-preview-docx-warning class="hidden mt-1 text-[11.5px] text-amber-700">Tampilan ini adalah teks hasil ekstraksi. Tata letak Word asli, tabel, dan gambar dapat berbeda atau tidak ditampilkan.</p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                    <a data-requirement-preview-download href="" class="inline-flex h-9 items-center rounded-lg px-3 text-[12px] font-semibold text-violet-700 hover:bg-violet-50">Download Original</a>
+                    <button data-requirement-preview-close type="button" class="h-9 w-9 rounded-lg text-xl text-slate-500 hover:bg-slate-100" aria-label="Tutup preview">&times;</button>
+                </div>
+            </div>
+            <iframe data-requirement-preview-frame class="min-h-0 flex-1 w-full border-0" title="Preview teks requirement"></iframe>
+        </div>
     </div>
 
     {{-- Requirement Intake Edit Modal --}}
@@ -1959,7 +2039,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-[12px] font-semibold text-slate-600 mb-1">File (opsional)</label>
-                            <input type="file" name="file" accept=".pdf,.txt,application/pdf,text/plain" class="w-full text-[13px]">
+                            <input type="file" name="file" accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="w-full text-[13px]">
                         </div>
                         <div>
                             <label class="block text-[12px] font-semibold text-slate-600 mb-1">External URL</label>
@@ -2876,6 +2956,50 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     };
                     modCb.addEventListener('change', sync);
                 });
+
+                const requirementPreviewModal = document.getElementById('requirement-preview-modal');
+                if (requirementPreviewModal) {
+                    const frame = requirementPreviewModal.querySelector('[data-requirement-preview-frame]');
+                    const closeButton = requirementPreviewModal.querySelector('[data-requirement-preview-close]');
+                    const setText = (hook, value) => {
+                        requirementPreviewModal.querySelector(hook).textContent = value || '-';
+                    };
+                    const closeRequirementPreview = () => {
+                        frame.removeAttribute('src');
+                        requirementPreviewModal.classList.add('hidden');
+                        requirementPreviewModal.classList.remove('flex');
+                        document.body.classList.remove('overflow-hidden');
+                    };
+                    document.querySelectorAll('[data-requirement-preview-trigger]').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const mime = (btn.dataset.previewType || '').split(';')[0].trim().toLowerCase();
+                            const filename = (btn.dataset.previewFilename || '').toLowerCase();
+                            if (mime === 'application/pdf' || filename.endsWith('.pdf')) {
+                                window.open(btn.dataset.previewUrl, '_blank', 'noopener');
+                                return;
+                            }
+                            const textPreviewUrl = btn.dataset.previewUrl || '';
+                            setText('[data-requirement-preview-title]', btn.dataset.previewTitle);
+                            setText('[data-requirement-preview-filename]', btn.dataset.previewFilename);
+                            setText('[data-requirement-preview-type]', btn.dataset.previewType);
+                            setText('[data-requirement-preview-size]', btn.dataset.previewSize);
+                            setText('[data-requirement-preview-label]', btn.dataset.previewKind === 'docx' ? 'Preview teks hasil ekstraksi' : 'Preview teks TXT');
+                            requirementPreviewModal.querySelector('[data-requirement-preview-docx-warning]').classList.toggle('hidden', btn.dataset.previewKind !== 'docx');
+                            requirementPreviewModal.querySelector('[data-requirement-preview-download]').href = btn.dataset.previewDownloadUrl || '';
+                            frame.src = textPreviewUrl;
+                            requirementPreviewModal.classList.remove('hidden');
+                            requirementPreviewModal.classList.add('flex');
+                            document.body.classList.add('overflow-hidden');
+                            closeButton.focus();
+                        });
+                    });
+                    requirementPreviewModal.querySelectorAll('[data-requirement-preview-close], [data-requirement-preview-backdrop]').forEach(el => {
+                        el.addEventListener('click', closeRequirementPreview);
+                    });
+                    document.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape' && ! requirementPreviewModal.classList.contains('hidden')) closeRequirementPreview();
+                    });
+                }
 
                 /* ===== Requirement Intake edit modal ===== */
                 const intakeModal = document.getElementById('intake-edit-modal');

@@ -197,8 +197,8 @@ class SidangFinalHardeningTest extends TestCase
         $owner = $this->userWithRole('sa_qa');
         $project = $this->projectFor($owner);
         TeamAssignment::create(['user_id' => $owner->id, 'project_id' => $project->id, 'title' => 'QA', 'type' => 'project', 'status' => 'in_progress']);
-        $item = ProjectRequirementInboxItem::create(['project_id' => $project->id, 'created_by' => $owner->id, 'title' => 'Legacy PRD', 'source_type' => 'prd', 'priority' => 'must', 'status' => 'draft', 'summary' => 'Legacy', 'file_path' => 'project-requirements/'.$project->id.'/legacy.pdf']);
-        Storage::disk('public')->put($item->file_path, 'legacy');
+        $item = ProjectRequirementInboxItem::create(['project_id' => $project->id, 'created_by' => $owner->id, 'title' => 'Legacy PRD', 'source_type' => 'prd', 'priority' => 'must', 'status' => 'draft', 'summary' => 'Legacy', 'file_path' => 'project-requirements/'.$project->id.'/legacy.pdf', 'mime_type' => 'application/pdf']);
+        Storage::disk('public')->put($item->file_path, "%PDF-1.4\nmock");
 
         $this->actingAs($outsider)->get(route('testing-evidence.index'))->assertForbidden();
         $this->actingAs($outsider)->get(route('projects.requirement-intake.preview', [$project, $item]))->assertRedirect(route('projects.index'));

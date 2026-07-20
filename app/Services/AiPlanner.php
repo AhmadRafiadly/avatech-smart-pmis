@@ -825,7 +825,7 @@ class AiPlanner
         ];
 
         $rules[] = $requiresDesign
-            ? 'Project ini membutuhkan mockup UI/UX. Modul pertama harus UI/UX Design dengan satu task utama "Siapkan Mockup UI/UX & Handover Desain". Jangan buat task default "Review dan Revisi Mockup Desain"; revisi desain dicatat sebagai deliverable/link/PDF tambahan pada task handover.'
+            ? 'Project ini membutuhkan mockup UI/UX. Modul pertama harus UI/UX Design dengan satu task utama "Siapkan Mockup UI/UX". Jangan buat task default "Review dan Revisi Mockup Desain"; revisi desain dicatat sebagai deliverable/link/PDF tambahan pada task desain.'
             : 'Project ini tidak mewajibkan mockup UI/UX. Jangan paksa modul UI/UX Design kecuali MoM eksplisit meminta desain.';
 
         $exampleInput = "Contoh input:\n"
@@ -1203,62 +1203,44 @@ JSON;
     {
         $designModuleIndex = null;
 
-        foreach ($modules as $idx => $module) {
-            $moduleText = self::str($module['title'] ?? '') . ' ' . self::str($module['description'] ?? '');
-            if (self::looksLikeDesignText($moduleText)) {
+        foreach ($modules as $idx => &$module) {
+            $module['tasks'] = array_values(array_filter(
+                $module['tasks'] ?? [],
+                fn (array $task) => mb_strtolower(trim(self::str($task['title'] ?? ''))) !== mb_strtolower('Siapkan Mockup UI/UX'),
+            ));
+            if ($designModuleIndex === null && mb_strtolower(trim(self::str($module['title'] ?? ''))) === 'ui/ux design') {
                 $designModuleIndex = $idx;
-                $modules[$idx]['include'] = '1';
-                $modules[$idx]['title'] = 'UI/UX Design';
-                $modules[$idx]['tasks'] = self::designHandoverTask();
-                break;
             }
         }
+        unset($module);
 
-        if ($designModuleIndex !== null) {
-            return array_values(array_filter(
-                $modules,
-                fn (array $module, int $idx) => $idx === $designModuleIndex
-                    || ! self::looksLikeDesignText(self::str($module['title'] ?? '') . ' ' . self::str($module['description'] ?? '')),
-                ARRAY_FILTER_USE_BOTH,
-            ));
+        if ($designModuleIndex === null) {
+            array_unshift($modules, [
+                'title' => 'UI/UX Design',
+                'description' => 'Modul desain untuk menyiapkan final mockup UI/UX sebelum development dimulai.',
+                'status' => 'pending_design',
+                'estimate_hours' => 12,
+                'sort_order' => 0,
+                'tasks' => [],
+            ]);
+            $designModuleIndex = 0;
         }
 
-        array_unshift($modules, [
-            'title' => 'UI/UX Design',
-            'description' => 'Menyiapkan final mockup UI/UX dan handover desain sebelum development dimulai.',
-            'status' => 'pending_design',
-            'estimate_hours' => 12,
-            'sort_order' => 0,
-            'tasks' => self::designHandoverTask(),
-        ]);
+        $modules[$designModuleIndex]['tasks'][] = self::designGateTask();
 
         return array_values($modules);
     }
 
-    private static function designHandoverTask(): array
+    private static function designGateTask(): array
     {
-        return [[
-            'title' => 'Siapkan Mockup UI/UX & Handover Desain',
-            'description' => 'Menyiapkan satu atau beberapa deliverable desain seperti link Figma dan PDF mockup sebagai acuan implementasi development.',
+        return [
+            'title' => 'Siapkan Mockup UI/UX',
+            'description' => 'Menyiapkan link Figma, PDF mockup, atau deliverable desain lain sebagai acuan sebelum Development dimulai.',
             'status' => self::DEFAULT_TASK_STATUS,
             'priority' => 'high',
             'estimate_hours' => 12,
             'sort_order' => 1,
-        ]];
-    }
-
-    private static function looksLikeDesignText(string $value): bool
-    {
-        $text = mb_strtolower($value);
-
-        return str_contains($text, 'ui/ux')
-            || str_contains($text, 'ui ux')
-            || str_contains($text, 'ui_ux')
-            || str_contains($text, 'mockup')
-            || str_contains($text, 'figma')
-            || str_contains($text, 'handover desain')
-            || str_contains($text, 'design')
-            || str_contains($text, 'desain');
+        ];
     }
 
     private static function normalizeTestCase($raw): ?array
