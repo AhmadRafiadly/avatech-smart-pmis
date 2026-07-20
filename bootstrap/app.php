@@ -12,6 +12,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([
         \App\Console\Commands\CleanupTestArtifacts::class,
+        \App\Console\Commands\CleanupUserRoster::class,
     ])
     ->withMiddleware(function (Middleware $middleware) {
         // Authenticated Smart-PMIS pages and the login form must never be
@@ -19,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // protected pages and the cached login form 419s on stale CSRF).
         $middleware->appendToGroup('web', \App\Http\Middleware\PreventBackHistory::class);
         $middleware->alias([
+            'active.user' => \App\Http\Middleware\EnsureActiveUser::class,
             'ceo.pm' => \App\Http\Middleware\EnsureCeoPmAccess::class,
         ]);
     })

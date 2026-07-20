@@ -168,7 +168,8 @@ class SidangFinalHardeningTest extends TestCase
         $archived->update(['archived_at' => now()]);
         $noRole = User::factory()->create();
 
-        $this->actingAs($archived)->get(route('ai-monitor.index'))->assertForbidden();
+        $this->actingAs($archived)->get(route('ai-monitor.index'))->assertRedirect(route('login'));
+        $this->assertGuest();
         $this->actingAs($noRole)->get(route('audit.index'))->assertForbidden();
         $this->actingAs($noRole)->get(route('dashboard.index'))->assertForbidden();
     }

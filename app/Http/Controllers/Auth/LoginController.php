@@ -40,7 +40,7 @@ class LoginController extends Controller
 
         $remember = $request->boolean('remember');
 
-        if (! Auth::attempt($credentials, $remember)) {
+        if (! Auth::attempt($credentials + ['archived_at' => null], $remember)) {
             throw ValidationException::withMessages([
                 'email' => 'Kombinasi email dan password tidak cocok.',
             ]);

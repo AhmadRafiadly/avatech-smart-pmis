@@ -72,14 +72,12 @@ class User extends Authenticatable implements FilamentUser
 
     public function canAccessPanel(Panel $panel): bool
     {
-        /*
-         * Always allow the panel's logout endpoint so a non-admin user who
-         * accidentally hits /admin/logout still gets signed out cleanly
-         * instead of seeing a 403. Every other panel route stays gated
-         * to admin / super_admin / developer.
-         */
         if (request()?->is('admin/logout')) {
             return true;
+        }
+
+        if ($this->archived_at !== null) {
+            return false;
         }
 
         return $this->hasAnyRole(['admin', 'super_admin', 'developer']);

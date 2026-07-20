@@ -39,6 +39,7 @@ Route::middleware('auth')->group(function () {
         return redirect('/login');
     })->name('logout');
 
+    Route::middleware('active.user')->group(function () {
     Route::middleware('ceo.pm')->group(function () {
         Route::get('/executive', [ExecutiveController::class, 'index'])->name('executive.index');
         Route::get('/executive/insights', [ExecutiveController::class, 'insights'])->name('executive.insights');
@@ -119,4 +120,5 @@ Route::middleware('auth')->group(function () {
     Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
     Route::get('/audit/export.csv', [AuditController::class, 'exportCsv'])->name('audit.export');
     Route::get('/audit/report', [AuditController::class, 'report'])->name('audit.report');
+    });
 });
