@@ -16,10 +16,12 @@ use App\Models\TeamAssignment;
 use App\Models\User;
 use App\Services\AiPlanner;
 use App\Services\AuditLogger;
+use App\Services\RequirementDocumentTextExtractor;
 use App\Services\SmartInsightService;
 use App\Support\AppTime;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rules\File;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -2077,7 +2079,7 @@ class ProjectController extends Controller
 
     /* ===================== Requirement Intake ===================== */
 
-    public function storeRequirementIntake(Request $request, Project $project)
+    public function storeRequirementIntake(Request $request, Project $project, RequirementDocumentTextExtractor $extractor)
     {
         if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
             return $redirect;
@@ -2085,38 +2087,41 @@ class ProjectController extends Controller
         abort_unless($this->intakeCanContribute($project), 403);
 
         $validated = $this->validateRequirementIntake($request);
+        $document = $this->prepareRequirementDocument($request, $extractor);
+        $this->requireRequirementContent($validated, $document);
+        $newPath = null;
 
-        $filePath = null;
-        if ($request->hasFile('file')) {
-            $filePath = $request->file('file')->store('project-requirements/' . $project->id, 'local');
+        try {
+            if ($request->hasFile('file')) {
+                $newPath = $request->file('file')->store('project-requirements/' . $project->id, 'local');
+                if ($newPath === false) {
+                    throw new \RuntimeException('Gagal menyimpan dokumen requirement.');
+                }
+                $document['file_path'] = $newPath;
+            }
+
+            $item = DB::transaction(fn () => $project->requirementInboxItems()->create(array_merge([
+                'created_by' => $request->user()?->id,
+                'title' => $validated['title'],
+                'source_type' => $validated['source_type'],
+                'priority' => $validated['priority'],
+                'status' => 'draft',
+                'summary' => $validated['summary'] ?? null,
+                'external_url' => $validated['external_url'] ?? null,
+            ], $document)));
+        } catch (\Throwable $exception) {
+            if ($newPath) {
+                Storage::disk('local')->delete($newPath);
+            }
+            throw $exception;
         }
 
-        $item = $project->requirementInboxItems()->create([
-            'created_by'   => $request->user()?->id,
-            'title'        => $validated['title'],
-            'source_type'  => $validated['source_type'],
-            'priority'     => $validated['priority'],
-            'status'       => 'draft',
-            'summary'      => $validated['summary'],
-            'file_path'    => $filePath,
-            'external_url' => $validated['external_url'] ?? null,
-        ]);
+        AuditLogger::log('requirement_intake_created', 'Project Master', 'Menambah Requirement Intake <strong>' . e($item->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>', $item, null, ['project_id' => $project->id, 'item_id' => $item->id, 'source_type' => $item->source_type, 'priority' => $item->priority, 'original_filename' => $item->original_filename, 'mime_type' => $item->mime_type, 'file_size' => $item->file_size, 'extraction_status' => $item->extraction_status]);
 
-        AuditLogger::log(
-            'requirement_intake_created',
-            'Project Master',
-            'Menambah Requirement Intake <strong>' . e($item->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
-            $item,
-            null,
-            ['project_id' => $project->id, 'item_id' => $item->id, 'source_type' => $item->source_type, 'priority' => $item->priority],
-        );
-
-        return redirect()
-            ->to(route('projects.show', $project) . '#intake')
-            ->with('status', 'Requirement "' . $item->title . '" berhasil ditambahkan.');
+        return redirect()->to(route('projects.show', $project) . '#intake')->with('status', 'Requirement "' . $item->title . '" berhasil ditambahkan.');
     }
 
-    public function updateRequirementIntake(Request $request, Project $project, ProjectRequirementInboxItem $intake)
+    public function updateRequirementIntake(Request $request, Project $project, ProjectRequirementInboxItem $intake, RequirementDocumentTextExtractor $extractor)
     {
         if ($redirect = $this->ensureOperationalCanAccessProject($project)) {
             return $redirect;
@@ -2125,35 +2130,47 @@ class ProjectController extends Controller
         abort_unless($this->intakeCanContribute($project), 403);
 
         $validated = $this->validateRequirementIntake($request);
+        $document = $request->hasFile('file') ? $this->prepareRequirementDocument($request, $extractor) : [];
+        $this->requireRequirementContent($validated, $document ?: [
+            'extraction_status' => $intake->extraction_status,
+            'extracted_text' => $intake->extracted_text,
+        ]);
+        $old = ['status' => $intake->status, 'priority' => $intake->priority, 'source_type' => $intake->source_type, 'original_filename' => $intake->original_filename, 'mime_type' => $intake->mime_type, 'file_size' => $intake->file_size, 'extraction_status' => $intake->extraction_status];
+        $oldPath = $intake->file_path;
+        $newPath = null;
 
-        $old = ['status' => $intake->status, 'priority' => $intake->priority, 'source_type' => $intake->source_type];
-
-        if ($request->hasFile('file')) {
-            $intake->file_path = $request->file('file')->store('project-requirements/' . $project->id, 'local');
+        try {
+            if ($request->hasFile('file')) {
+                $newPath = $request->file('file')->store('project-requirements/' . $project->id, 'local');
+                if ($newPath === false) {
+                    throw new \RuntimeException('Gagal menyimpan dokumen requirement.');
+                }
+                $document['file_path'] = $newPath;
+            }
+            DB::transaction(function () use ($intake, $validated, $document) {
+                $intake->fill(array_merge([
+                    'title' => $validated['title'],
+                    'source_type' => $validated['source_type'],
+                    'priority' => $validated['priority'],
+                    'status' => $validated['status'] ?? $intake->status,
+                    'summary' => $validated['summary'] ?? null,
+                    'external_url' => $validated['external_url'] ?? null,
+                ], $document));
+                $intake->save();
+            });
+        } catch (\Throwable $exception) {
+            if ($newPath) {
+                Storage::disk('local')->delete($newPath);
+            }
+            throw $exception;
         }
 
-        $intake->fill([
-            'title'        => $validated['title'],
-            'source_type'  => $validated['source_type'],
-            'priority'     => $validated['priority'],
-            'status'       => $validated['status'] ?? $intake->status,
-            'summary'      => $validated['summary'],
-            'external_url' => $validated['external_url'] ?? null,
-        ]);
-        $intake->save();
+        if ($newPath && $oldPath) {
+            $this->deleteRequirementUpload($oldPath, $project->id);
+        }
+        AuditLogger::log('requirement_intake_updated', 'Project Master', 'Memperbarui Requirement Intake <strong>' . e($intake->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>', $intake, $old, ['project_id' => $project->id, 'item_id' => $intake->id, 'status' => $intake->status, 'priority' => $intake->priority, 'original_filename' => $intake->original_filename, 'mime_type' => $intake->mime_type, 'file_size' => $intake->file_size, 'extraction_status' => $intake->extraction_status]);
 
-        AuditLogger::log(
-            'requirement_intake_updated',
-            'Project Master',
-            'Memperbarui Requirement Intake <strong>' . e($intake->title) . '</strong> pada proyek <strong>' . e($project->name) . '</strong>',
-            $intake,
-            $old,
-            ['project_id' => $project->id, 'item_id' => $intake->id, 'status' => $intake->status, 'priority' => $intake->priority],
-        );
-
-        return redirect()
-            ->to(route('projects.show', $project) . '#intake')
-            ->with('status', 'Requirement "' . $intake->title . '" berhasil diperbarui.');
+        return redirect()->to(route('projects.show', $project) . '#intake')->with('status', 'Requirement "' . $intake->title . '" berhasil diperbarui.');
     }
 
     public function previewRequirementIntake(Project $project, ProjectRequirementInboxItem $intake)
@@ -2174,10 +2191,20 @@ class ProjectController extends Controller
         abort_unless((int) $intake->project_id === (int) $project->id, 404);
         [$disk, $path] = $this->storedUpload($intake->file_path, 'project-requirements/' . $project->id . '/');
 
-        return response()->file(Storage::disk($disk)->path($path), [
-            'Content-Disposition' => $disposition . '; filename="' . str_replace('"', '', basename($path)) . '"',
+        $legacyMime = ['pdf' => 'application/pdf', 'txt' => 'text/plain'][strtolower(pathinfo($path, PATHINFO_EXTENSION))] ?? null;
+        $mime = in_array($intake->mime_type, ['application/pdf', 'text/plain'], true) ? $intake->mime_type : $legacyMime;
+        abort_unless($mime, 415);
+        $filename = preg_replace('/[^A-Za-z0-9._ -]/', '_', str_replace(["\r", "\n"], '', basename((string) ($intake->original_filename ?: $path)))) ?: 'requirement-document';
+        $headers = [
+            'Content-Type' => $mime,
+            'Content-Disposition' => $disposition . '; filename="' . $filename . '"',
             'X-Content-Type-Options' => 'nosniff',
-        ]);
+        ];
+        if ($disposition === 'inline' && $mime === 'application/pdf') {
+            $headers['Content-Security-Policy'] = 'sandbox';
+        }
+
+        return response()->file(Storage::disk($disk)->path($path), $headers);
     }
 
     public function destroyRequirementIntake(Request $request, Project $project, ProjectRequirementInboxItem $intake)
@@ -2189,17 +2216,27 @@ class ProjectController extends Controller
         abort_unless($this->intakeCanContribute($project), 403);
 
         $title = $intake->title;
+        $filePath = $intake->file_path;
+        $metadata = ['project_id' => $project->id, 'item_id' => $intake->id, 'title' => $title, 'original_filename' => $intake->original_filename, 'mime_type' => $intake->mime_type, 'file_size' => $intake->file_size, 'extraction_status' => $intake->extraction_status];
+
+        DB::transaction(function () use ($intake) {
+            if (! $intake->delete()) {
+                throw new \RuntimeException('Gagal menghapus Requirement Intake dari database.');
+            }
+        });
 
         AuditLogger::log(
             'requirement_intake_deleted',
             'Project Master',
             'Menghapus Requirement Intake <strong>' . e($title) . '</strong> dari proyek <strong>' . e($project->name) . '</strong>',
             $project,
-            ['project_id' => $project->id, 'item_id' => $intake->id, 'title' => $title],
+            $metadata,
             null,
         );
 
-        $intake->delete();
+        if ($filePath) {
+            $this->deleteRequirementUpload($filePath, $project->id);
+        }
 
         return redirect()
             ->to(route('projects.show', $project) . '#intake')
@@ -2940,21 +2977,80 @@ class ProjectController extends Controller
     private function validateRequirementIntake(Request $request): array
     {
         return $request->validate([
-            'title'        => ['required', 'string', 'max:255'],
-            'source_type'  => ['required', Rule::in(ProjectRequirementInboxItem::SOURCE_TYPES)],
-            'priority'     => ['required', Rule::in(ProjectRequirementInboxItem::PRIORITIES)],
-            'status'       => ['nullable', Rule::in(ProjectRequirementInboxItem::STATUSES)],
-            'summary'      => ['required', 'string', 'max:10000'],
+            'title' => ['required', 'string', 'max:255'],
+            'source_type' => ['required', Rule::in(ProjectRequirementInboxItem::SOURCE_TYPES)],
+            'priority' => ['required', Rule::in(ProjectRequirementInboxItem::PRIORITIES)],
+            'status' => ['nullable', Rule::in(ProjectRequirementInboxItem::STATUSES)],
+            'summary' => ['nullable', 'string', 'max:10000'],
             'external_url' => ['nullable', 'url', 'max:1000'],
-            'file'         => ['nullable', 'file', 'max:10240'],
+            'file' => ['nullable', File::types(['pdf', 'txt'])->max(10 * 1024)],
         ], [
-            'title.required'   => 'Judul requirement wajib diisi.',
-            'summary.required' => 'Ringkasan wajib diisi.',
-            'source_type.in'   => 'Tipe sumber tidak valid.',
-            'priority.in'      => 'Prioritas tidak valid.',
+            'title.required' => 'Judul requirement wajib diisi.',
+            'source_type.in' => 'Tipe sumber tidak valid.',
+            'priority.in' => 'Prioritas tidak valid.',
             'external_url.url' => 'URL harus valid.',
-            'file.max'         => 'File maksimal 10MB.',
+            'file.mimes' => 'File harus berupa PDF atau TXT yang valid.',
+            'file.max' => 'File maksimal 10MB.',
         ]);
+    }
+
+    private function prepareRequirementDocument(Request $request, RequirementDocumentTextExtractor $extractor): array
+    {
+        if (! $request->hasFile('file')) {
+            return [];
+        }
+
+        $file = $request->file('file');
+        $extension = strtolower($file->getClientOriginalExtension());
+        $expectedMime = ['pdf' => 'application/pdf', 'txt' => 'text/plain'][$extension] ?? null;
+        $mime = $file->getMimeType();
+        $path = $file->getRealPath();
+        $prefix = file_get_contents($path, false, null, 0, 5);
+        $invalidPdf = $extension === 'pdf' && $prefix !== '%PDF-';
+        $invalidText = $extension === 'txt' && ($prefix === '%PDF-' || str_contains((string) file_get_contents($path), "\0"));
+        if (! $expectedMime || $mime !== $expectedMime || $invalidPdf || $invalidText) {
+            throw ValidationException::withMessages(['file' => 'Ekstensi dan tipe isi file tidak sesuai. Unggah PDF atau TXT yang valid.']);
+        }
+
+        $extraction = $extractor->extract($path, $extension);
+
+        return [
+            'original_filename' => mb_substr(basename($file->getClientOriginalName()), 0, 255),
+            'mime_type' => $expectedMime,
+            'file_size' => $file->getSize(),
+            'file_sha256' => hash_file('sha256', $file->getRealPath()),
+            'extracted_text' => $extraction['text'],
+            'extraction_status' => $extraction['status'],
+            'extracted_at' => now(),
+        ];
+    }
+
+    private function requireRequirementContent(array $validated, array $document): void
+    {
+        if (trim((string) ($validated['summary'] ?? '')) !== '') {
+            return;
+        }
+
+        if (($document['extraction_status'] ?? null) === 'extracted' && trim((string) ($document['extracted_text'] ?? '')) !== '') {
+            return;
+        }
+
+        throw ValidationException::withMessages(['summary' => 'Isi ringkasan atau unggah dokumen PDF/TXT dengan teks yang berhasil diekstrak dan tidak kosong.']);
+    }
+
+    private function deleteRequirementUpload(string $path, int $projectId): void
+    {
+        $path = str_replace('\\', '/', ltrim($path, '/'));
+        $prefix = 'project-requirements/' . $projectId . '/';
+        if (! str_starts_with($path, $prefix) || str_contains($path, '../')) {
+            return;
+        }
+        foreach (['local', 'public'] as $disk) {
+            if (Storage::disk($disk)->exists($path)) {
+                Storage::disk($disk)->delete($path);
+                return;
+            }
+        }
     }
 
     private function projectIntakeRows(Project $project): array
@@ -2974,6 +3070,11 @@ class ProjectController extends Controller
                 'status'        => $item->status,
                 'status_label'  => self::INTAKE_STATUS_LABELS[$item->status] ?? $item->status,
                 'summary'       => $item->summary,
+                'original_filename' => $item->original_filename,
+                'mime_type'     => $item->mime_type,
+                'file_size'     => $item->file_size,
+                'extraction_status' => $item->extraction_status,
+                'extracted_excerpt' => $item->extracted_text ? mb_substr($item->extracted_text, 0, 500) : null,
                 'file_path'     => $item->file_path,
                 'file_url'      => $item->file_path ? route('projects.requirement-intake.preview', [$project, $item]) : null,
                 'file_download_url' => $item->file_path ? route('projects.requirement-intake.download', [$project, $item]) : null,
@@ -3003,39 +3104,24 @@ class ProjectController extends Controller
     {
         $items = $project->relationLoaded('requirementInboxItems')
             ? $project->requirementInboxItems
-            : $project->requirementInboxItems()->get(['title', 'source_type', 'priority', 'status', 'summary']);
+            : $project->requirementInboxItems()->get(['id', 'title', 'source_type', 'priority', 'status', 'summary', 'extracted_text', 'extraction_status']);
 
-        $preferred = $items
-            ->filter(fn (ProjectRequirementInboxItem $item) => in_array($item->status, ['used', 'reviewed'], true))
-            ->values();
-
-        $selected = $preferred->isNotEmpty()
-            ? $preferred
-            : $items->filter(fn (ProjectRequirementInboxItem $item) => trim((string) $item->summary) !== '')->values();
-
-        $lines = $selected
-            ->filter(fn (ProjectRequirementInboxItem $item) => trim((string) $item->summary) !== '')
-            ->take(8)
+        $statusOrder = ['used' => 0, 'reviewed' => 1, 'draft' => 2];
+        $lines = $items->filter(fn ($item) => trim((string) $item->summary) !== '' || $item->extraction_status === 'extracted')
+            ->sortBy(fn ($item) => sprintf('%d-%020d', $statusOrder[$item->status] ?? 3, $item->id))
             ->map(function (ProjectRequirementInboxItem $item) {
                 $source = self::INTAKE_SOURCE_LABELS[$item->source_type] ?? $item->source_type;
                 $priority = self::INTAKE_PRIORITY_LABELS[$item->priority] ?? $item->priority;
-                $title = trim((string) $item->title);
-                $summary = trim(preg_replace('/\s+/', ' ', (string) $item->summary));
+                $summary = trim((string) $item->summary);
+                $excerpt = trim((string) $item->extracted_text);
+                $body = $summary !== '' ? "Ringkasan: {$summary}" : '';
+                if ($excerpt !== '') {
+                    $body .= ($body !== '' ? "\n" : '') . 'Ekstrak dokumen: ' . $excerpt;
+                }
+                return mb_substr('- [' . strtoupper((string) $item->status) . '] ' . trim((string) $item->title) . "\nSumber: {$source}; Prioritas: {$priority}\n{$body}", 0, 3000);
+            })->values()->all();
 
-                return '- [' . strtoupper((string) $item->status) . '] '
-                    . ($title !== '' ? $title . ' — ' : '')
-                    . $summary
-                    . ' (Sumber: ' . $source . '; Prioritas: ' . $priority . ')';
-            })
-            ->filter()
-            ->values()
-            ->all();
-
-        if ($lines === []) {
-            return '';
-        }
-
-        return "Requirement Intake Summary:\n" . implode("\n", $lines);
+        return $lines === [] ? '' : mb_substr("Requirement Intake Context:\n" . implode("\n\n", $lines), 0, 16000);
     }
 
     private function projectQcTestRows(Project $project): array

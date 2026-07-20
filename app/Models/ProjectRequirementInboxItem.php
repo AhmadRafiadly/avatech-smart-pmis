@@ -20,8 +20,23 @@ class ProjectRequirementInboxItem extends Model
         'status',
         'summary',
         'file_path',
+        'original_filename',
+        'mime_type',
+        'file_size',
+        'file_sha256',
+        'extracted_text',
+        'extraction_status',
+        'extracted_at',
         'external_url',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'file_size' => 'integer',
+            'extracted_at' => 'datetime',
+        ];
+    }
 
     public function project(): BelongsTo
     {

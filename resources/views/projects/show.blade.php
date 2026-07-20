@@ -1482,7 +1482,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                 <input type="checkbox" name="use_requirement_intake" value="1" checked class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-400">
                                 <span class="text-[11.5px] text-slate-600 leading-relaxed">
                                     <span class="font-semibold text-[#1E1B4B]">Gunakan Requirement Intake sebagai konteks AI</span><br>
-                                    Hanya ringkasan Requirement Intake yang dikirim ke AI. File upload/PDF/link tidak diparse.
+                                    Ringkasan dan cuplikan teks PDF/TXT digunakan sebagai konteks AI. Hasil AI tetap draf untuk direview.
                                 </span>
                             </label>
                             <button
@@ -1718,7 +1718,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                 <input type="checkbox" name="use_requirement_intake" value="1" checked class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-400">
                                 <span class="text-[11.5px] text-slate-600 leading-relaxed">
                                     <span class="font-semibold text-[#1E1B4B]">Gunakan Requirement Intake sebagai konteks AI</span><br>
-                                    Hanya ringkasan Requirement Intake yang dikirim ke AI. File upload/PDF/link tidak diparse.
+                                    Ringkasan dan cuplikan teks PDF/TXT digunakan sebagai konteks AI. Hasil AI tetap draf untuk direview.
                                 </span>
                             </label>
                             <button
@@ -1805,7 +1805,15 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                 <div>{{ $ri['created_at'] }}</div>
                             </div>
                         </div>
-                        <p class="text-[13px] text-slate-600 leading-relaxed mb-2">{{ Str::limit($ri['summary'], 300) }}</p>
+                        @if ($ri['summary'])
+                            <p class="text-[13px] text-slate-600 leading-relaxed mb-2">{{ Str::limit($ri['summary'], 300) }}</p>
+                        @endif
+                        @if ($ri['original_filename'])
+                            <p class="mb-2 text-[11.5px] text-slate-500">{{ $ri['original_filename'] }} · {{ $ri['mime_type'] }} · {{ number_format(($ri['file_size'] ?? 0) / 1024, 1) }} KB · Ekstraksi: {{ str_replace('_', ' ', $ri['extraction_status']) }}</p>
+                        @endif
+                        @if ($ri['extracted_excerpt'])
+                            <div class="mb-2 rounded-lg bg-slate-50 p-3 text-[12px] leading-relaxed text-slate-600">{{ Str::limit($ri['extracted_excerpt'], 500) }}</div>
+                        @endif
                         <div class="flex flex-wrap items-center gap-3 text-[12px]">
                             @if ($ri['file_url'])
                                 <a href="{{ $ri['file_url'] }}" target="_blank" class="inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 font-medium">
@@ -1880,13 +1888,13 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                         </div>
                     </div>
                     <div>
-                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Ringkasan <span class="text-rose-500">*</span></label>
-                        <textarea name="summary" required rows="3" maxlength="10000" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition resize-y" placeholder="Ringkasan kebutuhan proyek (digunakan sebagai konteks AI)">{{ old('summary') }}</textarea>
+                        <label class="block text-[12px] font-semibold text-slate-600 mb-1">Ringkasan (opsional jika teks dokumen dapat diekstrak)</label>
+                        <textarea name="summary" rows="3" maxlength="10000" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] focus:border-violet-400 focus:ring-violet-200 focus:ring-2 outline-none transition resize-y" placeholder="Ringkasan kebutuhan proyek (digunakan sebagai konteks AI)">{{ old('summary') }}</textarea>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[12px] font-semibold text-slate-600 mb-1">File (opsional, maks 10MB)</label>
-                            <input type="file" name="file" class="w-full text-[13px] file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-2 file:text-[12px] file:font-semibold file:text-violet-700 hover:file:bg-violet-100 transition">
+                            <input type="file" name="file" accept=".pdf,.txt,application/pdf,text/plain" class="w-full text-[13px] file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-2 file:text-[12px] file:font-semibold file:text-violet-700 hover:file:bg-violet-100 transition">
                         </div>
                         <div>
                             <label class="block text-[12px] font-semibold text-slate-600 mb-1">External URL (opsional)</label>
@@ -1946,12 +1954,12 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     </div>
                     <div>
                         <label class="block text-[12px] font-semibold text-slate-600 mb-1">Ringkasan</label>
-                        <textarea name="summary" required rows="3" maxlength="10000" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] resize-y"></textarea>
+                        <textarea name="summary" rows="3" maxlength="10000" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] resize-y"></textarea>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-[12px] font-semibold text-slate-600 mb-1">File (opsional)</label>
-                            <input type="file" name="file" class="w-full text-[13px]">
+                            <input type="file" name="file" accept=".pdf,.txt,application/pdf,text/plain" class="w-full text-[13px]">
                         </div>
                         <div>
                             <label class="block text-[12px] font-semibold text-slate-600 mb-1">External URL</label>
@@ -2327,7 +2335,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                                 <input type="checkbox" name="use_requirement_intake" value="1" checked class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-400">
                                 <span class="text-[11.5px] text-slate-600 leading-relaxed">
                                     <span class="font-semibold text-[#1E1B4B]">Gunakan Requirement Intake sebagai konteks AI</span><br>
-                                    Hanya ringkasan Requirement Intake yang dikirim ke AI. File upload/PDF/link tidak diparse.
+                                    Ringkasan dan cuplikan teks PDF/TXT digunakan sebagai konteks AI. Hasil AI tetap draf untuk direview.
                                 </span>
                             </label>
                         </form>
