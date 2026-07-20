@@ -125,9 +125,10 @@ class CleanupUserRoster extends Command
     private function dryRun(): int
     {
         self::assertSafeDatabase(false);
-        $manifest = $this->inventory();
+        $manifest = $this->canonicalManifest($this->inventory());
         $manifest['checksum'] = $this->checksum($manifest);
         $manifest['confirmation_token'] = $this->token($manifest['checksum']);
+        $manifest = $this->canonicalManifest($manifest);
         $path = storage_path('app/cleanup-user-roster-'.$manifest['checksum'].'.json');
         File::put($path, $this->encode($manifest));
         $this->line('Manifest: '.$path);
@@ -157,6 +158,7 @@ class CleanupUserRoster extends Command
         $current = $this->inventory();
         $checksum = (string) ($manifest['checksum'] ?? '');
         $valid = $checksum !== ''
+            && $manifest === $this->canonicalManifest($manifest)
             && hash_equals($checksum, $this->checksum($unsigned))
             && hash_equals((string) ($manifest['confirmation_token'] ?? ''), $this->token($checksum))
             && hash_equals((string) ($manifest['confirmation_token'] ?? ''), $token)
@@ -169,8 +171,8 @@ class CleanupUserRoster extends Command
             return self::FAILURE;
         }
 
-        if (($manifest['format_version'] ?? null) !== 4) {
-            $this->error('Only V4 manifests can be executed. Run a new dry run.');
+        if (($manifest['format_version'] ?? null) !== 5) {
+            $this->error('Only V5 manifests can be executed. Run a new dry run.');
 
             return self::FAILURE;
         }
@@ -205,7 +207,7 @@ class CleanupUserRoster extends Command
         $aggregate = $manifest['reference_aggregate'] ?? null;
         $expected = $manifest['expected'] ?? null;
         $current = $manifest['current'] ?? null;
-        if (($manifest['format_version'] ?? null) !== 4 || $warnings !== [] || $blockedIds !== []
+        if (($manifest['format_version'] ?? null) !== 5 || $warnings !== [] || $blockedIds !== []
             || ! is_array($verification) || count($verification) !== 6 || ! collect($verification)->every(fn ($row) => is_array($row) && ($row['valid'] ?? null) === true)
             || ! is_array($officialEmails) || $officialEmails !== self::OFFICIAL_EMAILS || ! $integerList($officialIds) || count($officialIds) !== 6
             || ! $integerList($deleteIds) || ! $integerList($archiveIds) || array_intersect($deleteIds, $archiveIds) !== []
@@ -213,7 +215,11 @@ class CleanupUserRoster extends Command
             || ! is_array($expected) || ! is_array($current) || ($expected['active_count'] ?? null) !== 6
             || ($expected['proposed_final_team_count'] ?? null) !== 5 || ($expected['team_count_after'] ?? null) !== 5
             || ($expected['physical_count'] ?? null) !== ($current['physical_count'] ?? null) - count($deleteIds)
-            || ($manifest['sentinels'] ?? null) !== ['project_count' => 22, 'client_count' => 19, 'required_project_ids' => [651, 652], 'valid' => true]
+            || ! is_array($manifest['sentinels'] ?? null)
+            || ($manifest['sentinels']['project_count'] ?? null) !== 22
+            || ($manifest['sentinels']['client_count'] ?? null) !== 19
+            || ($manifest['sentinels']['required_project_ids'] ?? null) !== [651, 652]
+            || ($manifest['sentinels']['valid'] ?? null) !== true
             || ! in_array($manifest['feasibility'] ?? null, ['SAFE_TO_REACH_EXACTLY_6', 'SAFE_TO_SHOW_6_ACTIVE_BUT_NOT_DELETE_ALL_HISTORY'], true)) {
             return true;
         }
@@ -388,8 +394,8 @@ class CleanupUserRoster extends Command
         $rolePivots = $actionPlans->whereIn('table', ['model_has_roles', 'model_has_permissions'])->values()->all();
         $authenticationRecords = $actionPlans->whereIn('table', ['sessions', 'password_reset_tokens'])->values()->all();
 
-        return [
-            'format_version' => 4,
+        return $this->canonicalManifest([
+            'format_version' => 5,
             'database' => DB::connection()->getDatabaseName(),
             'sentinels' => [
                 'project_count' => DB::table('projects')->count(),
@@ -451,7 +457,7 @@ class CleanupUserRoster extends Command
             ],
             'feasibility' => $feasibility,
             'warnings' => $warnings,
-        ];
+        ]);
     }
 
     private function classify(int $id, string $email, array $roles, ?string $evidence, array $refs, array $protected): array
@@ -514,6 +520,9 @@ class CleanupUserRoster extends Command
             if ($definition['morph_type']) {
                 $query->whereIn($definition['morph_type'], [User::class, 'App\\Models\\User', 'User', 'user']);
             }
+            foreach ($definition['stable_order_columns'] as $column) {
+                $query->orderBy($column);
+            }
             $rows = $query->get();
             $ids = $definition['has_id'] ? $rows->pluck('id')->map(fn ($id) => (int) $id)->all() : [];
             $exactKey = $definition['has_id'] || $rows->isEmpty() ? [] : [$definition['column'] => $value];
@@ -551,6 +560,7 @@ class CleanupUserRoster extends Command
                     'table' => $table,
                     'column' => $name,
                     'has_id' => in_array('id', $names, true),
+                    'stable_order_columns' => in_array('id', $names, true) ? ['id'] : $names,
                     'nullable' => $column->IS_NULLABLE === 'YES',
                     'foreign_key' => $fk?->CONSTRAINT_NAME,
                     'delete_rule' => $fk?->DELETE_RULE,
@@ -570,14 +580,14 @@ class CleanupUserRoster extends Command
                 continue;
             }
             [$table, $column] = explode('.', $key, 2);
-            $definitions[$key] = ['table' => $table, 'column' => $column, 'has_id' => false, 'nullable' => false, 'foreign_key' => null, 'delete_rule' => null, 'morph_type' => null, 'explicit' => true, 'accounted' => true, 'historical' => in_array($key, self::HISTORICAL, true), 'safe_pivot' => false, 'detachable' => in_array($key, self::DETACHABLE, true), 'meaningful' => true, 'available' => false];
+            $definitions[$key] = ['table' => $table, 'column' => $column, 'has_id' => false, 'stable_order_columns' => [], 'nullable' => false, 'foreign_key' => null, 'delete_rule' => null, 'morph_type' => null, 'explicit' => true, 'accounted' => true, 'historical' => in_array($key, self::HISTORICAL, true), 'safe_pivot' => false, 'detachable' => in_array($key, self::DETACHABLE, true), 'meaningful' => true, 'available' => false];
         }
-        foreach ($definitions as &$definition) {
+        foreach ($definitions as $key => $definition) {
             $definition['available'] ??= true;
+            $definitions[$key] = $definition;
         }
-        unset($definition);
         if (isset($columns['password_reset_tokens'])) {
-            $definitions['password_reset_tokens.email'] = ['table' => 'password_reset_tokens', 'column' => 'email', 'has_id' => false, 'nullable' => false, 'foreign_key' => null, 'delete_rule' => null, 'morph_type' => null, 'explicit' => true, 'accounted' => true, 'historical' => false, 'safe_pivot' => true, 'detachable' => false, 'meaningful' => false, 'available' => true];
+            $definitions['password_reset_tokens.email'] = ['table' => 'password_reset_tokens', 'column' => 'email', 'has_id' => false, 'stable_order_columns' => [], 'nullable' => false, 'foreign_key' => null, 'delete_rule' => null, 'morph_type' => null, 'explicit' => true, 'accounted' => true, 'historical' => false, 'safe_pivot' => true, 'detachable' => false, 'meaningful' => false, 'available' => true];
         }
         ksort($definitions);
 
@@ -673,9 +683,135 @@ class CleanupUserRoster extends Command
         return null;
     }
 
+    public function canonicalManifest(array $manifest): array
+    {
+        $numericSets = ['official_user_ids', 'protected_user_ids', 'delete_user_ids', 'archive_user_ids', 'preserved_user_ids', 'blocked_user_ids'];
+        foreach ($numericSets as $key) {
+            if (isset($manifest[$key]) && is_array($manifest[$key])) {
+                $manifest[$key] = $this->numericSet($manifest[$key]);
+            }
+        }
+        foreach (['required_project_ids'] as $key) {
+            if (isset($manifest['sentinels'][$key])) {
+                $manifest['sentinels'][$key] = $this->numericSet($manifest['sentinels'][$key]);
+            }
+        }
+        foreach (['delete_user_ids', 'archive_candidate_ids', 'blocked_candidate_ids'] as $key) {
+            if (isset($manifest['expected'][$key])) {
+                $manifest['expected'][$key] = $this->numericSet($manifest['expected'][$key]);
+            }
+        }
+        foreach (['no_role', 'unknown_role', 'multi_role'] as $key) {
+            if (isset($manifest['stats'][$key])) {
+                $manifest['stats'][$key] = $this->numericSet($manifest['stats'][$key]);
+            }
+        }
+        foreach (($manifest['stats']['patterns'] ?? []) as $key => $ids) {
+            $manifest['stats']['patterns'][$key] = $this->numericSet($ids);
+        }
+        foreach (['duplicate_names', 'duplicate_emails'] as $section) {
+            foreach (($manifest['stats'][$section] ?? []) as $key => $ids) {
+                $manifest['stats'][$section][$key] = $this->numericSet($ids);
+            }
+        }
+        foreach (($manifest['users'] ?? []) as $userIndex => $user) {
+            $this->sortRows($user['roles'], ['id', 'name']);
+            $this->sortRows($user['references'], ['table', 'column']);
+            $this->sortPlans($user['detachments']);
+            foreach ($user['references'] as $referenceIndex => $reference) {
+                foreach (['record_ids', 'resources', 'projects'] as $key) {
+                    $reference[$key] = $this->numericSet($reference[$key] ?? []);
+                }
+                if (isset($reference['exact_key'])) {
+                    $reference['exact_key'] = $this->canonicalize($reference['exact_key']);
+                }
+                $user['references'][$referenceIndex] = $reference;
+            }
+            $manifest['users'][$userIndex] = $user;
+        }
+        $this->sortRows($manifest['users'], ['id']);
+        foreach (['detachments', 'role_pivots_to_delete', 'authentication_records_to_delete'] as $section) {
+            if (isset($manifest[$section])) {
+                $this->sortPlans($manifest[$section]);
+            }
+        }
+        if (isset($manifest['reference_schema'])) {
+            $this->sortRows($manifest['reference_schema'], ['table', 'column']);
+        }
+        if (isset($manifest['official_account_verification'])) {
+            $this->sortRows($manifest['official_account_verification'], ['expected_email']);
+        }
+        if (isset($manifest['warnings'])) {
+            sort($manifest['warnings'], SORT_STRING);
+        }
+
+        return $this->canonicalize($manifest);
+    }
+
+    public function canonicalize(array $value): array
+    {
+        foreach ($value as $key => $item) {
+            if (is_array($item)) {
+                $value[$key] = $this->canonicalize($item);
+            }
+        }
+        if (! array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
+
+        return $value;
+    }
+
+    public function unsignedEncoding(array $manifest): string
+    {
+        unset($manifest['checksum'], $manifest['confirmation_token']);
+
+        return $this->encode($this->canonicalManifest($manifest));
+    }
+
+    private function numericSet(iterable $ids): array
+    {
+        $ids = array_values(array_unique(array_map('intval', is_array($ids) ? $ids : iterator_to_array($ids))));
+        sort($ids, SORT_NUMERIC);
+
+        return $ids;
+    }
+
+    private function sortRows(?array &$rows, array $keys): void
+    {
+        if (! is_array($rows)) {
+            return;
+        }
+        usort($rows, function (array $left, array $right) use ($keys): int {
+            foreach ($keys as $key) {
+                $comparison = ($left[$key] ?? null) <=> ($right[$key] ?? null);
+                if ($comparison !== 0) {
+                    return $comparison;
+                }
+            }
+
+            return strcmp($this->encode($this->canonicalize($left)), $this->encode($this->canonicalize($right)));
+        });
+    }
+
+    private function sortPlans(?array &$plans): void
+    {
+        if (! is_array($plans)) {
+            return;
+        }
+        foreach ($plans as $index => $plan) {
+            foreach (['record_ids', 'resources', 'projects'] as $key) {
+                $plan[$key] = $this->numericSet($plan[$key] ?? []);
+            }
+            $plan['exact_key'] = $this->canonicalize($plan['exact_key'] ?? []);
+            $plans[$index] = $plan;
+        }
+        $this->sortRows($plans, ['table', 'column', 'old_user_id']);
+    }
+
     private function checksum(array $manifest): string
     {
-        return hash('sha256', $this->encode($manifest));
+        return hash('sha256', $this->encode($this->canonicalManifest($manifest)));
     }
 
     private function token(string $checksum): string

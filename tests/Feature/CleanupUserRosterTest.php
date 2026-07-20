@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Console\Commands\CleanupUserRoster;
 use App\Models\User;
 use Filament\Panel;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -48,6 +49,32 @@ class CleanupUserRosterTest extends TestCase
         CleanupUserRoster::assertOfficialPreserves($emails);
         $this->expectException(RuntimeException::class);
         CleanupUserRoster::assertOfficialPreserves(array_slice($emails, 1));
+    }
+
+    public function test_v5_manifest_is_byte_deterministic_and_changes_with_inventory(): void
+    {
+        [$firstPath, $first] = $this->dryRun();
+        $firstBytes = File::get($firstPath);
+        [$secondPath, $second] = $this->dryRun();
+        $this->assertSame($firstPath, $secondPath);
+        $this->assertSame($firstBytes, File::get($secondPath));
+        $this->assertSame(5, $first['format_version']);
+        $this->assertSame($first['checksum'], $second['checksum']);
+
+        $this->user('Checksum Change', 'checksum-change@example.test');
+        [$changedPath, $changed] = $this->dryRun();
+        $this->assertNotSame($firstPath, $changedPath);
+        $this->assertNotSame($first['checksum'], $changed['checksum']);
+    }
+
+    public function test_canonicalization_produces_identical_unsigned_bytes_for_permutations(): void
+    {
+        $command = new CleanupUserRoster();
+        $left = ['format_version' => 5, 'warnings' => ['z', 'a'], 'delete_user_ids' => [9, 2, 9], 'users' => [['id' => 2, 'roles' => [['id' => 4, 'name' => 'z'], ['id' => 1, 'name' => 'a']], 'references' => [], 'detachments' => []], ['id' => 1, 'roles' => [], 'references' => [], 'detachments' => []]]];
+        $right = ['users' => array_reverse($left['users']), 'delete_user_ids' => [2, 9], 'warnings' => ['a', 'z'], 'format_version' => 5];
+        $right['users'][1]['roles'] = array_reverse($right['users'][1]['roles']);
+
+        $this->assertSame($command->unsignedEncoding($left), $command->unsignedEncoding($right));
     }
 
     public function test_dry_run_inventories_every_user_and_classifies_conservatively(): void
@@ -358,12 +385,12 @@ class CleanupUserRosterTest extends TestCase
         }
     }
 
-    public function test_v3_and_malformed_manifests_are_execution_blockers_without_database_access(): void
+    public function test_v4_and_malformed_manifests_are_execution_blockers_without_database_access(): void
     {
-        $this->assertTrue(CleanupUserRoster::hasExecutionBlockers(['format_version' => 3]));
+        $this->assertTrue(CleanupUserRoster::hasExecutionBlockers(['format_version' => 4]));
         $this->assertTrue(CleanupUserRoster::hasExecutionBlockers([]));
         $this->assertTrue(CleanupUserRoster::hasExecutionBlockers([
-            'format_version' => 4,
+            'format_version' => 5,
             'warnings' => 'invalid',
             'blocked_user_ids' => null,
             'official_account_verification' => 'invalid',
@@ -376,7 +403,7 @@ class CleanupUserRosterTest extends TestCase
         ]));
     }
 
-    public function test_each_v4_execution_invariant_blocks_independently(): void
+    public function test_each_v5_execution_invariant_blocks_independently(): void
     {
         $base = $this->validManifest();
         $this->assertFalse(CleanupUserRoster::hasExecutionBlockers($base));
@@ -463,9 +490,9 @@ class CleanupUserRosterTest extends TestCase
 
     private function dryRun(): array
     {
-        $before = File::glob(storage_path('app/cleanup-user-roster-*.json'));
-        $this->artisan('maintenance:cleanup-user-roster', ['--dry-run' => true])->assertSuccessful();
-        $path = array_values(array_diff(File::glob(storage_path('app/cleanup-user-roster-*.json')), $before))[0];
+        $this->assertSame(0, Artisan::call('maintenance:cleanup-user-roster', ['--dry-run' => true]));
+        preg_match('/^Manifest: (.+)$/m', Artisan::output(), $match);
+        $path = trim($match[1]);
         $this->manifests[] = $path;
 
         return [$path, json_decode(File::get($path), true, flags: JSON_THROW_ON_ERROR)];
@@ -507,7 +534,7 @@ class CleanupUserRosterTest extends TestCase
         $users[] = ['id' => 8, 'email' => 'archive@example.test', 'official' => false];
 
         return [
-            'format_version' => 4,
+            'format_version' => 5,
             'warnings' => [],
             'blocked_user_ids' => [],
             'official_account_verification' => array_fill(0, 6, ['valid' => true]),
