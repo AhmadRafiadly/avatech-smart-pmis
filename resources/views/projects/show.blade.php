@@ -1973,9 +1973,9 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
     </div>
 
     <div id="requirement-preview-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="requirement-preview-title">
-        <div data-requirement-preview-backdrop class="absolute inset-0 bg-slate-900/60"></div>
-        <div class="relative flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-3">
+        <div data-requirement-preview-backdrop class="absolute inset-0 bg-slate-950/65"></div>
+        <div class="relative flex h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div class="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-5 py-3">
                 <div class="min-w-0">
                     <h3 id="requirement-preview-title" data-requirement-preview-title class="truncate text-[15px] font-bold text-slate-800"></h3>
                     <p data-requirement-preview-label class="text-[12px] font-semibold text-violet-700"></p>
@@ -1987,7 +1987,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
                     <button data-requirement-preview-close type="button" class="h-9 w-9 rounded-lg text-xl text-slate-500 hover:bg-slate-100" aria-label="Tutup preview">&times;</button>
                 </div>
             </div>
-            <iframe data-requirement-preview-frame class="min-h-0 flex-1 w-full border-0" title="Preview teks requirement"></iframe>
+            <iframe data-requirement-preview-frame class="block min-h-0 flex-1 w-full border-0" title="Preview teks requirement"></iframe>
         </div>
     </div>
 

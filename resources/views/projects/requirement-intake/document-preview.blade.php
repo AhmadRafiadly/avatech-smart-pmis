@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $title }}</title>
     <style>
-        body{margin:0;background:#f8fafc;color:#1e293b;font:14px/1.6 system-ui,sans-serif}.wrap{max-width:900px;margin:auto;padding:28px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px}.meta{color:#64748b;font-size:12px;margin-bottom:20px}.body{white-space:pre-wrap;overflow-wrap:anywhere}.notice{padding:14px;border-radius:10px;background:#fef3c7;color:#92400e}.summary{white-space:pre-wrap;margin-top:16px}
+        body{margin:0;background:#f8fafc;color:#1e293b;font:14px/1.6 system-ui,sans-serif}.wrap{max-width:900px;margin:auto;padding:28px 28px 48px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px}.meta{color:#64748b;font-size:12px;margin-bottom:20px}.body{white-space:pre-wrap;overflow-wrap:anywhere}.notice{padding:14px;border-radius:10px;background:#fef3c7;color:#92400e}.summary{white-space:pre-wrap;margin-top:16px}@media(max-width:640px){.wrap{padding:16px 16px 40px}.card{padding:18px}}
     </style>
 </head>
 <body>
