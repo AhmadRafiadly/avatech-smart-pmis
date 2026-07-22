@@ -2959,6 +2959,7 @@ Catatan tambahan:" class="w-full rounded-xl border border-violet-100 px-4 py-3 t
 
                 const requirementPreviewModal = document.getElementById('requirement-preview-modal');
                 if (requirementPreviewModal) {
+                    document.body.appendChild(requirementPreviewModal);
                     const frame = requirementPreviewModal.querySelector('[data-requirement-preview-frame]');
                     const closeButton = requirementPreviewModal.querySelector('[data-requirement-preview-close]');
                     const setText = (hook, value) => {

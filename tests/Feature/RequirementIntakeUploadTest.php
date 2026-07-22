@@ -397,6 +397,7 @@ class RequirementIntakeUploadTest extends TestCase
             ->assertDontSee('x-bind:src', false)
             ->assertDontSee('docs.google.com/gview', false)
             ->assertDontSee('view.officeapps.live.com', false);
+        $this->assertStringContainsString('document.body.appendChild(requirementPreviewModal)', $previewScript);
         $this->assertStringNotContainsString('fetch(', $previewScript);
         $this->assertStringNotContainsString('response.blob()', $previewScript);
         $this->assertStringNotContainsString('URL.createObjectURL', $previewScript);
