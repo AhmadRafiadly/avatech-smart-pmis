@@ -7,8 +7,7 @@ pembicaraan (talking points).
 
 **Persiapan sebelum demo:**
 - Pastikan server berjalan dan data seed/demo tersedia.
-- Login menggunakan akun demo (mis. CEO/PM `joshua.raphael@avatech.test`,
-  operasional `ahmad.rafiadly@avatech.test`).
+- Login menggunakan akun demo (mis. akun demo sesuai peran (CEO/PM dan operasional)).
 - Bila ingin mendemokan fitur AI secara live, pastikan minimal satu provider
   (Gemini/Groq/OpenRouter) terkonfigurasi; bila tidak, tunjukkan gate
   "AI belum dikonfigurasi" sebagai perilaku aman.
