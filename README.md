@@ -1,66 +1,140 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Smart Project Management System with Multi-Provider LLM Integration
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A web-based project management system developed as my Informatics Engineering thesis at UIN Syarif Hidayatullah Jakarta.
 
-## About Laravel
+The application combines day-to-day project management workflows with optional LLM-assisted features for meeting documentation, WBS/task breakdown, test-scenario generation, and client communication drafts. AI-generated output is treated as a draft and only persisted through explicit user actions.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Key Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- Project, client, and team management
+- Project modules, tasks, assignments, dependencies, and blockers
+- Meeting minutes (MoM) and project documentation workflows
+- Change requests and requirement inbox workflows
+- Client review, design deliverables, UAT, QC, sign-off, and handover workflows
+- Role-based access control and separate operational/admin access paths
+- Audit trail for tracked application activity
+- PDF exports for selected project artifacts
+- Multi-provider LLM integration with fallback support
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## LLM-Assisted Workflows
 
-## Learning Laravel
+The application supports multiple LLM providers through a configurable fallback order:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+- Google Gemini
+- Groq
+- OpenRouter
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+Current assisted workflows include:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- Structuring and improving meeting notes
+- Generating WBS/module/task drafts from project and MoM context
+- Generating black-box test-case drafts
+- Drafting client WhatsApp and email follow-ups
 
-## Laravel Sponsors
+Generated results are validated and returned as drafts before they are applied to project data. Provider API keys are read from environment variables and are not stored in source code.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Tech Stack
 
-### Premium Partners
+**Backend**
+- Laravel 12
+- PHP 8.2+
+- MySQL
+- Eloquent ORM
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+**Frontend / Admin**
+- Blade
+- Livewire
+- Alpine.js
+- Filament 3
+- Tailwind CSS 4
+- Vite
 
-## Contributing
+**Access & Delivery**
+- Spatie Laravel Permission / RBAC
+- Filament Shield
+- DomPDF
+- PHPUnit
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Project Structure
 
-## Code of Conduct
+The project is a Laravel monolith with:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+- standard web routes for operational project workflows;
+- a Filament-based admin layer;
+- Eloquent models for project, client, team, audit, review, UAT, QC, and handover data;
+- dedicated services for LLM planning/generation and audit logging.
 
-## Security Vulnerabilities
+The LLM integration is isolated behind application services and provider configuration so the rest of the project can operate independently when no provider key is configured.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Local Setup
 
-## License
+### Requirements
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- PHP 8.2 or newer
+- Composer
+- Node.js and npm
+- MySQL
+
+### Installation
+
+```bash
+git clone https://github.com/AhmadRafiadly/avatech-smart-pmis.git
+cd avatech-smart-pmis
+
+composer install
+npm install
+
+cp .env.example .env
+php artisan key:generate
+```
+
+Configure the MySQL connection in `.env`, then run:
+
+```bash
+php artisan migrate
+npm run build
+php artisan serve
+```
+
+For development with Vite:
+
+```bash
+npm run dev
+```
+
+### Optional LLM Configuration
+
+AI features are disabled when no provider API key is configured. To enable them, add at least one provider key to `.env`.
+
+Example configuration:
+
+```env
+AI_PROVIDER_ORDER=gemini,groq,openrouter
+
+GEMINI_API_KEY=
+GEMINI_MODEL=
+
+GROQ_API_KEY=
+GROQ_MODEL=
+
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=
+
+AI_TIMEOUT_SECONDS=30
+```
+
+Do not commit real API keys or environment credentials.
+
+## Thesis Context
+
+**Concise English title:**  
+Smart Web-Based Project Management System Using RUP with Multi-Provider LLM API Integration
+
+The project was developed and deployed as part of my Bachelor's degree in Informatics Engineering. It applies the Rational Unified Process (RUP) and explores how LLM APIs can support project documentation, task breakdown, and testing workflows while keeping human approval in the loop.
+
+## Author
+
+**Ahmad Rafiadly Arlisyah**  
+Software Developer / Full-Stack Web Developer
+
+[LinkedIn](https://www.linkedin.com/in/ahmad-rafiadly-arlisyah)
